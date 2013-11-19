@@ -1,3 +1,4 @@
+# MyTardis Uploader v1.1
 # Steve Androulakis <steve.androulakis@monash.edu>
 # Thanks Grischa Meyer <grischa.meyer@monash.edu> for initial script
 
@@ -234,7 +235,7 @@ def run():
     print "Steve Androulakis <steve.androulakis@monash.edu>"
     print "Uploads the given directory as an Experiment, and the immediate \n" \
           "sub-directories below it as Datasets in MyTardis."
-    print "Eg. python mytardis_uploader_v1.py -l http://mytardis-server.com.au -u steve" \
+    print "Eg. python mytardis_uploader.py -l http://mytardis-server.com.au -u steve" \
           " -f /Users/steve/Experiment1/"
     print ""
 
