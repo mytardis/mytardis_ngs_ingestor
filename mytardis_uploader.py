@@ -67,7 +67,7 @@ class MyTardisUploader:
 
         for item in os.listdir(file_path):
 
-            if item.startswith('.'):
+            if item.startswith('.') or item == 'metadata':
                 continue  # filter files/dirs starting with .
 
             if os.path.isfile(os.path.join(file_path, item)):
@@ -77,10 +77,16 @@ class MyTardisUploader:
 
                 print '\tCreating dataset: %s' % item
 
+                parameter_sets_list = self._get_dataset_parametersets_from_json(file_path, item)
+
+                if parameter_sets_list:
+                    print "\tFound parameters for %s" % item
+
                 ds_url = "/test/"
                 if not test_run:
                     ds_url = self.create_dataset('%s' % item,
                               [self._get_path_from_url(exp_url)],
+                              parameter_sets_list
                               )
 
                 for dirname, dirnames, filenames in os.walk(os.path.join(file_path, item)):
@@ -107,6 +113,19 @@ class MyTardisUploader:
         else:
             print "Dry run complete."
             return "http://example.com/test/success"
+
+    def _get_dataset_parametersets_from_json(self, file_path, dataset_name):
+        filename = '%s/metadata/%s_metadata.json' % (os.path.abspath(file_path), dataset_name)
+        parametersets = []
+
+        try:
+            with open(filename) as f:
+                parametersets = json.loads(f.read())
+                return parametersets
+        except IOError:
+            pass
+
+        return []
 
     def _send_data(self, data, urlend, method="POST"):
         url = self.v1_api_url % urlend
