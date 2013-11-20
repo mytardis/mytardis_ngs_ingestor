@@ -103,9 +103,14 @@ class MyTardisUploader:
                         sub_file_path = '%s/%s' % (dirname, filename)
                         print "\t\tUploading file '%s' to dataset '%s'." % (sub_file_path, item)
 
+                        parameter_sets_list = self._get_datafile_parametersets_from_csv(file_path, item, filename)
+
+                        if parameter_sets_list:
+                            print "\t\tFound parameters for %s" % filename
+
                         #f_url = "/test/"
                         if not test_run:
-                            self.upload_file(sub_file_path, self._get_path_from_url(ds_url))
+                            self.upload_file(sub_file_path, self._get_path_from_url(ds_url), parameter_sets_list)
                             #print f_url
 
         if created:
@@ -126,8 +131,13 @@ class MyTardisUploader:
         schema_path = '%s/metadata/schema.txt' % (os.path.abspath(file_path))
 
         try:
-            with open(schema_path, 'rb') as schemafile:
-                schema = schemafile.read().strip()
+            with open(schema_path, 'rb') as schema_file:
+                spamreader = csv.reader(schema_file, delimiter=',', quotechar='|')
+
+                for row in spamreader:
+                    if row[0].strip() == 'dataset':
+                        schema = row[1]
+                        break
         except IOError:
             return []
 
@@ -149,6 +159,46 @@ class MyTardisUploader:
         parameter_sets.append(parameter_set)
 
         return parameter_sets
+
+    def _get_datafile_parametersets_from_csv(self, file_path, dataset_name, file_name):
+        filename = '%s/metadata/%s_%s_metadata.csv' % (os.path.abspath(file_path), dataset_name, file_name)
+        print filename
+
+        schema = "http://test.com"
+
+        schema_path = '%s/metadata/schema.txt' % (os.path.abspath(file_path))
+
+        try:
+            with open(schema_path, 'rb') as schema_file:
+                spamreader = csv.reader(schema_file, delimiter=',', quotechar='|')
+
+                for row in spamreader:
+                    if row[0].strip() == 'datafile':
+                        schema = row[1]
+                        break
+        except IOError:
+            return []
+
+        parameter_list = []
+
+        try:
+            with open(filename, 'rb') as csvfile:
+                spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
+
+                for row in spamreader:
+                    parameter_list.append({u'name': row[0].strip(), u'value': row[1].strip()})
+        except IOError:
+            return []
+
+        parameter_set = {}
+        parameter_set['schema'] = schema
+        parameter_set['parameters'] = parameter_list
+        parameter_sets = []
+        parameter_sets.append(parameter_set)
+
+        return parameter_sets
+
+    # TODO _get_datafile_parametersets_from_json
 
     def _get_dataset_parametersets_from_json(self, file_path, dataset_name):
         filename = '%s/metadata/%s_metadata.json' % (os.path.abspath(file_path), dataset_name)
@@ -259,7 +309,7 @@ class MyTardisUploader:
 
         return data.info().getheaders('Location')[0]
 
-    def upload_file(self, file_path, dataset_path):
+    def upload_file(self, file_path, dataset_path, parameter_sets_list=[]):
     #print upload_file('cli.py', '/api/v1/dataset/143/').headers['location']
 
         file_dict = {
@@ -267,7 +317,8 @@ class MyTardisUploader:
             u'filename': os.path.basename(file_path),
             u'md5sum': self._md5_file_calc(file_path),
             u'mimetype': mimetypes.guess_type(file_path)[0],
-            u'size': os.path.getsize(file_path)
+            u'size': os.path.getsize(file_path),
+            u'parameter_sets': parameter_sets_list
             }
 
         file_json = json.dumps(file_dict)
