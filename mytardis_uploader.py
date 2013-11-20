@@ -10,6 +10,7 @@ import json
 import requests
 from requests.auth import HTTPBasicAuth
 from time import strftime
+import csv
 
 
 class PreemptiveBasicAuthHandler(urllib2.BaseHandler):
@@ -77,7 +78,10 @@ class MyTardisUploader:
 
                 print '\tCreating dataset: %s' % item
 
-                parameter_sets_list = self._get_dataset_parametersets_from_json(file_path, item)
+                parameter_sets_list = self._get_dataset_parametersets_from_json(file_path, item) or \
+                    self._get_dataset_parametersets_from_csv(file_path, item)
+
+                self._get_dataset_parametersets_from_csv
 
                 if parameter_sets_list:
                     print "\tFound parameters for %s" % item
@@ -113,6 +117,34 @@ class MyTardisUploader:
         else:
             print "Dry run complete."
             return "http://example.com/test/success"
+
+    def _get_dataset_parametersets_from_csv(self, file_path, dataset_name):
+        filename = '%s/metadata/%s_metadata.csv' % (os.path.abspath(file_path), dataset_name)
+
+        schema = "http://test.com"
+
+        schema_path = '%s/metadata/schema.txt' % (os.path.abspath(file_path))
+
+        try:
+            with open(schema_path, 'rb') as schemafile:
+                schema = schemafile.read().strip()
+        except IOError:
+            return []
+
+        parameter_list = []
+        with open(filename, 'rb') as csvfile:
+            spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
+
+            for row in spamreader:
+                parameter_list.append({u'name': row[0].strip(), u'value': row[1].strip()})
+
+        parameter_set = {}
+        parameter_set['schema'] = schema
+        parameter_set['parameters'] = parameter_list
+        parameter_sets = []
+        parameter_sets.append(parameter_set)
+
+        return parameter_sets
 
     def _get_dataset_parametersets_from_json(self, file_path, dataset_name):
         filename = '%s/metadata/%s_metadata.json' % (os.path.abspath(file_path), dataset_name)
