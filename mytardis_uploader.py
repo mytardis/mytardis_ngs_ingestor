@@ -132,11 +132,15 @@ class MyTardisUploader:
             return []
 
         parameter_list = []
-        with open(filename, 'rb') as csvfile:
-            spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
 
-            for row in spamreader:
-                parameter_list.append({u'name': row[0].strip(), u'value': row[1].strip()})
+        try:
+            with open(filename, 'rb') as csvfile:
+                spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
+
+                for row in spamreader:
+                    parameter_list.append({u'name': row[0].strip(), u'value': row[1].strip()})
+        except IOError:
+            return []
 
         parameter_set = {}
         parameter_set['schema'] = schema
