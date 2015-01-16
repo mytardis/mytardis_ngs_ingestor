@@ -280,15 +280,30 @@ class MyTardisUploader:
         parameter_set['parameters'] = parameter_list
         return parameter_set
 
-    def create_experiment(self, title, institution, description):
+    def create_experiment(self, title, institution,
+        description): # author_list=[]
+        # mytardis doesn't support authors yet.. placeholder
+        # "authors": [{"name": "Daouda A.K. Traore", "url": ""},
+        # {"name": "James C Whisstock", "url": ""}]
+        # can't add authors yet soooo
+
+        # author_list = []
+
+        # author_list.append({u'name': 'Daouda A.K. Traore',
+        #     u'url': ''})
+        # author_list.append({u'name': 'James C Whisstock',
+        #     u'url': ''})
 
         exp_dict = {
             u'description': description,
             u'institution_name': institution,
-            u'title': title
+            u'title': title,
+            u'authors': author_list
             }
 
         exp_json = json.dumps(exp_dict)
+
+        print exp_json
 
         data = self._send_data(exp_json, 'experiment/')
 
