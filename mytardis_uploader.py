@@ -134,9 +134,14 @@ class MyTardisUploader:
             print "Dry run complete."
             return "http://example.com/test/success"
 
-    def _get_dataset_parametersets_from_csv(self, file_path, dataset_name):
-        filename = '%s/metadata/%s_metadata.csv' % (os.path.abspath(file_path),
-                                                    dataset_name)
+    def _get_parametersets_from_csv(self,
+                                    entity_type,
+                                    file_path,
+                                    filename):
+
+        """
+        entity_type can be 'datafile' or 'dataset'.
+        """
 
         schema = "http://test.com"
 
@@ -149,7 +154,7 @@ class MyTardisUploader:
                                         quotechar='|')
 
                 for row in spamreader:
-                    if row[0].strip() == 'dataset':
+                    if row[0].strip() == entity_type:
                         schema = row[1]
                         break
         except IOError:
@@ -175,6 +180,16 @@ class MyTardisUploader:
 
         return parameter_sets
 
+    def _get_dataset_parametersets_from_csv(self, file_path, dataset_name):
+        filename = '%s/metadata/%s_metadata.csv' % (os.path.abspath(file_path),
+                                                    dataset_name)
+
+        parameter_sets = self._get_parametersets_from_csv('dataset',
+                                                          file_path,
+                                                          filename)
+
+        return parameter_sets
+
     def _get_datafile_parametersets_from_csv(self,
                                              file_path,
                                              dataset_name,
@@ -185,40 +200,9 @@ class MyTardisUploader:
                     file_name)
         print filename
 
-        schema = "http://test.com"
-
-        schema_path = '%s/metadata/schema.txt' % (os.path.abspath(file_path))
-
-        try:
-            with open(schema_path, 'rb') as schema_file:
-                spamreader = csv.reader(schema_file,
-                                        delimiter=',',
-                                        quotechar='|')
-
-                for row in spamreader:
-                    if row[0].strip() == 'datafile':
-                        schema = row[1]
-                        break
-        except IOError:
-            return []
-
-        parameter_list = []
-
-        try:
-            with open(filename, 'rb') as csvfile:
-                spamreader = csv.reader(csvfile,
-                                        delimiter=',',
-                                        quotechar='|')
-
-                for row in spamreader:
-                    parameter_list.append({u'name': row[0].strip(),
-                                           u'value': row[1].strip()})
-        except IOError:
-            return []
-
-        parameter_set = {'schema': schema,
-                         'parameters': parameter_list}
-        parameter_sets = [parameter_set]
+        parameter_sets = self._get_parametersets_from_csv('datafile',
+                                                          file_path,
+                                                          filename)
 
         return parameter_sets
 
@@ -381,14 +365,23 @@ def run():
     from optparse import OptionParser
     import getpass
 
-    print "MyTardis uploader generic v1"
-    print "Steve Androulakis <steve.androulakis@monash.edu>"
-    print "Uploads the given directory as an Experiment, and the immediate \n" \
-          "sub-directories below it as Datasets in MyTardis."
-    print "Eg. python mytardis_uploader.py -l http://mytardis-server.com.au " \
-          "-u steve" \
-          " -f /Users/steve/Experiment1/"
-    print ""
+    print """\
+    MyTardis uploader generic v1
+    Steve Androulakis <steve.androulakis@monash.edu>
+    Uploads the given directory as an Experiment, and the immediate
+    sub-directories below it as Datasets in MyTardis.
+
+    eg. python mytardis_uploader.py -l http://mytardis-server.com.au -u steve \
+                                    -f /Users/steve/Experiment1/"
+
+    If present, metadata is harvested from:
+      <path>/metadata/schema.txt
+      <path>/metadata/<dataset_name>_metadata.csv
+      <path>/metadata/<dataset_name>_metadata.json
+      <path>/metadata/<dataset_name>_<filename>_metadata.csv
+      <path>/metadata/<dataset_name>_<filename>_metadata.json
+
+    """
 
     parser = OptionParser()
     parser.add_option("-f", "--path", dest="file_path",
