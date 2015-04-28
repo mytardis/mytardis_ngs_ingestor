@@ -47,12 +47,12 @@ class MyTardisUploader:
         self.password = password
 
     def upload_directory(self,
-                        file_path,
-                        title='',
-                        institute='',
-                        description='',
-                        test_run=False
-                        ):
+                         file_path,
+                         title='',
+                         institute='',
+                         description='',
+                         test_run=False
+                         ):
 
         title = title or os.path.basename(os.path.abspath(file_path))
         print 'Creating experiment: %s' % title
@@ -60,10 +60,14 @@ class MyTardisUploader:
         created = False
         exp_url = "/test/"
         if not test_run:
-            exp_url = self.create_experiment(title,\
-                                    institute or '',
-                                    '%s \n\nAutomatically generated on %s by https://github.com/steveandroulakis/mytardis-uploader'\
-                                       % (description or 'No description.', strftime("%Y-%m-%d %H:%M:%S")))
+            exp_url = self.create_experiment(title,
+                                             institute or '',
+                      """%s
+
+                      Automatically generated on %s by
+                      https://github.com/steveandroulakis/mytardis-uploader
+                      """ % (description or 'No description.',
+                             strftime("%Y-%m-%d %H:%M:%S")))
             created = True
 
         for item in os.listdir(file_path):
@@ -78,22 +82,23 @@ class MyTardisUploader:
 
                 print '\tCreating dataset: %s' % item
 
-                parameter_sets_list = self._get_dataset_parametersets_from_json(file_path, item) or \
+                parameter_sets_list = \
+                    self._get_dataset_parametersets_from_json(file_path,
+                                                              item) or \
                     self._get_dataset_parametersets_from_csv(file_path, item)
-
-                self._get_dataset_parametersets_from_csv
 
                 if parameter_sets_list:
                     print "\tFound parameters for %s" % item
 
                 ds_url = "/test/"
                 if not test_run:
-                    ds_url = self.create_dataset('%s' % item,
-                              [self._get_path_from_url(exp_url)],
-                              parameter_sets_list
-                              )
+                    ds_url = self.create_dataset(
+                        '%s' % item, [self._get_path_from_url(exp_url)],
+                               parameter_sets_list
+                    )
 
-                for dirname, dirnames, filenames in os.walk(os.path.join(file_path, item)):
+                for dirname, dirnames, filenames in os.walk(
+                        os.path.join(file_path, item)):
 
                     for filename in filenames:
 
@@ -101,16 +106,22 @@ class MyTardisUploader:
                             continue  # filter files/dirs starting with .
 
                         sub_file_path = '%s/%s' % (dirname, filename)
-                        print "\t\tUploading file '%s' to dataset '%s'." % (sub_file_path, item)
+                        print "\t\tUploading file '%s' to dataset '%s'." % \
+                              (sub_file_path, item)
 
-                        parameter_sets_list = self._get_datafile_parametersets_from_csv(file_path, item, filename)
+                        parameter_sets_list = \
+                            self._get_datafile_parametersets_from_csv(file_path,
+                                                                      item,
+                                                                      filename)
 
                         if parameter_sets_list:
                             print "\t\tFound parameters for %s" % filename
 
                         #f_url = "/test/"
                         if not test_run:
-                            self.upload_file(sub_file_path, self._get_path_from_url(ds_url), parameter_sets_list)
+                            self.upload_file(sub_file_path,
+                                             self._get_path_from_url(ds_url),
+                                             parameter_sets_list)
                             #print f_url
 
         if created:
@@ -124,7 +135,8 @@ class MyTardisUploader:
             return "http://example.com/test/success"
 
     def _get_dataset_parametersets_from_csv(self, file_path, dataset_name):
-        filename = '%s/metadata/%s_metadata.csv' % (os.path.abspath(file_path), dataset_name)
+        filename = '%s/metadata/%s_metadata.csv' % (os.path.abspath(file_path),
+                                                    dataset_name)
 
         schema = "http://test.com"
 
@@ -132,7 +144,9 @@ class MyTardisUploader:
 
         try:
             with open(schema_path, 'rb') as schema_file:
-                spamreader = csv.reader(schema_file, delimiter=',', quotechar='|')
+                spamreader = csv.reader(schema_file,
+                                        delimiter=',',
+                                        quotechar='|')
 
                 for row in spamreader:
                     if row[0].strip() == 'dataset':
@@ -145,23 +159,30 @@ class MyTardisUploader:
 
         try:
             with open(filename, 'rb') as csvfile:
-                spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
+                spamreader = csv.reader(csvfile,
+                                        delimiter=',',
+                                        quotechar='|')
 
                 for row in spamreader:
-                    parameter_list.append({u'name': row[0].strip(), u'value': row[1].strip()})
+                    parameter_list.append({u'name': row[0].strip(),
+                                           u'value': row[1].strip()})
         except IOError:
             return []
 
-        parameter_set = {}
-        parameter_set['schema'] = schema
-        parameter_set['parameters'] = parameter_list
-        parameter_sets = []
-        parameter_sets.append(parameter_set)
+        parameter_set = {'schema': schema,
+                         'parameters': parameter_list}
+        parameter_sets = [parameter_set]
 
         return parameter_sets
 
-    def _get_datafile_parametersets_from_csv(self, file_path, dataset_name, file_name):
-        filename = '%s/metadata/%s_%s_metadata.csv' % (os.path.abspath(file_path), dataset_name, file_name)
+    def _get_datafile_parametersets_from_csv(self,
+                                             file_path,
+                                             dataset_name,
+                                             file_name):
+        filename = '%s/metadata/%s_%s_metadata.csv' % \
+                   (os.path.abspath(file_path),
+                    dataset_name,
+                    file_name)
         print filename
 
         schema = "http://test.com"
@@ -170,7 +191,9 @@ class MyTardisUploader:
 
         try:
             with open(schema_path, 'rb') as schema_file:
-                spamreader = csv.reader(schema_file, delimiter=',', quotechar='|')
+                spamreader = csv.reader(schema_file,
+                                        delimiter=',',
+                                        quotechar='|')
 
                 for row in spamreader:
                     if row[0].strip() == 'datafile':
@@ -183,25 +206,27 @@ class MyTardisUploader:
 
         try:
             with open(filename, 'rb') as csvfile:
-                spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
+                spamreader = csv.reader(csvfile,
+                                        delimiter=',',
+                                        quotechar='|')
 
                 for row in spamreader:
-                    parameter_list.append({u'name': row[0].strip(), u'value': row[1].strip()})
+                    parameter_list.append({u'name': row[0].strip(),
+                                           u'value': row[1].strip()})
         except IOError:
             return []
 
-        parameter_set = {}
-        parameter_set['schema'] = schema
-        parameter_set['parameters'] = parameter_list
-        parameter_sets = []
-        parameter_sets.append(parameter_set)
+        parameter_set = {'schema': schema,
+                         'parameters': parameter_list}
+        parameter_sets = [parameter_set]
 
         return parameter_sets
 
     # TODO _get_datafile_parametersets_from_json
 
     def _get_dataset_parametersets_from_json(self, file_path, dataset_name):
-        filename = '%s/metadata/%s_metadata.json' % (os.path.abspath(file_path), dataset_name)
+        filename = '%s/metadata/%s_metadata.json' % (os.path.abspath(file_path),
+                                                     dataset_name)
         parametersets = []
 
         try:
@@ -239,13 +264,16 @@ class MyTardisUploader:
         import hashlib
         return hashlib.md5(open(file_path, 'rb').read()).hexdigest()
 
-    def _send_datafile(self, data, urlend, method='POST', filename=None):
+    def _send_datafile(self, data, urlend, filename=None):
         url = self.v1_api_url % urlend
         headers = {'Accept': 'application/json'}
         #import ipdb; ipdb.set_trace()
-        response = requests.post(url, data={"json_data": data}, headers=headers,
+        response = requests.post(url,
+                                 data={'json_data': data},
+                                 headers=headers,
                                  files={'attached_file': open(filename, 'rb')},
-                                 auth=HTTPBasicAuth(self.username, self.password)
+                                 auth=HTTPBasicAuth(self.username,
+                                                    self.password)
                                  )
         # for item in response:
         #     print item
@@ -274,7 +302,8 @@ class MyTardisUploader:
         return o.path
 
     def _format_parameter_set(self, schema, parameter_list):
-    # parameter_dict.append({u'name': 'diffractometerType', u'value': 'this is my value'})
+    # parameter_dict.append({u'name': 'diffractometerType',
+    #                        u'value': 'this is my value'})
         parameter_set = {}
         parameter_set['schema'] = schema
         parameter_set['parameters'] = parameter_list
@@ -303,7 +332,11 @@ class MyTardisUploader:
 
         return data.info().getheaders('Location')[0]
 
-    def create_dataset(self, description, experiments_list, parameter_sets_list=[], immutable=False):
+    def create_dataset(self,
+                       description,
+                       experiments_list,
+                       parameter_sets_list=[],
+                       immutable=False):
 
         dataset_dict = {
                           u'description': description,
@@ -331,7 +364,9 @@ class MyTardisUploader:
             }
 
         file_json = json.dumps(file_dict)
-        data = self._send_datafile(file_json, 'dataset_file/', 'POST', file_path)
+        data = self._send_datafile(file_json,
+                                   'dataset_file/',
+                                   filename=file_path)
 
         return getattr(data.headers, 'location', None)
 
@@ -350,15 +385,18 @@ def run():
     print "Steve Androulakis <steve.androulakis@monash.edu>"
     print "Uploads the given directory as an Experiment, and the immediate \n" \
           "sub-directories below it as Datasets in MyTardis."
-    print "Eg. python mytardis_uploader.py -l http://mytardis-server.com.au -u steve" \
+    print "Eg. python mytardis_uploader.py -l http://mytardis-server.com.au " \
+          "-u steve" \
           " -f /Users/steve/Experiment1/"
     print ""
 
     parser = OptionParser()
     parser.add_option("-f", "--path", dest="file_path",
-                      help="The PATH of the experiment to be uploaded", metavar="PATH")
+                      help="The PATH of the experiment to be uploaded",
+                      metavar="PATH")
     parser.add_option("-l", "--url", dest="mytardis_url",
-                      help="The URL to the MyTardis installation", metavar="URL")
+                      help="The URL to the MyTardis installation",
+                      metavar="URL")
     parser.add_option("-u", "--username", dest="username",
                       help="Your MyTardis USERNAME", metavar="USERNAME")
     parser.add_option("-t", "--title", dest="title",
@@ -366,7 +404,8 @@ def run():
     parser.add_option("-d", "--description", dest="description",
                       help="Experiment DESCRIPTION", metavar="DESCRIPTION")
     parser.add_option("-i", "--institute", dest="institute",
-                      help="Experiment INSTITUTE (eg university)", metavar="INSTITUTE")
+                      help="Experiment INSTITUTE (eg university)",
+                      metavar="INSTITUTE")
     parser.add_option("-r", "--dry",
                       action="store_true", dest="dry_run", default=False,
                       help="Dry run (don't create anything)")
