@@ -14,7 +14,6 @@ import csv
 
 
 class PreemptiveBasicAuthHandler(urllib2.BaseHandler):
-
     def __init__(self, password_mgr=None):
         if password_mgr is None:
             password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
@@ -34,7 +33,6 @@ class PreemptiveBasicAuthHandler(urllib2.BaseHandler):
 
 
 class MyTardisUploader:
-
     def __init__(self,
                  mytardis_url,
                  username,
@@ -60,14 +58,13 @@ class MyTardisUploader:
         created = False
         exp_url = "/test/"
         if not test_run:
-            exp_url = self.create_experiment(title,
-                                             institute or '',
-                      """%s
-
-                      Automatically generated on %s by
-                      https://github.com/steveandroulakis/mytardis-uploader
-                      """ % (description or 'No description.',
-                             strftime("%Y-%m-%d %H:%M:%S")))
+            agent_url = "https://github.com/steveandroulakis/mytardis-uploader"
+            agent_footer = "Automatically generated on %s by %s" % \
+                           (agent_url, strftime("%Y-%m-%d %H:%M:%S"))
+            exp_url = self.create_experiment(title, institute or '', "%s\n\n%s"
+                                             % (description or
+                                                'No description.',
+                                                agent_footer))
             created = True
 
         for item in os.listdir(file_path):
@@ -93,8 +90,9 @@ class MyTardisUploader:
                 ds_url = "/test/"
                 if not test_run:
                     ds_url = self.create_dataset(
-                        '%s' % item, [self._get_path_from_url(exp_url)],
-                               parameter_sets_list
+                        '%s' % item,
+                        [self._get_path_from_url(exp_url)],
+                        parameter_sets_list
                     )
 
                 for dirname, dirnames, filenames in os.walk(
@@ -117,12 +115,12 @@ class MyTardisUploader:
                         if parameter_sets_list:
                             print "\t\tFound parameters for %s" % filename
 
-                        #f_url = "/test/"
+                        # f_url = "/test/"
                         if not test_run:
                             self.upload_file(sub_file_path,
                                              self._get_path_from_url(ds_url),
                                              parameter_sets_list)
-                            #print f_url
+                            # print f_url
 
         if created:
             exp_id = exp_url.rsplit('/')[-2]
@@ -211,7 +209,6 @@ class MyTardisUploader:
     def _get_dataset_parametersets_from_json(self, file_path, dataset_name):
         filename = '%s/metadata/%s_metadata.json' % (os.path.abspath(file_path),
                                                      dataset_name)
-        parametersets = []
 
         try:
             with open(filename) as f:
@@ -239,19 +236,20 @@ class MyTardisUploader:
         myrequest = urllib2.Request(url=url, data=data,
                                     headers=headers)
         myrequest.get_method = lambda: method
-        output = "error"
+        print myrequest.get_full_url() + " " + myrequest.data
         output = urllib2.urlopen(myrequest)
 
         return output
 
     def _md5_file_calc(self, file_path):
         import hashlib
+
         return hashlib.md5(open(file_path, 'rb').read()).hexdigest()
 
     def _send_datafile(self, data, urlend, filename=None):
         url = self.v1_api_url % urlend
         headers = {'Accept': 'application/json'}
-        #import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
         response = requests.post(url,
                                  data={'json_data': data},
                                  headers=headers,
@@ -260,12 +258,12 @@ class MyTardisUploader:
                                                     self.password)
                                  )
         # for item in response:
-        #     print item
+        # print item
         return response
 
     def _get_header(self, headers, key):
-    # from urllib2 style
-    # get_header(headers, 'Location')
+        # from urllib2 style
+        # get_header(headers, 'Location')
 
         import string
 
@@ -286,27 +284,30 @@ class MyTardisUploader:
         return o.path
 
     def _format_parameter_set(self, schema, parameter_list):
-    # parameter_dict.append({u'name': 'diffractometerType',
-    #                        u'value': 'this is my value'})
-        parameter_set = {}
-        parameter_set['schema'] = schema
-        parameter_set['parameters'] = parameter_list
+        # parameter_dict.append({u'name': 'diffractometerType',
+        # u'value': 'this is my value'})
+
+        parameter_set = {'schema': schema, 'parameters': parameter_list}
+
         return parameter_set
 
-    def create_experiment(self, title, institution,
-                          description, author_list=[]):
+    def create_experiment(self, title, institution, description,
+                          author_list=None):
 
         # test authors ...
         # author_list = []
         # author_list.append({u'name': 'Daouda A.K. Traore', u'url': ''})
         # author_list.append({u'name': 'James C Whisstock', u'url': ''})
 
+        if not author_list:
+            author_list = []
+
         exp_dict = {
             u'description': description,
             u'institution_name': institution,
             u'title': title,
             u'authors': author_list
-            }
+        }
 
         exp_json = json.dumps(exp_dict)
 
@@ -316,18 +317,18 @@ class MyTardisUploader:
 
         return data.info().getheaders('Location')[0]
 
-    def create_dataset(self,
-                       description,
-                       experiments_list,
-                       parameter_sets_list=[],
-                       immutable=False):
+    def create_dataset(self, description, experiments_list,
+                       parameter_sets_list=None, immutable=False):
+
+        if not parameter_sets_list:
+            parameter_sets_list = []
 
         dataset_dict = {
-                          u'description': description,
-                          u'experiments': experiments_list,
-                          u'immutable': immutable,
-                          u'parameter_sets': parameter_sets_list
-                        }
+            u'description': description,
+            u'experiments': experiments_list,
+            u'immutable': immutable,
+            u'parameter_sets': parameter_sets_list
+        }
 
         dataset_json = json.dumps(dataset_dict)
 
@@ -335,8 +336,12 @@ class MyTardisUploader:
 
         return data.info().getheaders('Location')[0]
 
-    def upload_file(self, file_path, dataset_path, parameter_sets_list=[]):
-    #print upload_file('cli.py', '/api/v1/dataset/143/').headers['location']
+    def upload_file(self, file_path, dataset_path, parameter_sets_list=None):
+        # print upload_file('cli.py',
+        #                   '/api/v1/dataset/143/').headers['location']
+
+        if not parameter_sets_list:
+            parameter_sets_list = []
 
         file_dict = {
             u'dataset': dataset_path,
@@ -345,7 +350,7 @@ class MyTardisUploader:
             u'mimetype': mimetypes.guess_type(file_path)[0],
             u'size': os.path.getsize(file_path),
             u'parameter_sets': parameter_sets_list
-            }
+        }
 
         file_json = json.dumps(file_dict)
         data = self._send_datafile(file_json,
@@ -359,7 +364,7 @@ def run():
     ####
     # Le Script
     ####
-    #   steve.androulakis@monash.edu
+    # steve.androulakis@monash.edu
     ####
 
     from optparse import OptionParser
@@ -434,6 +439,7 @@ def run():
                                        description=description,
                                        institute=institute,
                                        test_run=test_run)
+
 
 if __name__ == "__main__":
     run()
