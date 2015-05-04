@@ -241,25 +241,56 @@ class MyTardisUploader:
 
         return output
 
-    def _md5_file_calc(self, file_path):
-        import hashlib
+    def _md5_file_calc(self, file_path, blocksize=None):
+        """
+        Calculates the MD5 checksum of a file, returns the hex digest as a
+        string. Streams the file in chunks of 'blocksize' to prevent running
+        out of memory when working with large files.
 
-        return hashlib.md5(open(file_path, 'rb').read()).hexdigest()
+        :param file_path: string
+        :param blocksize: int
+        :return: string
+        """
+        if not blocksize:
+            blocksize = 128
+
+        import hashlib
+        md5 = hashlib.md5()
+        with open(file_path, 'rb') as f:
+            while True:
+                chunk = f.read(blocksize)
+                if not chunk:
+                    break
+                md5.update(chunk)
+        return md5.hexdigest()
 
     def _send_datafile(self, data, urlend, filename=None):
         url = self.v1_api_url % urlend
-        headers = {'Accept': 'application/json'}
+
         # import ipdb; ipdb.set_trace()
-        response = requests.post(url,
-                                 data={'json_data': data},
-                                 headers=headers,
-                                 files={'attached_file': open(filename, 'rb')},
-                                 auth=HTTPBasicAuth(self.username,
-                                                    self.password)
-                                 )
-        # for item in response:
-        # print item
-        return response
+
+        # we need to use requests_toolbelt here to prepare the multipart
+        # encoded form data since vanilla requests can't stream files
+        # when POSTing forms of this type and will run out of RAM
+        # when encoding large files
+        # See: https://github.com/kennethreitz/requests/issues/1584
+        from requests_toolbelt import MultipartEncoder
+
+        with open(filename, 'rb') as f:
+            form = MultipartEncoder(fields={'json_data': data,
+                                            'attached_file': (f, 'text/plain')})
+            headers = {'Accept': 'application/json',
+                       'Content-Type': form.content_type}
+
+            response = requests.post(url,
+                                     data=form,
+                                     headers=headers,
+                                     auth=HTTPBasicAuth(self.username,
+                                                        self.password)
+                                     )
+            # for item in response:
+            # print item
+            return response
 
     def _get_header(self, headers, key):
         # from urllib2 style
