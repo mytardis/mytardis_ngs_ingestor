@@ -2,6 +2,13 @@
 ; be uploaded/registerd with MyTardis
 path = /data/instrument/some_expt_001/
 
+; a list of Python regular expressions matching files to exclude
+; matches against the absolute path. 'Hidden' files beginning
+; with a period (.) are excluded by default
+; don't use quotes, and expressions are comma delimited without
+; regard to escaping so you can't use commas :/
+exclude =  [ /FastQ\.\w+$, /LIST$, /Temp$, /Temp/.*, /SampleSheet.csv$, /Basecall_Stats_\w+/.* ]
+
 username = powerfuladmin
 
 ; don't make this config file world readable !

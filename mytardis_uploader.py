@@ -59,6 +59,7 @@ class MyTardisUploader:
                          test_run=False,
                          storage_mode=DEFAULT_STORAGE_MODE,
                          base_path=None,
+                         exclude_patterns=[],
                          ):
 
         title = title or os.path.basename(os.path.abspath(file_path))
@@ -78,11 +79,16 @@ class MyTardisUploader:
             created = True
 
         for item in os.listdir(file_path):
+            full_path = os.path.join(file_path, item)
 
             if item.startswith('.') or item == 'metadata':
                 continue  # filter files/dirs starting with .
 
-            if os.path.isfile(os.path.join(file_path, item)):
+            if any(regex.search(full_path) for regex in exclude_patterns):
+                print 'Skipping excluded directory: %s' % file_path
+                continue
+
+            if os.path.isfile(full_path):
                 print 'Skipping root-level file: %s' % item
             else:
                 print '\tFound directory: %s' % item
@@ -105,13 +111,18 @@ class MyTardisUploader:
                         parameter_sets_list
                     )
 
-                for dirname, dirnames, filenames in os.walk(
-                        os.path.join(file_path, item)):
+                for dirname, dirnames, filenames in os.walk(full_path):
 
                     for filename in filenames:
+                        full_path = os.path.join(full_path, dirname, filename)
 
                         if filename.startswith('.'):
                             continue  # filter files/dirs starting with .
+
+                        if any(regex.search(full_path)
+                               for regex in exclude_patterns):
+                            print 'Skipping excluded file: %s' % file_path
+                            continue
 
                         sub_file_path = '%s/%s' % (dirname, filename)
                         print "\t\tUploading file '%s' to dataset '%s'." % \
@@ -249,7 +260,7 @@ class MyTardisUploader:
 
         return []
 
-    def _send_data(self, data, urlend, method="POST"):
+    def _do_create_request(self, data, urlend, method="POST"):
         url = self.v1_api_url % urlend
         headers = {'Accept': 'application/json',
                    'Content-Type': 'application/json'}
@@ -266,7 +277,7 @@ class MyTardisUploader:
         myrequest = urllib2.Request(url=url, data=data,
                                     headers=headers)
         myrequest.get_method = lambda: method
-        print myrequest.get_full_url() + " " + myrequest.data
+        # print myrequest.get_full_url() + " " + myrequest.data
         output = urllib2.urlopen(myrequest)
 
         return output
@@ -327,14 +338,12 @@ class MyTardisUploader:
         headers = {'Accept': 'application/json',
                    'Content-Type': 'application/json'}
 
-        print data
         response = requests.post(url,
                                  data=data,
                                  headers=headers,
                                  auth=HTTPBasicAuth(self.username,
                                                     self.password)
                                  )
-        #return _post_json(data, urlend)
         return response
 
 
@@ -388,7 +397,7 @@ class MyTardisUploader:
 
         # print exp_json
 
-        data = self._send_data(exp_json, 'experiment/')
+        data = self._do_create_request(exp_json, 'experiment/')
 
         return data.info().getheaders('Location')[0]
 
@@ -407,7 +416,7 @@ class MyTardisUploader:
 
         dataset_json = json.dumps(dataset_dict)
 
-        data = self._send_data(dataset_json, 'dataset/')
+        data = self._do_create_request(dataset_json, 'dataset/')
 
         return data.info().getheaders('Location')[0]
 
@@ -465,7 +474,8 @@ class MyTardisUploader:
             raise Exception("Invalid storage mode: " + storage_mode.name)
 
         location = getattr(data.headers, 'location', None)
-        print "Location: " + str(location)
+        # print "Location: " + str(location)
+
         if (data.status_code > 499):
             print "Registration of data file failed !"
             print data.content
@@ -558,6 +568,12 @@ def run():
                              "shared storage area without uploading. "
                              "Valid values are: upload, staging or shared."
                              "Defaults to upload.")
+    parser.add_argument("--exclude",
+                        dest="exclude",
+                        action="append",
+                        help="Exclude files with paths matching this regex. "
+                             "Can be specified multiple times.",
+                        metavar="REGEX")
 
     options = parser.parse_args()
 
@@ -576,6 +592,12 @@ def run():
        options.storage_mode not in valid_storage_modes:
         parser.error('--storage-mode must be one of: ' +
                      ', '.join(valid_storage_modes))
+
+    exclude_patterns = []
+    if options.exclude:
+        import re
+        exclude_patterns = [re.compile(p) for p in options.exclude]
+        print "Ignoring files that match: %s\n" % ' | '.join(options.exclude)
 
     pw = options.password
     if not pw:
@@ -600,7 +622,9 @@ def run():
                                        description=description,
                                        institute=institute,
                                        test_run=test_run,
-                                       storage_mode=storage_mode)
+                                       storage_mode=storage_mode,
+                                       base_path=None,
+                                       exclude_patterns=exclude_patterns)
 
 
 if __name__ == "__main__":
