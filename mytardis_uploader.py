@@ -482,7 +482,7 @@ def run():
     # steve.androulakis@monash.edu
     ####
 
-    from optparse import OptionParser
+    from configargparse import ArgParser
     import getpass
 
     print """\
@@ -503,35 +503,55 @@ def run():
 
     """
 
-    parser = OptionParser()
-    parser.add_option("-f", "--path", dest="file_path",
-                      help="The PATH of the experiment to be uploaded",
-                      metavar="PATH")
-    parser.add_option("-l", "--url", dest="mytardis_url",
-                      help="The URL to the MyTardis installation",
-                      metavar="URL")
-    parser.add_option("-u", "--username", dest="username",
-                      help="Your MyTardis USERNAME", metavar="USERNAME")
-    parser.add_option("-t", "--title", dest="title",
-                      help="Experiment TITLE", metavar="TITLE")
-    parser.add_option("-d", "--description", dest="description",
-                      help="Experiment DESCRIPTION", metavar="DESCRIPTION")
-    parser.add_option("-i", "--institute", dest="institute",
-                      help="Experiment INSTITUTE (eg university)",
-                      metavar="INSTITUTE")
-    parser.add_option("-r", "--dry",
-                      action="store_true", dest="dry_run", default=False,
-                      help="Dry run (don't create anything)")
-    parser.add_option("--storage-mode",
-                      dest="storage_mode", metavar="STORAGE_MODE",
-                      default='upload',
-                      help="Specify if the data files are to be uploaded, "
-                           "or registered in the database at a staging or "
-                           "shared storage area without uploading. "
-                           "Valid values are: upload, staging or shared."
-                           "Defaults to upload.")
+    parser = ArgParser(default_config_files=['uploader_config.ini'])
+    parser.add_argument('-c', '--config',
+                        is_config_file=True,
+                        help="Path to the config file")
+    parser.add_argument("-f", "--path",
+                        dest="file_path",
+                        help="The PATH of the experiment to be uploaded",
+                        metavar="PATH")
+    parser.add_argument("-l", "--url",
+                        dest="mytardis_url",
+                        help="The URL to the MyTardis installation",
+                        metavar="URL")
+    parser.add_argument("-u", "--username",
+                        dest="username",
+                        help="Your MyTardis USERNAME",
+                        metavar="USERNAME")
+    parser.add_argument("--password",
+                        dest="password",
+                        help="You should probably never use this option from "
+                             "the command line. Be sensible.",
+                        metavar="PASSWORD")
+    parser.add_argument("-t", "--title",
+                        dest="title",
+                        help="Experiment TITLE",
+                        metavar="TITLE")
+    parser.add_argument("-d", "--description",
+                        dest="description",
+                        help="Experiment DESCRIPTION",
+                        metavar="DESCRIPTION")
+    parser.add_argument("-i", "--institute",
+                        dest="institute",
+                        help="Experiment INSTITUTE (eg university)",
+                        metavar="INSTITUTE")
+    parser.add_argument("-r", "--dry",
+                        action="store_true",
+                        dest="dry_run",
+                        default=False,
+                        help="Dry run (don't create anything)")
+    parser.add_argument("--storage-mode",
+                        dest="storage_mode",
+                        metavar="STORAGE_MODE",
+                        default='upload',
+                        help="Specify if the data files are to be uploaded, "
+                             "or registered in the database at a staging or "
+                             "shared storage area without uploading. "
+                             "Valid values are: upload, staging or shared."
+                             "Defaults to upload.")
 
-    (options, args) = parser.parse_args()
+    options = parser.parse_args()
 
     if not options.file_path:
         parser.error('file path not given')
@@ -549,7 +569,9 @@ def run():
         parser.error('--storage-mode must be one of: ' +
                      ', '.join(valid_storage_modes))
 
-    pw = getpass.getpass()
+    pw = options.password
+    if not pw:
+        pw = getpass.getpass()
 
     file_path = options.file_path
     title = options.title
