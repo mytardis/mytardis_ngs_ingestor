@@ -509,31 +509,38 @@ def run():
                         help="Path to the config file")
     parser.add_argument("-f", "--path",
                         dest="file_path",
+                        type=str,
                         help="The PATH of the experiment to be uploaded",
                         metavar="PATH")
     parser.add_argument("-l", "--url",
                         dest="mytardis_url",
+                        type=str,
                         help="The URL to the MyTardis installation",
                         metavar="URL")
     parser.add_argument("-u", "--username",
                         dest="username",
+                        type=str,
                         help="Your MyTardis USERNAME",
                         metavar="USERNAME")
     parser.add_argument("--password",
                         dest="password",
+                        type=str,
                         help="You should probably never use this option from "
                              "the command line. Be sensible.",
                         metavar="PASSWORD")
     parser.add_argument("-t", "--title",
                         dest="title",
+                        type=str,
                         help="Experiment TITLE",
                         metavar="TITLE")
     parser.add_argument("-d", "--description",
                         dest="description",
+                        type=str,
                         help="Experiment DESCRIPTION",
                         metavar="DESCRIPTION")
     parser.add_argument("-i", "--institute",
                         dest="institute",
+                        type=str,
                         help="Experiment INSTITUTE (eg university)",
                         metavar="INSTITUTE")
     parser.add_argument("-r", "--dry",
@@ -543,6 +550,7 @@ def run():
                         help="Dry run (don't create anything)")
     parser.add_argument("--storage-mode",
                         dest="storage_mode",
+                        type=str,
                         metavar="STORAGE_MODE",
                         default='upload',
                         help="Specify if the data files are to be uploaded, "
