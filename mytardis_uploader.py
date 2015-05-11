@@ -11,7 +11,14 @@ import requests
 from requests.auth import HTTPBasicAuth
 from time import strftime
 import csv
+from enum import Enum
 
+class StorageMode(Enum):
+    upload  =  1
+    staging =  2
+    shared  =  3
+
+DEFAULT_STORAGE_MODE = StorageMode.upload
 
 class PreemptiveBasicAuthHandler(urllib2.BaseHandler):
     def __init__(self, password_mgr=None):
@@ -49,10 +56,13 @@ class MyTardisUploader:
                          title='',
                          institute='',
                          description='',
-                         test_run=False
+                         test_run=False,
+                         storage_mode=DEFAULT_STORAGE_MODE,
+                         base_path=None,
                          ):
 
         title = title or os.path.basename(os.path.abspath(file_path))
+
         print 'Creating experiment: %s' % title
 
         created = False
@@ -115,12 +125,32 @@ class MyTardisUploader:
                         if parameter_sets_list:
                             print "\t\tFound parameters for %s" % filename
 
-                        # f_url = "/test/"
                         if not test_run:
+                            # the replica_url should be the relative path
+                            # to the file at the shared storage location
+                            # (ie relative to the base path defined by
+                            # StorageBox.location in the Django model)
+                            # this applies to replica.protocol='file' locations
+                            # but probably not S3/Swift style object store
+                            # locations with real http urls.
+                            replica_url = file_path
+                            if storage_mode == StorageMode.shared:
+                                if base_path is not None:
+                                    # eg, if storage box base path is:
+                                    # /data/bigstorage/
+                                    # and absolute file path is
+                                    # /data/bigstorage/expt1/dataset1/file.txt
+                                    # then replica_url should be:
+                                    # expt1/dataset1/file.txt
+                                    replica_url = os.path.relpath(file_path,
+                                                                  base_path)
+
                             self.upload_file(sub_file_path,
                                              self._get_path_from_url(ds_url),
-                                             parameter_sets_list)
-                            # print f_url
+                                             parameter_sets_list,
+                                             storage_mode=storage_mode,
+                                             storage_box_name='default',
+                                             replica_url=replica_url)
 
         if created:
             exp_id = exp_url.rsplit('/')[-2]
@@ -267,8 +297,6 @@ class MyTardisUploader:
     def _send_datafile(self, data, urlend, filename=None):
         url = self.v1_api_url % urlend
 
-        # import ipdb; ipdb.set_trace()
-
         # we need to use requests_toolbelt here to prepare the multipart
         # encoded form data since vanilla requests can't stream files
         # when POSTing forms of this type and will run out of RAM
@@ -288,9 +316,27 @@ class MyTardisUploader:
                                      auth=HTTPBasicAuth(self.username,
                                                         self.password)
                                      )
-            # for item in response:
-            # print item
             return response
+
+    def _register_datafile_staging(self, data, urlend):
+        raise NotImplementedError("Registering datafiles in a staging location"
+                                  "is not currently implemented.")
+
+    def _register_datafile_shared_storage(self, data, urlend):
+        url = self.v1_api_url % urlend
+        headers = {'Accept': 'application/json',
+                   'Content-Type': 'application/json'}
+
+        print data
+        response = requests.post(url,
+                                 data=data,
+                                 headers=headers,
+                                 auth=HTTPBasicAuth(self.username,
+                                                    self.password)
+                                 )
+        #return _post_json(data, urlend)
+        return response
+
 
     def _get_header(self, headers, key):
         # from urllib2 style
@@ -315,8 +361,6 @@ class MyTardisUploader:
         return o.path
 
     def _format_parameter_set(self, schema, parameter_list):
-        # parameter_dict.append({u'name': 'diffractometerType',
-        # u'value': 'this is my value'})
 
         parameter_set = {'schema': schema, 'parameters': parameter_list}
 
@@ -367,28 +411,68 @@ class MyTardisUploader:
 
         return data.info().getheaders('Location')[0]
 
-    def upload_file(self, file_path, dataset_path, parameter_sets_list=None):
+    def upload_file(self, file_path, dataset_path,
+                    parameter_sets_list=None,
+                    storage_mode=DEFAULT_STORAGE_MODE,
+                    storage_box_name='default',
+                    replica_url=''):
         # print upload_file('cli.py',
         #                   '/api/v1/dataset/143/').headers['location']
 
         if not parameter_sets_list:
             parameter_sets_list = []
 
+        filename = os.path.basename(file_path)
+
+        replica_list = [{u'url': replica_url,
+                         u'location': storage_box_name,
+                         u'protocol': u'file'},
+                        ]
+        file_size = os.path.getsize(file_path)
+        # Hack to work around MyTardis not accepting
+        # files of zero bytes
+        #file_size = (file_size if file_size > 0 else -1)
+
         file_dict = {
             u'dataset': dataset_path,
-            u'filename': os.path.basename(file_path),
+            u'filename': filename,
             u'md5sum': self._md5_file_calc(file_path),
             u'mimetype': mimetypes.guess_type(file_path)[0],
-            u'size': os.path.getsize(file_path),
-            u'parameter_sets': parameter_sets_list
+            u'size': file_size,
+            u'parameter_sets': parameter_sets_list,
+            u'replicas': replica_list,
         }
 
-        file_json = json.dumps(file_dict)
-        data = self._send_datafile(file_json,
-                                   'dataset_file/',
-                                   filename=file_path)
+        if storage_mode == StorageMode.shared:
+            data = self._register_datafile_shared_storage(
+                json.dumps(file_dict),
+                'dataset_file/'
+            )
+        elif storage_mode == StorageMode.staging:
+            data = self._register_datafile_staging(
+                json.dumps(file_dict),
+                'dataset_file/'
+            )
+        elif storage_mode == StorageMode.upload:
+            delattr(file_dict, u'replicas')
+            data = self._send_datafile(
+                json.dumps(file_dict),
+                'dataset_file/',
+                filename=file_path
+            )
+        else:
+            # we should never get here
+            raise Exception("Invalid storage mode: " + storage_mode.name)
 
-        return getattr(data.headers, 'location', None)
+        location = getattr(data.headers, 'location', None)
+        print "Location: " + str(location)
+        if (data.status_code > 499):
+            print "Registration of data file failed !"
+            print data.content
+            import sys
+            sys.exit()
+
+        return location
 
 
 def run():
@@ -438,6 +522,14 @@ def run():
     parser.add_option("-r", "--dry",
                       action="store_true", dest="dry_run", default=False,
                       help="Dry run (don't create anything)")
+    parser.add_option("--storage-mode",
+                      dest="storage_mode", metavar="STORAGE_MODE",
+                      default='upload',
+                      help="Specify if the data files are to be uploaded, "
+                           "or registered in the database at a staging or "
+                           "shared storage area without uploading. "
+                           "Valid values are: upload, staging or shared."
+                           "Defaults to upload.")
 
     (options, args) = parser.parse_args()
 
@@ -450,6 +542,13 @@ def run():
     if not options.username:
         parser.error('MyTardis username not given')
 
+    #valid_storage_modes = ['upload', 'staging', 'shared']
+    valid_storage_modes = [m.name for m in StorageMode]
+    if options.storage_mode and \
+       options.storage_mode not in valid_storage_modes:
+        parser.error('--storage-mode must be one of: ' +
+                     ', '.join(valid_storage_modes))
+
     pw = getpass.getpass()
 
     file_path = options.file_path
@@ -460,6 +559,7 @@ def run():
     mytardis_url = options.mytardis_url
     username = options.username
     password = pw
+    storage_mode = StorageMode[options.storage_mode]
 
     mytardis_uploader = MyTardisUploader(mytardis_url,
                                          username,
@@ -469,7 +569,8 @@ def run():
                                        title=title,
                                        description=description,
                                        institute=institute,
-                                       test_run=test_run)
+                                       test_run=test_run,
+                                       storage_mode=storage_mode)
 
 
 if __name__ == "__main__":
