@@ -85,7 +85,7 @@ class MyTardisUploader:
                 continue  # filter files/dirs starting with .
 
             if any(regex.search(full_path) for regex in exclude_patterns):
-                print 'Skipping excluded directory: %s' % file_path
+                print 'Skipping excluded directory: %s' % full_path
                 continue
 
             if os.path.isfile(full_path):
@@ -103,9 +103,9 @@ class MyTardisUploader:
                 if parameter_sets_list:
                     print "\tFound parameters for %s" % item
 
-                ds_url = "/test/"
+                dataset_url = "/__dry_run__/"
                 if not test_run:
-                    ds_url = self.create_dataset(
+                    dataset_url = self.create_dataset(
                         '%s' % item,
                         [self._get_path_from_url(exp_url)],
                         parameter_sets_list
@@ -121,7 +121,7 @@ class MyTardisUploader:
 
                         if any(regex.search(full_path)
                                for regex in exclude_patterns):
-                            print 'Skipping excluded file: %s' % file_path
+                            print 'Skipping excluded file: %s' % full_path
                             continue
 
                         sub_file_path = '%s/%s' % (dirname, filename)
@@ -157,7 +157,7 @@ class MyTardisUploader:
                                                                   base_path)
 
                             self.upload_file(sub_file_path,
-                                             self._get_path_from_url(ds_url),
+                                             self._get_path_from_url(dataset_url),
                                              parameter_sets_list,
                                              storage_mode=storage_mode,
                                              storage_box_name='default',
@@ -237,7 +237,7 @@ class MyTardisUploader:
                    (os.path.abspath(file_path),
                     dataset_name,
                     file_name)
-        print filename
+        #print filename
 
         parameter_sets = self._get_parametersets_from_csv('datafile',
                                                           file_path,
@@ -492,7 +492,8 @@ def run():
     # steve.androulakis@monash.edu
     ####
 
-    from configargparse import ArgParser
+    from argparse import ArgumentParser
+    from appsettings import SettingsParser
     import getpass
 
     print """\
@@ -513,75 +514,124 @@ def run():
 
     """
 
-    parser = ArgParser(default_config_files=['uploader_config.ini'])
-    parser.add_argument('-c', '--config',
-                        is_config_file=True,
-                        help="Path to the config file")
-    parser.add_argument("-f", "--path",
-                        dest="file_path",
-                        type=str,
-                        help="The PATH of the experiment to be uploaded",
-                        metavar="PATH")
-    parser.add_argument("-l", "--url",
-                        dest="mytardis_url",
-                        type=str,
-                        help="The URL to the MyTardis installation",
-                        metavar="URL")
-    parser.add_argument("-u", "--username",
-                        dest="username",
-                        type=str,
-                        help="Your MyTardis USERNAME",
-                        metavar="USERNAME")
-    parser.add_argument("--password",
-                        dest="password",
-                        type=str,
-                        help="You should probably never use this option from "
-                             "the command line. Be sensible.",
-                        metavar="PASSWORD")
-    parser.add_argument("-t", "--title",
-                        dest="title",
-                        type=str,
-                        help="Experiment TITLE",
-                        metavar="TITLE")
-    parser.add_argument("-d", "--description",
-                        dest="description",
-                        type=str,
-                        help="Experiment DESCRIPTION",
-                        metavar="DESCRIPTION")
-    parser.add_argument("-i", "--institute",
-                        dest="institute",
-                        type=str,
-                        help="Experiment INSTITUTE (eg university)",
-                        metavar="INSTITUTE")
-    parser.add_argument("-r", "--dry",
-                        action="store_true",
-                        dest="dry_run",
-                        default=False,
-                        help="Dry run (don't create anything)")
-    parser.add_argument("--storage-mode",
-                        dest="storage_mode",
-                        type=str,
-                        metavar="STORAGE_MODE",
-                        default='upload',
-                        help="Specify if the data files are to be uploaded, "
-                             "or registered in the database at a staging or "
-                             "shared storage area without uploading. "
-                             "Valid values are: upload, staging or shared."
-                             "Defaults to upload.")
-    parser.add_argument("--exclude",
-                        dest="exclude",
-                        action="append",
-                        help="Exclude files with paths matching this regex. "
-                             "Can be specified multiple times.",
-                        metavar="REGEX")
+    def add_args(parser):
+        """
+        Takes an argparse.ArgumentParser-like object and adds commandline
+        parameters to detect and capture values from.
+        :param parser: ArgumentParser
+        :return:
+        """
+        parser.add_argument('--config',
+                            dest="config_file",
+                            type=str,
+                            metavar="MYTARDIS_UPLOADER_CONFIG")
+        parser.add_argument("-f", "--path",
+                            dest="path",
+                            type=str,
+                            help="The PATH of the experiment to be uploaded",
+                            metavar="PATH")
+        parser.add_argument("-l", "--url",
+                            dest="url",
+                            type=str,
+                            help="The URL to the MyTardis installation",
+                            metavar="URL")
+        parser.add_argument("-u", "--username",
+                            dest="username",
+                            type=str,
+                            help="Your MyTardis USERNAME",
+                            metavar="USERNAME")
+        parser.add_argument("--password",
+                            dest="password",
+                            type=str,
+                            help="You should probably never use this option from "
+                                 "the command line. Be sensible.",
+                            metavar="PASSWORD")
+        parser.add_argument("-t", "--title",
+                            dest="title",
+                            type=str,
+                            help="Experiment TITLE",
+                            metavar="TITLE")
+        parser.add_argument("-d", "--description",
+                            dest="description",
+                            type=str,
+                            help="Experiment DESCRIPTION",
+                            metavar="DESCRIPTION")
+        parser.add_argument("-i", "--institute",
+                            dest="institute",
+                            type=str,
+                            help="Experiment INSTITUTE (eg university)",
+                            metavar="INSTITUTE")
+        parser.add_argument("-r", "--dry",
+                            action="store_true",
+                            dest="dry_run",
+                            default=False,
+                            help="Dry run (don't create anything)")
+        parser.add_argument("--storage-mode",
+                            dest="storage_mode",
+                            type=str,
+                            metavar="STORAGE_MODE",
+                            default='upload',
+                            help="Specify if the data files are to be uploaded, "
+                                 "or registered in the database at a staging or "
+                                 "shared storage area without uploading. "
+                                 "Valid values are: upload, staging or shared."
+                                 "Defaults to upload.")
+        parser.add_argument("--exclude",
+                            dest="exclude",
+                            action="append",
+                            help="Exclude files with paths matching this regex. "
+                                 "Can be specified multiple times.",
+                            metavar="REGEX")
 
-    options = parser.parse_args()
 
-    if not options.file_path:
-        parser.error('file path not given')
+    def get_config(default_config_filename='uploader_config.yaml'):
+        """
+        Parses a config file (default or commandline specified), then
+        overrides any settings with those specified on the command line.
+        Returns the appsetting.SettingsParser instance and the config options
+        object (argparse-like).
 
-    if not options.mytardis_url:
-        parser.error('url to MyTardis not given')
+        We do something a little unusual here to allow a --config option
+        while using the appsettings module.
+        First we parse the commandline using standard argparse and look for
+        the --config option. If we find it, we read the config via
+        appsettings.SettingsParser. Then we reparse the commandline using that
+        SettingsParser to override any config file options with commandline
+        options specified.
+
+        :return: parser, options
+        """
+        preparser = ArgumentParser()
+        add_args(preparser)
+        precheck_options = preparser.parse_args()
+
+        parser = None
+
+        if precheck_options.config_file:
+            try:
+                with open(precheck_options.config_file, 'r') as f:
+                    parser = SettingsParser(yaml_file=f)
+            except IOError:
+                preparser.error("Cannot read config file: %s" %
+                                precheck_options.config_file)
+        elif os.path.isfile(default_config_filename):
+            with open(default_config_filename, 'r') as f:
+                parser = SettingsParser(yaml_file=f)
+        else:
+            parser = SettingsParser()
+
+        add_args(parser)
+        options = parser.parse_args()
+
+        return parser, options
+
+    parser, options = get_config()
+
+    if not options.path:
+        parser.error('File path not given')
+
+    if not options.url:
+        parser.error('URL to MyTardis instance not given')
 
     if not options.username:
         parser.error('MyTardis username not given')
@@ -596,19 +646,29 @@ def run():
     exclude_patterns = []
     if options.exclude:
         import re
-        exclude_patterns = [re.compile(p) for p in options.exclude]
+
+        for regex in options.exclude:
+            # strip matching quotes around regex if present
+            if regex.startswith('"') and regex.endswith('"'):
+                regex = regex[1:-1]
+            elif regex.startswith("'") and regex.endswith("'"):
+                regex = regex[1:-1]
+            exclude_patterns.append(re.compile(regex))
+
         print "Ignoring files that match: %s\n" % ' | '.join(options.exclude)
 
     pw = options.password
     if not pw:
         pw = getpass.getpass()
 
-    file_path = options.file_path
+    file_path = options.path
+    if file_path is '.':
+        file_path = os.getcwd()
     title = options.title
     institute = options.institute
     description = options.description
     test_run = options.dry_run
-    mytardis_url = options.mytardis_url
+    mytardis_url = options.url
     username = options.username
     password = pw
     storage_mode = StorageMode[options.storage_mode]
