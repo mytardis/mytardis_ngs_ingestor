@@ -1,3 +1,6 @@
+# this is the 'location' used by the storage box
+storage_base_path: /data/instrument
+
 # the path to the directory with data to
 # be uploaded/registerd with MyTardis
 path: /data/instrument/some_expt_001/
