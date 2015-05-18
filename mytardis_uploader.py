@@ -1,6 +1,10 @@
 # MyTardis Uploader v1.1
+# Adopted and enhanced Andrew Perry <Andrew.Perry@monash.edu>
 # Steve Androulakis <steve.androulakis@monash.edu>
 # Thanks Grischa Meyer <grischa.meyer@monash.edu> for initial script
+
+import logging
+logger = logging.getLogger('mytardis_uploader')
 
 import urllib2
 import base64
@@ -64,7 +68,7 @@ class MyTardisUploader:
 
         title = title or os.path.basename(os.path.abspath(file_path))
 
-        print 'Creating experiment: %s' % title
+        logger.info('Creating experiment: %s', title)
 
         created = False
         exp_url = "/test/"
@@ -85,15 +89,15 @@ class MyTardisUploader:
                 continue  # filter files/dirs starting with .
 
             if any(regex.search(full_path) for regex in exclude_patterns):
-                print 'Skipping excluded directory: %s' % full_path
+                logger.info('Skipping excluded directory: %s', full_path)
                 continue
 
             if os.path.isfile(full_path):
-                print 'Skipping root-level file: %s' % item
+                logger.info('Skipping root-level file: %s', item)
             else:
-                print '\tFound directory: %s' % item
+                logger.info('Found directory: %s', item)
 
-                print '\tCreating dataset: %s' % item
+                logger.info('Creating dataset: %s', item)
 
                 parameter_sets_list = \
                     self._get_dataset_parametersets_from_json(file_path,
@@ -101,7 +105,7 @@ class MyTardisUploader:
                     self._get_dataset_parametersets_from_csv(file_path, item)
 
                 if parameter_sets_list:
-                    print "\tFound parameters for %s" % item
+                    logger.info("Found parameters for %s", item)
 
                 dataset_url = "/__dry_run__/"
                 if not test_run:
@@ -121,11 +125,11 @@ class MyTardisUploader:
 
                         if any(regex.search(full_path)
                                for regex in exclude_patterns):
-                            print 'Skipping excluded file: %s' % full_path
+                            logger.info('Skipping excluded file: %s', full_path)
                             continue
 
-                        print "\t\tUploading file '%s' to dataset '%s'." % \
-                              (full_path, item)
+                        logger.info("Uploading file: '%s' (dataset='%s')",
+                                    full_path, item)
 
                         parameter_sets_list = \
                             self._get_datafile_parametersets_from_csv(full_path,
@@ -133,7 +137,7 @@ class MyTardisUploader:
                                                                       filename)
 
                         if parameter_sets_list:
-                            print "\t\tFound parameters for %s" % filename
+                            logger.info("Found parameters for %s", filename)
 
                         if not test_run:
                             # the replica_url should be the relative path
@@ -165,11 +169,11 @@ class MyTardisUploader:
         if created:
             exp_id = exp_url.rsplit('/')[-2]
             new_exp_url = "%s/experiment/view/%s/" % (self.mytardis_url, exp_id)
-            print "Experiment created: %s" % new_exp_url
+            logger.info("Experiment created: %s", new_exp_url)
             return new_exp_url
 
         else:
-            print "Dry run complete."
+            logger.info("Dry run complete.")
             return "http://example.com/test/success"
 
     def _get_parametersets_from_csv(self,
@@ -476,8 +480,7 @@ class MyTardisUploader:
         # print "Location: " + str(location)
 
         if (data.status_code > 499):
-            print "Registration of data file failed !"
-            print data.content
+            logger.error("Registration of data file failed: %s", data.content)
             import sys
             sys.exit()
 
@@ -490,6 +493,38 @@ def run():
     ####
     # steve.androulakis@monash.edu
     ####
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+
+    try:
+        from colorlog import ColoredFormatter
+
+        color_formatter = ColoredFormatter(
+            '%(bg_white)s%(fg_black)s%(asctime)-8s%(reset)s\t'
+            '%(log_color)s%(levelname)-8s%(reset)s\t'
+            '%(white)s%(message)s',
+            reset=True,
+            log_colors={
+                'DEBUG':    'cyan',
+                'INFO':     'green',
+                'WARNING':  'yellow',
+                'ERROR':    'red',
+                'CRITICAL': 'red,bg_white',
+            },
+            secondary_log_colors={},
+            style='%'
+        )
+        console_handler.setFormatter(color_formatter)
+    except:
+        logging.basicConfig(format='%(asctime)s\t'
+                                   # '%(name)-12s\t'
+                                   '%(levelname)-8s\t'
+                                   '%(message)s')
+    logger.setLevel(logging.DEBUG)
+
+    logger.addHandler(console_handler)
+    logger.setLevel(logging.DEBUG)
 
     from argparse import ArgumentParser
     from appsettings import SettingsParser
@@ -664,7 +699,8 @@ def run():
                 regex = regex[1:-1]
             exclude_patterns.append(re.compile(regex))
 
-        print "Ignoring files that match: %s\n" % ' | '.join(options.exclude)
+        logger.info("Ignoring files that match: %s\n",
+                    ' | '.join(options.exclude))
 
     pw = options.password
     if not pw:
