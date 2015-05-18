@@ -124,12 +124,11 @@ class MyTardisUploader:
                             print 'Skipping excluded file: %s' % full_path
                             continue
 
-                        sub_file_path = '%s/%s' % (dirname, filename)
                         print "\t\tUploading file '%s' to dataset '%s'." % \
-                              (sub_file_path, item)
+                              (full_path, item)
 
                         parameter_sets_list = \
-                            self._get_datafile_parametersets_from_csv(file_path,
+                            self._get_datafile_parametersets_from_csv(full_path,
                                                                       item,
                                                                       filename)
 
@@ -144,7 +143,7 @@ class MyTardisUploader:
                             # this applies to replica.protocol='file' locations
                             # but probably not S3/Swift style object store
                             # locations with real http urls.
-                            replica_url = file_path
+                            replica_url = full_path
                             if storage_mode == StorageMode.shared:
                                 if base_path is not None:
                                     # eg, if storage box base path is:
@@ -153,10 +152,10 @@ class MyTardisUploader:
                                     # /data/bigstorage/expt1/dataset1/file.txt
                                     # then replica_url should be:
                                     # expt1/dataset1/file.txt
-                                    replica_url = os.path.relpath(file_path,
+                                    replica_url = os.path.relpath(full_path,
                                                                   base_path)
 
-                            self.upload_file(sub_file_path,
+                            self.upload_file(full_path,
                                              self._get_path_from_url(dataset_url),
                                              parameter_sets_list,
                                              storage_mode=storage_mode,
@@ -530,6 +529,12 @@ def run():
                             type=str,
                             help="The PATH of the experiment to be uploaded",
                             metavar="PATH")
+        parser.add_argument("--storage-base-path",
+                            dest="storage_base_path",
+                            type=str,
+                            help="The STORAGE_BASE_PATH of all experiments,"
+                                 "when using 'shared' storage mode.",
+                            metavar="STORAGE_BASE_PATH")
         parser.add_argument("-l", "--url",
                             dest="url",
                             type=str,
@@ -636,12 +641,16 @@ def run():
     if not options.username:
         parser.error('MyTardis username not given')
 
-    #valid_storage_modes = ['upload', 'staging', 'shared']
+    # valid_storage_modes = ['upload', 'staging', 'shared']
     valid_storage_modes = [m.name for m in StorageMode]
     if options.storage_mode and \
        options.storage_mode not in valid_storage_modes:
         parser.error('--storage-mode must be one of: ' +
                      ', '.join(valid_storage_modes))
+
+    if options.storage_mode is 'shared' and not options.storage_base_path:
+        parser.error("--storage-base-path (storage_base_path) must be"
+                     "specified when using 'shared' storage mode.")
 
     exclude_patterns = []
     if options.exclude:
@@ -683,7 +692,7 @@ def run():
                                        institute=institute,
                                        test_run=test_run,
                                        storage_mode=storage_mode,
-                                       base_path=None,
+                                       base_path=options.storage_base_path,
                                        exclude_patterns=exclude_patterns)
 
 
