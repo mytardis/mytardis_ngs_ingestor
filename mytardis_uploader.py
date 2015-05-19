@@ -18,14 +18,8 @@ import requests
 from requests.auth import HTTPBasicAuth
 from time import strftime
 import csv
-from enum import Enum
 
-class StorageMode(Enum):
-    upload  =  1
-    staging =  2
-    shared  =  3
-
-DEFAULT_STORAGE_MODE = StorageMode.upload
+DEFAULT_STORAGE_MODE = 'upload'
 
 class PreemptiveBasicAuthHandler(urllib2.BaseHandler):
     def __init__(self, password_mgr=None):
@@ -166,7 +160,7 @@ class MyTardisUploader:
                             # but probably not S3/Swift style object store
                             # locations with real http urls.
                             replica_url = full_path
-                            if storage_mode == StorageMode.shared:
+                            if storage_mode == 'shared':
                                 if base_path is not None:
                                     # eg, if storage box base path is:
                                     # /data/bigstorage/
@@ -500,17 +494,17 @@ class MyTardisUploader:
             u'replicas': replica_list,
         }
 
-        if storage_mode == StorageMode.shared:
+        if storage_mode == 'shared':
             data = self._register_datafile_shared_storage(
                 json.dumps(file_dict),
                 'dataset_file/'
             )
-        elif storage_mode == StorageMode.staging:
+        elif storage_mode == 'staging':
             data = self._register_datafile_staging(
                 json.dumps(file_dict),
                 'dataset_file/'
             )
-        elif storage_mode == StorageMode.upload:
+        elif storage_mode == 'upload':
             delattr(file_dict, u'replicas')
             data = self._send_datafile(
                 json.dumps(file_dict),
@@ -519,7 +513,7 @@ class MyTardisUploader:
             )
         else:
             # we should never get here
-            raise Exception("Invalid storage mode: " + storage_mode.name)
+            raise Exception("Invalid storage mode: " + storage_mode)
 
         location = getattr(data.headers, 'location', None)
         # print "Location: " + str(location)
@@ -704,14 +698,13 @@ def validate_config(parser, options):
     if not options.username:
         parser.error('MyTardis username not given')
 
-    # valid_storage_modes = ['upload', 'staging', 'shared']
-    valid_storage_modes = [m.name for m in StorageMode]
+    valid_storage_modes = ['upload', 'staging', 'shared']
     if options.storage_mode and \
        options.storage_mode not in valid_storage_modes:
         parser.error('--storage-mode must be one of: ' +
                      ', '.join(valid_storage_modes))
 
-    if options.storage_mode is 'shared' and not options.storage_base_path:
+    if options.storage_mode == 'shared' and not options.storage_base_path:
         parser.error("--storage-base-path (storage_base_path) must be"
                      "specified when using 'shared' storage mode.")
 
@@ -790,7 +783,7 @@ def run():
     mytardis_url = options.url
     username = options.username
     password = pw
-    storage_mode = StorageMode[options.storage_mode]
+    storage_mode = options.storage_mode
 
     mytardis_uploader = MyTardisUploader(mytardis_url,
                                          username,

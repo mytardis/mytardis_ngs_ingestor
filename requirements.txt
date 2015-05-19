@@ -1,5 +1,4 @@
 appsettings
 colorlog
-enum34
 requests>=2.7.0
 requests-toolbelt>=0.4.0
