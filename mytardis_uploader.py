@@ -21,6 +21,7 @@ import csv
 
 DEFAULT_STORAGE_MODE = 'upload'
 
+
 class PreemptiveBasicAuthHandler(urllib2.BaseHandler):
     def __init__(self, password_mgr=None):
         if password_mgr is None:
@@ -69,7 +70,7 @@ class MyTardisUploader:
                          institute='',
                          description='',
                          test_run=False,
-                         exclude_patterns=[],
+                         exclude_patterns=None,
                          ):
 
         title = title or os.path.basename(os.path.abspath(file_path))
@@ -178,7 +179,9 @@ class MyTardisUploader:
                                     )
 
                             self.upload_file(full_path,
-                                             self._get_path_from_url(dataset_url),
+                                             self._get_path_from_url(
+                                                 dataset_url
+                                             ),
                                              parameter_sets_list,
                                              replica_url=replica_url)
 
@@ -192,8 +195,7 @@ class MyTardisUploader:
             logger.info("Dry run complete.")
             return "http://example.com/test/success"
 
-    def _get_parametersets_from_csv(self,
-                                    entity_type,
+    def _get_parametersets_from_csv(self, entity_type,
                                     file_path,
                                     filename):
 
@@ -366,7 +368,6 @@ class MyTardisUploader:
                                  )
         return response
 
-
     def _get_header(self, headers, key):
         # from urllib2 style
         # get_header(headers, 'Location')
@@ -396,7 +397,7 @@ class MyTardisUploader:
         return parameter_set
 
     def create_experiment(self, title, institution, description,
-                          author_list=[],
+                          author_list=None,
                           start_time='',
                           end_time='',
                           update_time=''):
@@ -416,9 +417,6 @@ class MyTardisUploader:
         # author_list = []
         # author_list.append({u'name': 'Daouda A.K. Traore', u'url': ''})
         # author_list.append({u'name': 'James C Whisstock', u'url': ''})
-
-        if not author_list:
-            author_list = []
 
         #if not created_time:
         #    from datetime import datetime
@@ -484,7 +482,7 @@ class MyTardisUploader:
         file_size = os.path.getsize(file_path)
         # Hack to work around MyTardis not accepting
         # files of zero bytes
-        #file_size = (file_size if file_size > 0 else -1)
+        # file_size = (file_size if file_size > 0 else -1)
 
         file_dict = {
             u'dataset': dataset_path,
@@ -551,7 +549,7 @@ def setup_logging():
             style='%'
         )
         console_handler.setFormatter(color_formatter)
-    except:
+    except ImportError:
         logging.basicConfig(format='%(asctime)s\t'
                                    # '%(name)-12s\t'
                                    '%(levelname)-8s\t'
@@ -560,6 +558,7 @@ def setup_logging():
 
     logger.addHandler(console_handler)
     logger.setLevel(logging.DEBUG)
+
 
 def add_config_args(parser):
     """
@@ -636,6 +635,7 @@ def add_config_args(parser):
                              "Can be specified multiple times.",
                         metavar="REGEX")
 
+
 def get_config(default_config_filename='uploader_config.yaml'):
     """
     Parses a config file (default or commandline specified), then
@@ -682,11 +682,13 @@ def get_config(default_config_filename='uploader_config.yaml'):
 
     return parser, options
 
+
 def validate_config(parser, options):
     """
     Validates config options, throws errors and stops excution if
     there is an issue (invalid value or required value missing).
 
+    :rtype : object
     :param options: object
     :param parser: argparse.ArgumentParser
     :return:
@@ -710,7 +712,8 @@ def validate_config(parser, options):
         parser.error("--storage-base-path (storage_base_path) must be"
                      "specified when using 'shared' storage mode.")
 
-def get_exclude_patterns_as_regex_list(exclude_patterns=[]):
+
+def get_exclude_patterns_as_regex_list(exclude_patterns=None):
     """
     Takes a list of strings are returns a list of compiled regexes.
     Strips enclosing quotes if present.
@@ -735,6 +738,7 @@ def get_exclude_patterns_as_regex_list(exclude_patterns=[]):
                     ' | '.join(exclude_patterns))
 
     return exclude_regexes
+
 
 def run():
     ####
