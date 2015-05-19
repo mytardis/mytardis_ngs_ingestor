@@ -45,12 +45,18 @@ class MyTardisUploader:
                  mytardis_url,
                  username,
                  password,
+                 storage_mode=DEFAULT_STORAGE_MODE,
+                 storage_box_location='',
+                 storage_box_name='default',
                  ):
 
         self.mytardis_url = mytardis_url
         self.v1_api_url = mytardis_url + "/api/v1/%s"
         self.username = username
         self.password = password
+        self.storage_mode = storage_mode
+        self.storage_box_location = storage_box_location
+        self.storage_box_name = storage_box_name
         self.user_agent_url = "https://github.com/pansapiens/mytardis-uploader"
         self.user_agent_name = "MyTardisUploader"
         self.user_agent = "%s/%s (%s)" % (self.user_agent_name,
@@ -63,8 +69,6 @@ class MyTardisUploader:
                          institute='',
                          description='',
                          test_run=False,
-                         storage_mode=DEFAULT_STORAGE_MODE,
-                         base_path=None,
                          exclude_patterns=[],
                          ):
 
@@ -160,22 +164,22 @@ class MyTardisUploader:
                             # but probably not S3/Swift style object store
                             # locations with real http urls.
                             replica_url = full_path
-                            if storage_mode == 'shared':
-                                if base_path is not None:
+                            if self.storage_mode == 'shared':
+                                if self.storage_box_location:
                                     # eg, if storage box base path is:
                                     # /data/bigstorage/
                                     # and absolute file path is
                                     # /data/bigstorage/expt1/dataset1/file.txt
                                     # then replica_url should be:
                                     # expt1/dataset1/file.txt
-                                    replica_url = os.path.relpath(full_path,
-                                                                  base_path)
+                                    replica_url = os.path.relpath(
+                                        full_path,
+                                        self.storage_box_location
+                                    )
 
                             self.upload_file(full_path,
                                              self._get_path_from_url(dataset_url),
                                              parameter_sets_list,
-                                             storage_mode=storage_mode,
-                                             storage_box_name='default',
                                              replica_url=replica_url)
 
         if created:
@@ -464,8 +468,6 @@ class MyTardisUploader:
 
     def upload_file(self, file_path, dataset_path,
                     parameter_sets_list=None,
-                    storage_mode=DEFAULT_STORAGE_MODE,
-                    storage_box_name='default',
                     replica_url=''):
         # print upload_file('cli.py',
         #                   '/api/v1/dataset/143/').headers['location']
@@ -476,7 +478,7 @@ class MyTardisUploader:
         filename = os.path.basename(file_path)
 
         replica_list = [{u'url': replica_url,
-                         u'location': storage_box_name,
+                         u'location': self.storage_box_name,
                          u'protocol': u'file'},
                         ]
         file_size = os.path.getsize(file_path)
@@ -494,17 +496,17 @@ class MyTardisUploader:
             u'replicas': replica_list,
         }
 
-        if storage_mode == 'shared':
+        if self.storage_mode == 'shared':
             data = self._register_datafile_shared_storage(
                 json.dumps(file_dict),
                 'dataset_file/'
             )
-        elif storage_mode == 'staging':
+        elif self.storage_mode == 'staging':
             data = self._register_datafile_staging(
                 json.dumps(file_dict),
                 'dataset_file/'
             )
-        elif storage_mode == 'upload':
+        elif self.storage_mode == 'upload':
             delattr(file_dict, u'replicas')
             data = self._send_datafile(
                 json.dumps(file_dict),
@@ -513,7 +515,7 @@ class MyTardisUploader:
             )
         else:
             # we should never get here
-            raise Exception("Invalid storage mode: " + storage_mode)
+            raise Exception("Invalid storage mode: " + self.storage_mode)
 
         location = getattr(data.headers, 'location', None)
         # print "Location: " + str(location)
@@ -784,18 +786,19 @@ def run():
     username = options.username
     password = pw
     storage_mode = options.storage_mode
+    base_path = options.storage_base_path
 
     mytardis_uploader = MyTardisUploader(mytardis_url,
                                          username,
-                                         password)
+                                         password,
+                                         storage_mode=storage_mode,
+                                         storage_box_location=base_path)
 
     mytardis_uploader.upload_directory(file_path,
                                        title=title,
                                        description=description,
                                        institute=institute,
                                        test_run=test_run,
-                                       storage_mode=storage_mode,
-                                       base_path=options.storage_base_path,
                                        exclude_patterns=exclude_patterns)
 
     # raw_data_expt = create_experiment
