@@ -532,189 +532,169 @@ class MyTardisUploader:
         return location
 
 
-def run():
-    ####
-    # Le Script
-    ####
-    # steve.androulakis@monash.edu
-    ####
+def setup_logging():
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
 
-    def setup_logging():
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.DEBUG)
+    try:
+        from colorlog import ColoredFormatter
 
-        try:
-            from colorlog import ColoredFormatter
+        color_formatter = ColoredFormatter(
+            '%(bg_white)s%(fg_black)s%(asctime)-8s%(reset)s\t'
+            '%(log_color)s%(levelname)-8s%(reset)s\t'
+            '%(white)s%(message)s',
+            reset=True,
+            log_colors={
+                'DEBUG':    'cyan',
+                'INFO':     'green',
+                'WARNING':  'yellow',
+                'ERROR':    'red',
+                'CRITICAL': 'red,bg_white',
+            },
+            secondary_log_colors={},
+            style='%'
+        )
+        console_handler.setFormatter(color_formatter)
+    except:
+        logging.basicConfig(format='%(asctime)s\t'
+                                   # '%(name)-12s\t'
+                                   '%(levelname)-8s\t'
+                                   '%(message)s')
+    logger.setLevel(logging.DEBUG)
 
-            color_formatter = ColoredFormatter(
-                '%(bg_white)s%(fg_black)s%(asctime)-8s%(reset)s\t'
-                '%(log_color)s%(levelname)-8s%(reset)s\t'
-                '%(white)s%(message)s',
-                reset=True,
-                log_colors={
-                    'DEBUG':    'cyan',
-                    'INFO':     'green',
-                    'WARNING':  'yellow',
-                    'ERROR':    'red',
-                    'CRITICAL': 'red,bg_white',
-                },
-                secondary_log_colors={},
-                style='%'
-            )
-            console_handler.setFormatter(color_formatter)
-        except:
-            logging.basicConfig(format='%(asctime)s\t'
-                                       # '%(name)-12s\t'
-                                       '%(levelname)-8s\t'
-                                       '%(message)s')
-        logger.setLevel(logging.DEBUG)
+    logger.addHandler(console_handler)
+    logger.setLevel(logging.DEBUG)
 
-        logger.addHandler(console_handler)
-        logger.setLevel(logging.DEBUG)
+def add_config_args(parser):
+    """
+    Takes an argparse.ArgumentParser-like object and adds commandline
+    parameters to detect and capture values from.
+    :param parser: ArgumentParser
+    :return:
+    """
+    parser.add_argument('--config',
+                        dest="config_file",
+                        type=str,
+                        metavar="MYTARDIS_UPLOADER_CONFIG")
+    parser.add_argument("-f", "--path",
+                        dest="path",
+                        type=str,
+                        help="The PATH of the experiment to be uploaded",
+                        metavar="PATH")
+    parser.add_argument("--storage-base-path",
+                        dest="storage_base_path",
+                        type=str,
+                        help="The STORAGE_BASE_PATH of all experiments,"
+                             "when using 'shared' storage mode.",
+                        metavar="STORAGE_BASE_PATH")
+    parser.add_argument("-l", "--url",
+                        dest="url",
+                        type=str,
+                        help="The URL to the MyTardis installation",
+                        metavar="URL")
+    parser.add_argument("-u", "--username",
+                        dest="username",
+                        type=str,
+                        help="Your MyTardis USERNAME",
+                        metavar="USERNAME")
+    parser.add_argument("--password",
+                        dest="password",
+                        type=str,
+                        help="You should probably never use this option from "
+                             "the command line. Be sensible.",
+                        metavar="PASSWORD")
+    parser.add_argument("-t", "--title",
+                        dest="title",
+                        type=str,
+                        help="Experiment TITLE",
+                        metavar="TITLE")
+    parser.add_argument("-d", "--description",
+                        dest="description",
+                        type=str,
+                        help="Experiment DESCRIPTION",
+                        metavar="DESCRIPTION")
+    parser.add_argument("-i", "--institute",
+                        dest="institute",
+                        type=str,
+                        help="Experiment INSTITUTE (eg university)",
+                        metavar="INSTITUTE")
+    parser.add_argument("-r", "--dry",
+                        action="store_true",
+                        dest="dry_run",
+                        default=False,
+                        help="Dry run (don't create anything)")
+    parser.add_argument("--storage-mode",
+                        dest="storage_mode",
+                        type=str,
+                        metavar="STORAGE_MODE",
+                        default='upload',
+                        help="Specify if the data files are to be uploaded, "
+                             "or registered in the database at a staging or "
+                             "shared storage area without uploading. "
+                             "Valid values are: upload, staging or shared."
+                             "Defaults to upload.")
+    parser.add_argument("--exclude",
+                        dest="exclude",
+                        action="append",
+                        help="Exclude files with paths matching this regex. "
+                             "Can be specified multiple times.",
+                        metavar="REGEX")
 
-    setup_logging()
+def get_config(default_config_filename='uploader_config.yaml'):
+    """
+    Parses a config file (default or commandline specified), then
+    overrides any settings with those specified on the command line.
+    Returns the appsetting.SettingsParser instance and the config options
+    object (argparse.Namespace).
 
+    We do something a little unusual here to allow a --config option
+    while using the appsettings module.
+    First we parse the commandline using standard argparse and look for
+    the --config option. If we find it, we read the config via
+    appsettings.SettingsParser. Then we reparse the commandline using that
+    SettingsParser to override any config file options with commandline
+    options specified.
+
+    :param default_config_filename: str
+    :return:
+    :rtype: (argparse.ArgumentParser, object)
+    """
     from argparse import ArgumentParser
     from appsettings import SettingsParser
-    import getpass
 
-    print """\
-    MyTardis uploader generic v1
-    Steve Androulakis <steve.androulakis@monash.edu>
-    Uploads the given directory as an Experiment, and the immediate
-    sub-directories below it as Datasets in MyTardis.
+    preparser = ArgumentParser()
+    add_config_args(preparser)
+    precheck_options = preparser.parse_args()
 
-    eg. python mytardis_uploader.py -l http://mytardis-server.com.au -u steve \
-                                    -f /Users/steve/Experiment1/"
+    parser = None
 
-    If present, metadata is harvested from:
-      <path>/metadata/schema.txt
-      <path>/metadata/<dataset_name>_metadata.csv
-      <path>/metadata/<dataset_name>_metadata.json
-      <path>/metadata/<dataset_name>_<filename>_metadata.csv
-      <path>/metadata/<dataset_name>_<filename>_metadata.json
-
-    """
-
-    def add_args(parser):
-        """
-        Takes an argparse.ArgumentParser-like object and adds commandline
-        parameters to detect and capture values from.
-        :param parser: ArgumentParser
-        :return:
-        """
-        parser.add_argument('--config',
-                            dest="config_file",
-                            type=str,
-                            metavar="MYTARDIS_UPLOADER_CONFIG")
-        parser.add_argument("-f", "--path",
-                            dest="path",
-                            type=str,
-                            help="The PATH of the experiment to be uploaded",
-                            metavar="PATH")
-        parser.add_argument("--storage-base-path",
-                            dest="storage_base_path",
-                            type=str,
-                            help="The STORAGE_BASE_PATH of all experiments,"
-                                 "when using 'shared' storage mode.",
-                            metavar="STORAGE_BASE_PATH")
-        parser.add_argument("-l", "--url",
-                            dest="url",
-                            type=str,
-                            help="The URL to the MyTardis installation",
-                            metavar="URL")
-        parser.add_argument("-u", "--username",
-                            dest="username",
-                            type=str,
-                            help="Your MyTardis USERNAME",
-                            metavar="USERNAME")
-        parser.add_argument("--password",
-                            dest="password",
-                            type=str,
-                            help="You should probably never use this option from "
-                                 "the command line. Be sensible.",
-                            metavar="PASSWORD")
-        parser.add_argument("-t", "--title",
-                            dest="title",
-                            type=str,
-                            help="Experiment TITLE",
-                            metavar="TITLE")
-        parser.add_argument("-d", "--description",
-                            dest="description",
-                            type=str,
-                            help="Experiment DESCRIPTION",
-                            metavar="DESCRIPTION")
-        parser.add_argument("-i", "--institute",
-                            dest="institute",
-                            type=str,
-                            help="Experiment INSTITUTE (eg university)",
-                            metavar="INSTITUTE")
-        parser.add_argument("-r", "--dry",
-                            action="store_true",
-                            dest="dry_run",
-                            default=False,
-                            help="Dry run (don't create anything)")
-        parser.add_argument("--storage-mode",
-                            dest="storage_mode",
-                            type=str,
-                            metavar="STORAGE_MODE",
-                            default='upload',
-                            help="Specify if the data files are to be uploaded, "
-                                 "or registered in the database at a staging or "
-                                 "shared storage area without uploading. "
-                                 "Valid values are: upload, staging or shared."
-                                 "Defaults to upload.")
-        parser.add_argument("--exclude",
-                            dest="exclude",
-                            action="append",
-                            help="Exclude files with paths matching this regex. "
-                                 "Can be specified multiple times.",
-                            metavar="REGEX")
-
-
-    def get_config(default_config_filename='uploader_config.yaml'):
-        """
-        Parses a config file (default or commandline specified), then
-        overrides any settings with those specified on the command line.
-        Returns the appsetting.SettingsParser instance and the config options
-        object (argparse-like).
-
-        We do something a little unusual here to allow a --config option
-        while using the appsettings module.
-        First we parse the commandline using standard argparse and look for
-        the --config option. If we find it, we read the config via
-        appsettings.SettingsParser. Then we reparse the commandline using that
-        SettingsParser to override any config file options with commandline
-        options specified.
-
-        :return: parser, options
-        """
-        preparser = ArgumentParser()
-        add_args(preparser)
-        precheck_options = preparser.parse_args()
-
-        parser = None
-
-        if precheck_options.config_file:
-            try:
-                with open(precheck_options.config_file, 'r') as f:
-                    parser = SettingsParser(yaml_file=f)
-            except IOError:
-                preparser.error("Cannot read config file: %s" %
-                                precheck_options.config_file)
-        elif os.path.isfile(default_config_filename):
-            with open(default_config_filename, 'r') as f:
+    if precheck_options.config_file:
+        try:
+            with open(precheck_options.config_file, 'r') as f:
                 parser = SettingsParser(yaml_file=f)
-        else:
-            parser = SettingsParser()
+        except IOError:
+            preparser.error("Cannot read config file: %s" %
+                            precheck_options.config_file)
+    elif os.path.isfile(default_config_filename):
+        with open(default_config_filename, 'r') as f:
+            parser = SettingsParser(yaml_file=f)
+    else:
+        parser = SettingsParser()
 
-        add_args(parser)
-        options = parser.parse_args()
+    add_config_args(parser)
+    options = parser.parse_args()
 
-        return parser, options
+    return parser, options
 
-    parser, options = get_config()
+def validate_config(parser, options):
+    """
+    Validates config options, throws errors and stops excution if
+    there is an issue (invalid value or required value missing).
 
+    :param options: object
+    :param parser: argparse.ArgumentParser
+    :return:
+    """
     if not options.path:
         parser.error('File path not given')
 
@@ -735,20 +715,66 @@ def run():
         parser.error("--storage-base-path (storage_base_path) must be"
                      "specified when using 'shared' storage mode.")
 
-    exclude_patterns = []
-    if options.exclude:
+def get_exclude_patterns_as_regex_list(exclude_patterns=[]):
+    """
+    Takes a list of strings are returns a list of compiled regexes.
+    Strips enclosing quotes if present.
+
+    :param options: list[str]
+    :return:
+    :rtype: list[re.__Regex]
+    """
+    exclude_regexes = []
+    if exclude_patterns:
         import re
 
-        for regex in options.exclude:
+        for regex in exclude_patterns:
             # strip matching quotes around regex if present
             if regex.startswith('"') and regex.endswith('"'):
                 regex = regex[1:-1]
             elif regex.startswith("'") and regex.endswith("'"):
                 regex = regex[1:-1]
-            exclude_patterns.append(re.compile(regex))
+            exclude_regexes.append(re.compile(regex))
 
         logger.info("Ignoring files that match: %s\n",
-                    ' | '.join(options.exclude))
+                    ' | '.join(exclude_patterns))
+
+    return exclude_regexes
+
+def run():
+    ####
+    # Le Script
+    ####
+    # steve.androulakis@monash.edu
+    ####
+    import getpass
+
+    print """\
+    MyTardis uploader generic v1
+    Steve Androulakis <steve.androulakis@monash.edu>
+    Uploads the given directory as an Experiment, and the immediate
+    sub-directories below it as Datasets in MyTardis.
+
+    eg. python mytardis_uploader.py -l http://mytardis-server.com.au -u steve \
+                                    -f /Users/steve/Experiment1/"
+
+    If present, metadata is harvested from:
+      <path>/metadata/schema.txt
+      <path>/metadata/<dataset_name>_metadata.csv
+      <path>/metadata/<dataset_name>_metadata.json
+      <path>/metadata/<dataset_name>_<filename>_metadata.csv
+      <path>/metadata/<dataset_name>_<filename>_metadata.json
+
+    """
+
+    setup_logging()
+
+    parser, options = get_config()
+
+    validate_config(parser, options)
+
+    exclude_patterns = \
+        get_exclude_patterns_as_regex_list(options.exclude)
 
     pw = options.password
     if not pw:
@@ -779,6 +805,9 @@ def run():
                                        base_path=options.storage_base_path,
                                        exclude_patterns=exclude_patterns)
 
+    # raw_data_expt = create_experiment
+    # upload_directory_as_child_experiments(raw_data_expt)
+    #   create_project_fastq_expt
 
 if __name__ == "__main__":
     run()
