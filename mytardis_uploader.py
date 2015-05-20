@@ -17,6 +17,7 @@ import json
 import requests
 from requests.auth import HTTPBasicAuth
 from time import strftime
+from datetime import datetime
 import csv
 
 DEFAULT_STORAGE_MODE = 'upload'
@@ -84,7 +85,6 @@ class MyTardisUploader:
             # TODO: grab start and end time metadata from somewhere
             #       (eg from RTAComplete.txt for end,
             #           maybe Logs/CycleTimes.txt for start)
-            from datetime import datetime
             # "2015-05-19 00:52:38.612843"
             start_time = datetime.now().isoformat(' ')
             end_time = datetime.now().isoformat(' ')
@@ -383,11 +383,8 @@ class MyTardisUploader:
         return location
 
     def _get_path_from_url(self, url_string):
-
         from urlparse import urlparse
-
         o = urlparse(url_string)
-
         return o.path
 
     def _format_parameter_set(self, schema, parameter_list):
@@ -410,7 +407,8 @@ class MyTardisUploader:
         :param author_list: list[str]
         :param start_time: str
         :param end_time: str
-        :return: str
+        :return: experiment_url
+        :rtype: str
         """
 
         # test authors ...
@@ -428,7 +426,7 @@ class MyTardisUploader:
             u'title': title,
         }
 
-        if author_list:
+        if isinstance(author_list, list):
             exp_dict[u'authors': author_list]
         if start_time:
             exp_dict[u'start_time'] = start_time
@@ -558,6 +556,8 @@ def setup_logging():
 
     logger.addHandler(console_handler)
     logger.setLevel(logging.DEBUG)
+
+    return logger
 
 
 def add_config_args(parser):
