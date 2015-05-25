@@ -467,7 +467,8 @@ class MyTardisUploader:
 
     def upload_file(self, file_path, dataset_path,
                     parameter_sets_list=None,
-                    replica_url=''):
+                    replica_url='',
+                    md5_checksum=None):
         # print upload_file('cli.py',
         #                   '/api/v1/dataset/143/').headers['location']
 
@@ -484,11 +485,13 @@ class MyTardisUploader:
         # Hack to work around MyTardis not accepting
         # files of zero bytes
         # file_size = (file_size if file_size > 0 else -1)
+        if not md5_checksum:
+            md5_checksum = self._md5_file_calc(file_path)
 
         file_dict = {
             u'dataset': dataset_path,
             u'filename': filename,
-            u'md5sum': self._md5_file_calc(file_path),
+            u'md5sum': md5_checksum,
             u'mimetype': mimetypes.guess_type(file_path)[0],
             u'size': file_size,
             u'parameter_sets': parameter_sets_list,
