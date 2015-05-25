@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 __author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
 
-import os
-from os.path import join
-from os.path import split as psplit
+import sys
 from urlparse import urlparse
 import csv
 from datetime import datetime
+
+import os
+from os.path import join
 from dateutil import parser as dateparser
+
 from mytardis_uploader import MyTardisUploader
 from mytardis_uploader import setup_logging, get_config, validate_config
 from mytardis_uploader import get_exclude_patterns_as_regex_list
+
 
 def get_run_metadata(run_path):
     """
@@ -204,7 +207,13 @@ if __name__ == "__main__":
         run_metadata['description'] = "Automatically ingested by %s on %s" % \
                            (uploader.user_agent, datetime.now().isoformat(' '))
 
-    run_expt_url = create_run_experiment(run_metadata, uploader)
+    try:
+        run_expt_url = create_run_experiment(run_metadata, uploader)
+    except:
+        logger.error("Failed to create Experiment for sequencing run: %s",
+                     run_path)
+        sys.exit(1)
+
     # take just the path of the experiment, eg /api/v1/experiment/187/
     run_expt_url = urlparse(run_expt_url).path
 
@@ -226,7 +235,14 @@ if __name__ == "__main__":
                     'institute': run_metadata['institute'],
                     'end_time': run_metadata['end_time'],
                     }
-        project_url = create_project_experiment(metadata, uploader)
+
+        try:
+            project_url = create_project_experiment(metadata, uploader)
+        except:
+            logger.error("Failed to create Experiment for project: %s",
+                         project)
+            sys.exit(1)
+
         project_url = urlparse(project_url).path
 
         # create a Dataset for each project, associated with both
@@ -234,9 +250,16 @@ if __name__ == "__main__":
         samples_in_project = [s['SampleID'] for s in samplesheet]
         sample_desc = 'FASTQ reads for samples ' + ', '.join(samples_in_project)
         metadata = {'description': project_title}
-        dataset_url = create_fastq_dataset(metadata,
-                                           [project_url, run_expt_url],
-                                           uploader)
+
+        try:
+            dataset_url = create_fastq_dataset(metadata,
+                                               [project_url, run_expt_url],
+                                               uploader)
+        except:
+            logger.error("Failed to create Dataset for project: %s",
+                         project)
+            sys.exit(1)
+
         dataset_url = urlparse(dataset_url).path
 
         logger.info("Created FASTQ dataset: %s (%s)", dataset_url, project)
@@ -256,10 +279,15 @@ if __name__ == "__main__":
                                 uploader.storage_box_location,
                                 fastq_path)
 
-                        uploader.upload_file(
-                            fastq_path, dataset_url,
-                            parameter_sets_list=None,
-                            replica_url=replica_url)
+                        try:
+                            uploader.upload_file(
+                                fastq_path, dataset_url,
+                                parameter_sets_list=None,
+                                replica_url=replica_url)
+                        except:
+                            logger.error("Failed to register Datafile: "
+                                         "%s", fastq_path)
+                            sys.exit(1)
 
                         logger.info("Added Datafile: %s (%s)",
                                     fastq_path,
