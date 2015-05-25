@@ -85,7 +85,7 @@ def create_run_experiment(metadata, uploader):
     return uploader.create_experiment(metadata['title'],
                                       metadata['institute'],
                                       metadata['description'],
-                                      metadata['end_time'])
+                                      end_time=metadata['end_time'])
 
 def create_project_experiment(metadata, uploader):
     """
@@ -97,7 +97,7 @@ def create_project_experiment(metadata, uploader):
     return uploader.create_experiment(metadata['title'],
                                       metadata['institute'],
                                       metadata['description'],
-                                      metadata['end_time'])
+                                      end_time=metadata['end_time'])
 
 def create_fastq_dataset(metadata, experiments, uploader):
     """
@@ -209,9 +209,10 @@ if __name__ == "__main__":
 
     try:
         run_expt_url = create_run_experiment(run_metadata, uploader)
-    except:
+    except Exception, e:
         logger.error("Failed to create Experiment for sequencing run: %s",
                      run_path)
+        logger.debug("Exception: %s", e)
         sys.exit(1)
 
     # take just the path of the experiment, eg /api/v1/experiment/187/
@@ -238,9 +239,10 @@ if __name__ == "__main__":
 
         try:
             project_url = create_project_experiment(metadata, uploader)
-        except:
+        except Exception, e:
             logger.error("Failed to create Experiment for project: %s",
                          project)
+            logger.debug("Exception: %s", e)
             sys.exit(1)
 
         project_url = urlparse(project_url).path
@@ -255,9 +257,10 @@ if __name__ == "__main__":
             dataset_url = create_fastq_dataset(metadata,
                                                [project_url, run_expt_url],
                                                uploader)
-        except:
+        except Exception, e:
             logger.error("Failed to create Dataset for project: %s",
                          project)
+            logger.debug("Exception: %s", e)
             sys.exit(1)
 
         dataset_url = urlparse(dataset_url).path
@@ -284,9 +287,10 @@ if __name__ == "__main__":
                                 fastq_path, dataset_url,
                                 parameter_sets_list=None,
                                 replica_url=replica_url)
-                        except:
+                        except Exception, e:
                             logger.error("Failed to register Datafile: "
                                          "%s", fastq_path)
+                            logger.debug("Exception: %s", e)
                             sys.exit(1)
 
                         logger.info("Added Datafile: %s (%s)",
