@@ -394,6 +394,7 @@ class MyTardisUploader:
         return parameter_set
 
     def create_experiment(self, title, institution, description,
+                          parameter_sets_list=None,
                           author_list=None,
                           start_time='',
                           end_time='',
@@ -404,6 +405,7 @@ class MyTardisUploader:
         :param title: str
         :param institution: str
         :param description: str
+        :param parameter_sets_list: dict
         :param author_list: list[str]
         :param start_time: str
         :param end_time: str
@@ -425,8 +427,9 @@ class MyTardisUploader:
             u'institution_name': institution,
             u'title': title,
         }
-
-        if isinstance(author_list, list):
+        if parameter_sets_list:
+            exp_dict[u'parameter_sets'] = parameter_sets_list
+        if author_list and isinstance(author_list, list):
             exp_dict[u'authors': author_list]
         if start_time:
             exp_dict[u'start_time'] = start_time
