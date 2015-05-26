@@ -300,7 +300,11 @@ class MyTardisUploader:
                                     headers=headers)
         myrequest.get_method = lambda: method
         # print myrequest.get_full_url() + " " + myrequest.data
-        output = urllib2.urlopen(myrequest)
+        try:
+            output = urllib2.urlopen(myrequest)
+        except urllib2.HTTPError, e:
+            logger.error(e)
+            raise e
 
         return output
 
