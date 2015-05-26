@@ -10,6 +10,8 @@ import os
 from os.path import join
 from dateutil import parser as dateparser
 
+import xmltodict
+
 from mytardis_uploader import MyTardisUploader
 from mytardis_uploader import setup_logging, get_config, validate_config
 from mytardis_uploader import get_exclude_patterns_as_regex_list
@@ -29,7 +31,22 @@ def get_run_metadata(run_path):
         options.path,
         options.storage_base_path
     )
-    metadata['title'] = "Sequencing run %s" % metadata['run_dir']
+
+    runinfo_parameters = runinfo_parser(run_path)
+    instrument_config = illumina_config_parser(run_path)
+
+    metadata['instrument_model'] = instrument_config['instrument_model']
+    metadata['title'] = "%s sequencing run %s" % (
+        metadata['instrument_model'],
+        metadata['run_dir'])
+
+    parameters = merge_dicts(runinfo_parameters, instrument_config)
+    parameters = dict_to_parameter_list(parameters)
+
+    # parameter_list.append({u'name': param_name, u'value': param_value})
+    schema = 'http://www.tardis.edu.au/schemas/sequencing/illumina/run'
+    metadata['parameter_sets'] = [{u'schema': schema,
+                                  u'parameters': parameters}]
 
     return metadata
 
@@ -49,7 +66,7 @@ def get_samplesheet(file_path):
 # def unique(seq):
 #     seen = set()
 #     seen_add = seen.add
-#     return [ x for x in seq if not (x in seen or seen_add(x))]
+#     return [x for x in seq if not (x in seen or seen_add(x))]
 
 def get_samplesheet_projects(samplesheet):
     """
@@ -75,6 +92,115 @@ def rta_complete_parser(run_path):
     datetime = dateparser.parse("%s %s" % (day, time))
     return datetime, version
 
+def runinfo_parser(run_path):
+    """
+
+    Matches some or all of the fields defined in schema:
+    http://www.tardis.edu.au/schemas/sequencing/illumina/run
+
+    :param run_path:
+    :rtype: dict
+    """
+    with open(join(run_path, "RunInfo.xml"), 'r') as f:
+        runinfo = xmltodict.parse(f)['RunInfo']['Run']
+
+    info = {
+            u'run_id': runinfo['@Id'],
+            u'run_number': runinfo['@Number'],
+            u'flowcell_id': runinfo['Flowcell'],
+            u'instrument_id': runinfo['Instrument']
+           }
+
+    reads = runinfo['Reads']['Read']
+
+    # NOTE: We don't do this since generating many
+    #       numbered parameter names isn't cleanly
+    #       compatible with the rigidly defined parameter
+    #       sets defined by a MyTardis schema.
+    # for read in reads:
+    #     readtype = u'read_'
+    #     if read['@IsIndexedRead'] == 'Y':
+    #         readtype = u'read_index_'
+    #     readtype += read['@Number'] + u'_cycles'
+    #     info.append({readtype: read['@NumCycles']})
+
+    cycle_list = []
+    index_reads = []
+    for read in reads:
+        if read['@IsIndexedRead'] == 'Y':
+            index_reads.append(read['@Number'])
+        # we assume reads are always in order of Number
+        cycle_list.append(read['@NumCycles'])
+
+    info['read_cycles'] = ', '.join(cycle_list)
+    info['index_reads'] = ', '.join(index_reads)
+
+    # Currently not capturing this metadata
+    # runinfo['RunInfo']['Run']['FlowcellLayout']['@LaneCount']
+    # runinfo['RunInfo']['Run']['FlowcellLayout']['@SurfaceCount']
+    # runinfo['RunInfo']['Run']['FlowcellLayout']['@SwathCount']
+    # runinfo['RunInfo']['Run']['FlowcellLayout']['@TileCount']
+
+    return info
+
+def illumina_config_parser(run_path):
+    """
+    Extacts data from an Illumina run Config/*_Effective.cfg file.
+
+    Returns a dictionary with key/values of interest, where keys have
+    the [section] from the Windows INI-style file are prepended,
+    separated by colon. eg
+
+    {"section_name:variable_name": "value"}
+
+    :param run_path: str
+    :rtype: dict
+    """
+    # we find the approriate config file
+    config_filename = None
+    for filename in os.listdir(join(run_path, 'Config')):
+        if "_Effective.cfg" in filename:
+            config_filename = filename
+    if not config_filename:
+        logger.error("Cannot find Config/*_Effective.cfg file")
+        return
+
+    # we don't use ConfigParser since for whatever reason it can't handle
+    # these files, despite looking like a mostly sane Windows INI-style
+    allinfo = {}
+    section = None
+    with open(join(run_path, 'Config', config_filename), 'r') as f:
+        for l in f:
+            if l[0] == ';':
+                continue
+            if l[0] == '[':
+                section = l[1:].split(']')[0]
+            if '=' in l:
+                s = l.split('=')
+                k = s[0].strip()
+                if ';' in l:
+                    v = s[1].split(';')[0]
+                v = v.strip()
+                allinfo['%s:%s' % (section, k)] = v
+    info = {}
+    if 'system:instrumenttype' in allinfo:
+        info['instrument_model'] = allinfo['system:instrumenttype']
+
+    return info
+
+def dict_to_parameter_list(d):
+    """
+
+    :param d: list[dict]
+    :rtype: list[dict]
+    """
+    return [{u'name': k, u'value': v} for k, v in d.items()]
+
+def merge_dicts(a, b):
+    merged = a.copy()
+    merged.update(b)
+    return merged
+
 def create_run_experiment(metadata, uploader):
     """
 
@@ -82,10 +208,12 @@ def create_run_experiment(metadata, uploader):
     :param uploader: mytardis_uploader.MyTardisUploader
     :rtype: str
     """
-    return uploader.create_experiment(metadata['title'],
-                                      metadata['institute'],
-                                      metadata['description'],
-                                      end_time=metadata['end_time'])
+    return uploader.create_experiment(
+        metadata['title'],
+        metadata['institute'],
+        metadata['description'],
+        end_time=metadata['end_time'],
+        parameter_sets_list=metadata['parameter_sets'])
 
 def create_project_experiment(metadata, uploader):
     """
@@ -187,8 +315,8 @@ if __name__ == "__main__":
 
     validate_config(parser, options)
 
-    exclude_patterns = \
-        get_exclude_patterns_as_regex_list(options.exclude)
+    # exclude_patterns = \
+    #     get_exclude_patterns_as_regex_list(options.exclude)
 
     uploader = MyTardisUploader(
         options.url,
@@ -212,7 +340,7 @@ if __name__ == "__main__":
     except Exception, e:
         logger.error("Failed to create Experiment for sequencing run: %s",
                      run_path)
-        logger.debug("Exception: %s", e)
+        logger.error("Exception: %s", e)
         sys.exit(1)
 
     # take just the path of the experiment, eg /api/v1/experiment/187/
@@ -246,6 +374,8 @@ if __name__ == "__main__":
             sys.exit(1)
 
         project_url = urlparse(project_url).path
+
+        logger.info("Created Project Experiment: %s (%s)", project_url, project)
 
         # create a Dataset for each project, associated with both
         # the overall run Experiment, and the project Experiment
@@ -298,8 +428,4 @@ if __name__ == "__main__":
                                     dataset_url)
 
     logger.info("Ingestion of run %s complete !", run_metadata['run_dir'])
-
-# TODO: extra more metadata
-# data structure from parameter_sets_list, for create_dataset & upload_file
-# parameter_list.append({u'name': param_name, u'value': param_value})
-# parameter_set = {'schema': schema, 'parameters': parameter_list}
+    sys.exit(0)
