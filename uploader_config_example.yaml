@@ -20,6 +20,29 @@ exclude:
     - '/Basecall_Stats_\w+$'
     - '/Basecall_Stats_\w+/.*'
 
+experiment_schema:
+    # no experiment_type makes it the default
+    - url: http://www.tardis.edu.au/schemas/sequencing/illumina/run
+    - url: http://www.tardis.edu.au/schemas/sequencing/illumina/demultiplexed_samples
+      experiment_type: demultiplexed_samples
+
+dataset_schema:
+    # no dataset_type makes it the default
+    - url: http://www.tardis.edu.au/schemas/sequencing/illumina/run
+    # or we can specify a dataset type
+    - url: http://www.tardis.edu.au/schemas/sequencing/raw_reads
+      dataset_type: fastq
+    - url: http://www.tardis.edu.au/schemas/sequencing/aligned_reads
+      dataset_type: bam
+
+datafile_schema:
+    - url: http://www.tardis.edu.au/schemas/sequencing/fastq
+      datafile_type: fastq
+    - url: http://www.tardis.edu.au/schemas/sequencing/fastqc
+      datafile_type: fastqc
+    - url: http://www.tardis.edu.au/schemas/sequencing/bam
+      datafile_type: bam
+
 username: powerfuladmin
 
 # don't make this config file world readable !
