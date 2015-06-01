@@ -44,7 +44,7 @@ def get_run_metadata(run_path):
     parameters = dict_to_parameter_list(parameters)
 
     # parameter_list.append({u'name': param_name, u'value': param_value})
-    schema = 'http://www.tardis.edu.au/schemas/sequencing/illumina/run'
+    schema = 'http://www.tardis.edu.au/schemas/ngs/illumina/run'
     metadata['parameter_sets'] = [{u'schema': schema,
                                   u'parameters': parameters}]
 
@@ -113,27 +113,18 @@ def runinfo_parser(run_path):
 
     reads = runinfo['Reads']['Read']
 
-    # NOTE: We don't do this since generating many
-    #       numbered parameter names isn't cleanly
-    #       compatible with the rigidly defined parameter
-    #       sets defined by a MyTardis schema.
-    # for read in reads:
-    #     readtype = u'read_'
-    #     if read['@IsIndexedRead'] == 'Y':
-    #         readtype = u'read_index_'
-    #     readtype += read['@Number'] + u'_cycles'
-    #     info.append({readtype: read['@NumCycles']})
-
     cycle_list = []
-    index_reads = []
+    #index_reads = []
     for read in reads:
         if read['@IsIndexedRead'] == 'Y':
-            index_reads.append(read['@Number'])
-        # we assume reads are always in order of Number
-        cycle_list.append(read['@NumCycles'])
+            #index_reads.append(read['@Number'])
+            # we wrap the index reads in brackets
+            cycle_list.append("(%s)" % read['@NumCycles'])
+        else:
+            cycle_list.append(read['@NumCycles'])
 
     info['read_cycles'] = ', '.join(cycle_list)
-    info['index_reads'] = ', '.join(index_reads)
+    #info['index_reads'] = ', '.join(index_reads)
 
     # Currently not capturing this metadata
     # runinfo['RunInfo']['Run']['FlowcellLayout']['@LaneCount']
