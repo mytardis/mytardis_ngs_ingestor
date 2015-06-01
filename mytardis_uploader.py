@@ -304,6 +304,7 @@ class MyTardisUploader:
             output = urllib2.urlopen(myrequest)
         except urllib2.HTTPError, e:
             logger.error(e)
+            logger.error(e.read())
             raise e
 
         return output
