@@ -46,7 +46,7 @@ def get_run_metadata(run_path):
     # parameter_list.append({u'name': param_name, u'value': param_value})
     schema = 'http://www.tardis.edu.au/schemas/ngs/illumina/run'
     metadata['parameter_sets'] = [{u'schema': schema,
-                                  u'parameters': parameters}]
+                                   u'parameters': parameters}]
 
     return metadata
 
@@ -216,7 +216,10 @@ def create_project_experiment(metadata, uploader):
     return uploader.create_experiment(metadata['title'],
                                       metadata['institute'],
                                       metadata['description'],
-                                      end_time=metadata['end_time'])
+                                      end_time=metadata['end_time'],
+                                      parameter_sets_list=metadata[
+                                          'parameter_sets']
+                                      )
 
 def create_fastq_dataset(metadata, experiments, uploader):
     """
@@ -257,7 +260,7 @@ def get_sample_directories(project_path):
     :return: Iterator
     """
     for item in os.listdir(project_path):
-        sample_path = os.path.join(proj_path, item)
+        sample_path = os.path.join(project_path, item)
         if os.path.isdir(sample_path) and ('Sample_' in item):
             yield sample_path
 
@@ -299,10 +302,11 @@ def get_shared_storage_replica_url(storage_box_location, file_path):
                                       storage_box_location)
         return replica_url
 
-if __name__ == "__main__":
+def run_main():
     logger = setup_logging()
 
     parser, options = get_config()
+    global options
 
     validate_config(parser, options)
 
@@ -355,6 +359,19 @@ if __name__ == "__main__":
                     'institute': run_metadata['institute'],
                     'end_time': run_metadata['end_time'],
                     }
+
+        project_parameters = {}
+        # Project Dataset parameters are suffixed with '__project'
+        # (to prevent name clashes with duplicate parameters at the
+        #  Run Dataset level)
+        for p in run_metadata['parameter_sets'][0]['parameters']:
+            project_parameters[u'%s__project' % p['name']] = p['value']
+
+        project_parameter_list = dict_to_parameter_list(project_parameters)
+        project_schema = "http://www.tardis.edu.au/" \
+                         "schemas/ngs/illumina/demultiplexed_samples"
+        metadata['parameter_sets'] = [{u'schema': project_schema,
+                                      u'parameters': project_parameter_list}]
 
         try:
             project_url = create_project_experiment(metadata, uploader)
@@ -420,3 +437,6 @@ if __name__ == "__main__":
 
     logger.info("Ingestion of run %s complete !", run_metadata['run_dir'])
     sys.exit(0)
+
+if __name__ == "__main__":
+    run_main()
