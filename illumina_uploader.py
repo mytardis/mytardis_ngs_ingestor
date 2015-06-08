@@ -14,7 +14,7 @@ import xmltodict
 
 from mytardis_uploader import MyTardisUploader
 from mytardis_uploader import setup_logging, get_config, validate_config
-from mytardis_uploader import get_exclude_patterns_as_regex_list
+# from mytardis_uploader import get_exclude_patterns_as_regex_list
 
 
 def get_run_metadata(run_path):
@@ -50,6 +50,36 @@ def get_run_metadata(run_path):
 
     return metadata
 
+
+def get_project_metadata(proj_id, run_metadata):
+    end_date = run_metadata['end_time'].split()[0]
+    project_title = 'Sequencing Project, %s, %s' % (proj_id, end_date)
+    if proj_id == 'Undetermined_indices':
+        project_title = '%s, %s, %s' % (proj_id,
+                                        run_metadata['run_dir'],
+                                        end_date)
+    proj_metadata = {'title': project_title,
+                     'description': project_title,
+                     'institute': run_metadata['institute'],
+                     'end_time': run_metadata['end_time'],
+                     }
+
+    project_parameters = {}
+    # Project Dataset parameters are suffixed with '__project'
+    # (to prevent name clashes with duplicate parameters at the
+    #  Run Dataset level)
+    for p in run_metadata['parameter_sets'][0]['parameters']:
+        project_parameters[u'%s__project' % p['name']] = p['value']
+
+    project_parameter_list = dict_to_parameter_list(project_parameters)
+    project_schema = "http://www.tardis.edu.au/" \
+                     "schemas/ngs/illumina/demultiplexed_samples"
+    proj_metadata['parameter_sets'] = [{u'schema': project_schema,
+                                        u'parameters': project_parameter_list}]
+
+    return proj_metadata
+
+
 def get_samplesheet(file_path):
     # FCID,Lane,SampleID,SampleRef,Index,Description,Control,Recipe,
     # Operator,SampleProject
@@ -67,6 +97,7 @@ def get_samplesheet(file_path):
 #     seen = set()
 #     seen_add = seen.add
 #     return [x for x in seq if not (x in seen or seen_add(x))]
+
 
 def get_samplesheet_projects(samplesheet):
     """
@@ -89,8 +120,9 @@ def rta_complete_parser(run_path):
     with open(join(run_path, "RTAComplete.txt"), 'r') as f:
         day, time, version = f.readline().split(',')
 
-    datetime = dateparser.parse("%s %s" % (day, time))
-    return datetime, version
+    date_time = dateparser.parse("%s %s" % (day, time))
+    return date_time, version
+
 
 def runinfo_parser(run_path):
     """
@@ -104,27 +136,25 @@ def runinfo_parser(run_path):
     with open(join(run_path, "RunInfo.xml"), 'r') as f:
         runinfo = xmltodict.parse(f)['RunInfo']['Run']
 
-    info = {
-            u'run_id': runinfo['@Id'],
+    info = {u'run_id': runinfo['@Id'],
             u'run_number': runinfo['@Number'],
             u'flowcell_id': runinfo['Flowcell'],
-            u'instrument_id': runinfo['Instrument']
-           }
+            u'instrument_id': runinfo['Instrument']}
 
     reads = runinfo['Reads']['Read']
 
     cycle_list = []
-    #index_reads = []
+    # index_reads = []
     for read in reads:
         if read['@IsIndexedRead'] == 'Y':
-            #index_reads.append(read['@Number'])
+            # index_reads.append(read['@Number'])
             # we wrap the index reads in brackets
             cycle_list.append("(%s)" % read['@NumCycles'])
         else:
             cycle_list.append(read['@NumCycles'])
 
     info['read_cycles'] = ', '.join(cycle_list)
-    #info['index_reads'] = ', '.join(index_reads)
+    # info['index_reads'] = ', '.join(index_reads)
 
     # Currently not capturing this metadata
     # runinfo['RunInfo']['Run']['FlowcellLayout']['@LaneCount']
@@ -133,6 +163,7 @@ def runinfo_parser(run_path):
     # runinfo['RunInfo']['Run']['FlowcellLayout']['@TileCount']
 
     return info
+
 
 def illumina_config_parser(run_path):
     """
@@ -169,6 +200,7 @@ def illumina_config_parser(run_path):
             if '=' in l:
                 s = l.split('=')
                 k = s[0].strip()
+                v = s[1]
                 if ';' in l:
                     v = s[1].split(';')[0]
                 v = v.strip()
@@ -179,6 +211,7 @@ def illumina_config_parser(run_path):
 
     return info
 
+
 def dict_to_parameter_list(d):
     """
 
@@ -187,10 +220,12 @@ def dict_to_parameter_list(d):
     """
     return [{u'name': k, u'value': v} for k, v in d.items()]
 
+
 def merge_dicts(a, b):
     merged = a.copy()
     merged.update(b)
     return merged
+
 
 def create_run_experiment(metadata, uploader):
     """
@@ -205,6 +240,7 @@ def create_run_experiment(metadata, uploader):
         metadata['description'],
         end_time=metadata['end_time'],
         parameter_sets_list=metadata['parameter_sets'])
+
 
 def create_project_experiment(metadata, uploader):
     """
@@ -221,6 +257,7 @@ def create_project_experiment(metadata, uploader):
                                           'parameter_sets']
                                       )
 
+
 def create_fastq_dataset(metadata, experiments, uploader):
     """
 
@@ -232,6 +269,31 @@ def create_fastq_dataset(metadata, experiments, uploader):
     return uploader.create_dataset(metadata['description'],
                                    experiments,
                                    parameter_sets_list=None)
+
+def register_project_datafiles(proj_path, dataset_url, uploader):
+    # Upload datafiles for the FASTQ reads in the project, for each Sample
+    for sample_path in get_sample_directories(proj_path):
+        for fastq_path in get_fastq_read_files(sample_path):
+                replica_url = fastq_path
+                if uploader.storage_mode == 'shared':
+                    replica_url = get_shared_storage_replica_url(
+                        uploader.storage_box_location,
+                        fastq_path)
+
+                try:
+                    uploader.upload_file(
+                        fastq_path, dataset_url,
+                        parameter_sets_list=None,
+                        replica_url=replica_url)
+                except Exception, e:
+                    logger.error("Failed to register Datafile: "
+                                 "%s", fastq_path)
+                    logger.debug("Exception: %s", e)
+                    sys.exit(1)
+
+                logger.info("Added Datafile: %s (%s)",
+                            fastq_path,
+                            dataset_url)
 
 def get_project_directories(bcl2fastq_out_dir):
     """
@@ -251,6 +313,7 @@ def get_project_directories(bcl2fastq_out_dir):
         if os.path.isdir(proj_path) and ('Project_' in item):
             yield proj_path
 
+
 def get_sample_directories(project_path):
     """
     Returns an iterator that gives "Sample_" directories from within a
@@ -263,6 +326,7 @@ def get_sample_directories(project_path):
         sample_path = os.path.join(project_path, item)
         if os.path.isdir(sample_path) and ('Sample_' in item):
             yield sample_path
+
 
 def get_fastq_read_files(sample_path):
     """
@@ -280,6 +344,7 @@ def get_fastq_read_files(sample_path):
         if os.path.splitext(item)[-1:][0] == '.gz' and \
            os.path.isfile(fastq_path):
             yield fastq_path
+
 
 def get_shared_storage_replica_url(storage_box_location, file_path):
     """
@@ -302,8 +367,10 @@ def get_shared_storage_replica_url(storage_box_location, file_path):
                                       storage_box_location)
         return replica_url
 
+
 def run_main():
     logger = setup_logging()
+    global logger
 
     parser, options = get_config()
     global options
@@ -321,7 +388,7 @@ def run_main():
         storage_box_location=options.storage_base_path
     )
 
-    # create an Experiment representing the overall sequencing run
+    # Create an Experiment representing the overall sequencing run
     run_path = options.path
     run_metadata = get_run_metadata(run_path)
     run_metadata['institute'] = options.institute
@@ -338,7 +405,7 @@ def run_main():
         logger.error("Exception: %s", e)
         sys.exit(1)
 
-    # take just the path of the experiment, eg /api/v1/experiment/187/
+    # Take just the path of the experiment, eg /api/v1/experiment/187/
     run_expt_url = urlparse(run_expt_url).path
 
     logger.info("Created run experiment: %s (%s)",
@@ -347,93 +414,69 @@ def run_main():
 
     samplesheet, chemistry = get_samplesheet(join(run_path, 'SampleSheet.csv'))
 
-    # get unique project names
+    # Get unique project names
     projects = list(set([s['SampleProject'] for s in samplesheet]))
+    # Treat the 'Undetermined_indices' directory as a (special) project
+    projects.append('Undetermined_indices')
 
-    for project in projects:
-        # create an Experiment for each project in the run
-        end_date = run_metadata['end_time'].split()[0]
-        project_title = 'Sequencing Project, %s, %s' % (project, end_date)
-        metadata = {'title': project_title,
-                    'description': project_title,
-                    'institute': run_metadata['institute'],
-                    'end_time': run_metadata['end_time'],
-                    }
+    for proj_id in projects:
+        proj_metadata = get_project_metadata(proj_id, run_metadata)
 
-        project_parameters = {}
-        # Project Dataset parameters are suffixed with '__project'
-        # (to prevent name clashes with duplicate parameters at the
-        #  Run Dataset level)
-        for p in run_metadata['parameter_sets'][0]['parameters']:
-            project_parameters[u'%s__project' % p['name']] = p['value']
+        # Create an Experiment for each real Project in the run
+        # (except Undetermined_indices Datasets which will only be associated
+        #  with the parent 'run' Experiment)
+        if proj_id != 'Undetermined_indices':
+            try:
+                project_url = create_project_experiment(proj_metadata, uploader)
+            except Exception, e:
+                logger.error("Failed to create Experiment for project: %s",
+                             proj_id)
+                logger.debug("Exception: %s", e)
+                sys.exit(1)
 
-        project_parameter_list = dict_to_parameter_list(project_parameters)
-        project_schema = "http://www.tardis.edu.au/" \
-                         "schemas/ngs/illumina/demultiplexed_samples"
-        metadata['parameter_sets'] = [{u'schema': project_schema,
-                                      u'parameters': project_parameter_list}]
+            project_url = urlparse(project_url).path
 
-        try:
-            project_url = create_project_experiment(metadata, uploader)
-        except Exception, e:
-            logger.error("Failed to create Experiment for project: %s",
-                         project)
-            logger.debug("Exception: %s", e)
-            sys.exit(1)
+            logger.info("Created Project Experiment: %s (%s)",
+                        project_url,
+                        proj_id)
 
-        project_url = urlparse(project_url).path
+        # samples_in_project = [s['SampleID'] for s in samplesheet]
+        # sample_desc = 'FASTQ reads for samples ' + ', '.join(samples_in_project)
 
-        logger.info("Created Project Experiment: %s (%s)", project_url, project)
+        dataset_metadata = proj_metadata.copy()
 
-        # create a Dataset for each project, associated with both
+        # Create a Dataset for each project, associated with both
         # the overall run Experiment, and the project Experiment
-        samples_in_project = [s['SampleID'] for s in samplesheet]
-        sample_desc = 'FASTQ reads for samples ' + ', '.join(samples_in_project)
-        metadata = {'description': project_title}
-
         try:
-            dataset_url = create_fastq_dataset(metadata,
-                                               [project_url, run_expt_url],
+            parent_expt_urls = [project_url, run_expt_url]
+            # We associate the Undetermined_indices FASTQ reads only
+            # with the overall 'run' Experiment (unlike proper Projects
+            # which also have their own Project Experiment).
+            if proj_id == 'Undetermined_indices':
+                parent_expt_urls = [run_expt_url]
+            dataset_url = create_fastq_dataset(dataset_metadata,
+                                               parent_expt_urls,
                                                uploader)
         except Exception, e:
             logger.error("Failed to create Dataset for project: %s",
-                         project)
+                         proj_id)
             logger.debug("Exception: %s", e)
             sys.exit(1)
 
+        # Take just the path, eg: /api/v1/dataset/363
         dataset_url = urlparse(dataset_url).path
 
-        logger.info("Created FASTQ dataset: %s (%s)", dataset_url, project)
+        logger.info("Created FASTQ dataset: %s (%s)", dataset_url, proj_id)
 
-        # the directory where bcl2fastq puts its output,
+        # The directory where bcl2fastq puts its output,
         # in Project_* directories
         bcl2fastq_output_dir = join(run_path, run_metadata['run_dir']+'.pc')
 
-        # upload datafiles for the FASTQ reads in the project,
-        # for each Sample
-        for proj_path in get_project_directories(bcl2fastq_output_dir):
-            for sample_path in get_sample_directories(proj_path):
-                for fastq_path in get_fastq_read_files(sample_path):
-                        replica_url = fastq_path
-                        if uploader.storage_mode == 'shared':
-                            replica_url = get_shared_storage_replica_url(
-                                uploader.storage_box_location,
-                                fastq_path)
+        proj_path = os.path.join(bcl2fastq_output_dir, 'Project_' + proj_id)
+        if proj_id == 'Undetermined_indices':
+            proj_path = os.path.join(bcl2fastq_output_dir, proj_id)
 
-                        try:
-                            uploader.upload_file(
-                                fastq_path, dataset_url,
-                                parameter_sets_list=None,
-                                replica_url=replica_url)
-                        except Exception, e:
-                            logger.error("Failed to register Datafile: "
-                                         "%s", fastq_path)
-                            logger.debug("Exception: %s", e)
-                            sys.exit(1)
-
-                        logger.info("Added Datafile: %s (%s)",
-                                    fastq_path,
-                                    dataset_url)
+        register_project_datafiles(proj_path, dataset_url, uploader)
 
     logger.info("Ingestion of run %s complete !", run_metadata['run_dir'])
     sys.exit(0)
