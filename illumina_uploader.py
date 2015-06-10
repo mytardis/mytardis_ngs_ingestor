@@ -33,25 +33,37 @@ def get_run_metadata(run_path):
     )
 
     runinfo_parameters = runinfo_parser(run_path)
+    runinfo_parameters['rta_version'] = rta_version
     instrument_config = illumina_config_parser(run_path)
 
     metadata['instrument_model'] = instrument_config['instrument_model']
     metadata['title'] = "%s sequencing run %s" % (
         metadata['instrument_model'],
-        metadata['run_dir'])
+        metadata['run_dir']
+    )
 
-    parameters = merge_dicts(runinfo_parameters, instrument_config)
-    parameters = dict_to_parameter_list(parameters)
+    samplesheet, chemistry = get_samplesheet(join(run_path, 'SampleSheet.csv'))
+    samplesheet_common_fields = {'chemistry': chemistry,
+                                 'operator_name':
+                                     samplesheet[0].get('Operator', '')
+                                 }
+
+    parameters = merge_dicts(runinfo_parameters,
+                             instrument_config,
+                             samplesheet_common_fields)
+    parameter_list = dict_to_parameter_list(parameters)
 
     # parameter_list.append({u'name': param_name, u'value': param_value})
     schema = 'http://www.tardis.edu.au/schemas/ngs/illumina/run'
     metadata['parameter_sets'] = [{u'schema': schema,
-                                   u'parameters': parameters}]
+                                   u'parameters': parameter_list}]
 
     return metadata
 
 
-def get_project_metadata(proj_id, run_metadata):
+def get_project_metadata(proj_id, run_metadata,
+                         schema='http://www.tardis.edu.au/schemas/ngs/project',
+                         param_suffix='project'):
     end_date = run_metadata['end_time'].split()[0]
     project_title = 'Sequencing Project, %s, %s' % (proj_id, end_date)
     if proj_id == 'Undetermined_indices':
@@ -64,21 +76,32 @@ def get_project_metadata(proj_id, run_metadata):
                      'end_time': run_metadata['end_time'],
                      }
 
-    project_parameters = {}
+    # project_parameters = run_metadata
     # Project Dataset parameters are suffixed with '__project'
-    # (to prevent name clashes with duplicate parameters at the
-    #  Run Dataset level)
-    for p in run_metadata['parameter_sets'][0]['parameters']:
-        project_parameters[u'%s__project' % p['name']] = p['value']
+    # (to prevent name clashes with identical parameters at the
+    #  Run Experiment level)
+    project_parameters = add_suffix_to_parameter_set(
+        run_metadata['parameter_sets'][0]['parameters'], param_suffix)
 
     project_parameter_list = dict_to_parameter_list(project_parameters)
-    project_schema = "http://www.tardis.edu.au/" \
-                     "schemas/ngs/illumina/demultiplexed_samples"
-    proj_metadata['parameter_sets'] = [{u'schema': project_schema,
+    proj_metadata['parameter_sets'] = [{u'schema': schema,
                                         u'parameters': project_parameter_list}]
 
     return proj_metadata
 
+def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
+    """
+    Adds a suffix ('__suffix') to the keys of a dictionary of MyTardis
+    parameters. Returns a copy of the dict with suffixes on keys.
+    (eg to prevent name clashes with identical parameters at the
+        Run Experiment level)
+    """
+    suffixed_parameters = {}
+    for p in parameters:
+        suffixed_parameters[u'%s%s%s' % (p['name'],
+                                         divider,
+                                         suffix)] = p['value']
+    return suffixed_parameters
 
 def get_samplesheet(file_path):
     # FCID,Lane,SampleID,SampleRef,Index,Description,Control,Recipe,
@@ -88,7 +111,7 @@ def get_samplesheet(file_path):
     with open(file_path, "rU") as f:
         reader = csv.DictReader(f)
         samples = [row for row in reader]
-        chemistry = samples[-1:][0]['FCID'].split('_')[-1:]
+        chemistry = samples[-1:][0]['FCID'].split('_')[-1:][0]
         del samples[-1:]
     return samples, chemistry
 
@@ -221,10 +244,21 @@ def dict_to_parameter_list(d):
     return [{u'name': k, u'value': v} for k, v in d.items()]
 
 
-def merge_dicts(a, b):
-    merged = a.copy()
-    merged.update(b)
-    return merged
+# def merge_dicts(a, b):
+#     merged = a.copy()
+#     merged.update(b)
+#     return merged
+
+# http://stackoverflow.com/a/26853961
+def merge_dicts(*dict_args):
+    """
+    Given any number of dicts, shallow copy and merge into a new dict,
+    precedence goes to key value pairs in latter dicts.
+    """
+    result = {}
+    for dictionary in dict_args:
+        result.update(dictionary)
+    return result
 
 
 def create_run_experiment(metadata, uploader):
@@ -268,12 +302,20 @@ def create_fastq_dataset(metadata, experiments, uploader):
     """
     return uploader.create_dataset(metadata['description'],
                                    experiments,
-                                   parameter_sets_list=None)
+                                   parameter_sets_list=metadata[
+                                       'parameter_sets']
+                                   )
 
 def register_project_datafiles(proj_path, dataset_url, uploader):
+    schema = 'http://www.tardis.edu.au/schemas/ngs/fastq'
     # Upload datafiles for the FASTQ reads in the project, for each Sample
-    for sample_path in get_sample_directories(proj_path):
+    for sample_path, sample_id in get_sample_directories(proj_path):
         for fastq_path in get_fastq_read_files(sample_path):
+                parameters = {'sample_id': sample_id}
+                datafile_parameter_sets = [
+                    {u'schema': schema,
+                     u'parameters': dict_to_parameter_list(parameters)}]
+
                 replica_url = fastq_path
                 if uploader.storage_mode == 'shared':
                     replica_url = get_shared_storage_replica_url(
@@ -283,7 +325,7 @@ def register_project_datafiles(proj_path, dataset_url, uploader):
                 try:
                     uploader.upload_file(
                         fastq_path, dataset_url,
-                        parameter_sets_list=None,
+                        parameter_sets_list=datafile_parameter_sets,
                         replica_url=replica_url)
                 except Exception, e:
                     logger.error("Failed to register Datafile: "
@@ -316,8 +358,8 @@ def get_project_directories(bcl2fastq_out_dir):
 
 def get_sample_directories(project_path):
     """
-    Returns an iterator that gives "Sample_" directories from within a
-    a bcl2fastq Project_ directory.
+    Returns an iterator that gives tuples of ("Sample_" directory, Sample ID)
+    from within a bcl2fastq Project_ directory.
 
     :param project_path: str
     :return: Iterator
@@ -325,7 +367,7 @@ def get_sample_directories(project_path):
     for item in os.listdir(project_path):
         sample_path = os.path.join(project_path, item)
         if os.path.isdir(sample_path) and ('Sample_' in item):
-            yield sample_path
+            yield sample_path, item.split('Sample_')[1]
 
 
 def get_fastq_read_files(sample_path):
@@ -420,7 +462,12 @@ def run_main():
     projects.append('Undetermined_indices')
 
     for proj_id in projects:
-        proj_metadata = get_project_metadata(proj_id, run_metadata)
+        proj_metadata = get_project_metadata(
+            proj_id,
+            run_metadata,
+            schema='http://www.tardis.edu.au/schemas/ngs/project',
+            param_suffix='project'
+        )
 
         # Create an Experiment for each real Project in the run
         # (except Undetermined_indices Datasets which will only be associated
@@ -443,7 +490,12 @@ def run_main():
         # samples_in_project = [s['SampleID'] for s in samplesheet]
         # sample_desc = 'FASTQ reads for samples ' + ', '.join(samples_in_project)
 
-        dataset_metadata = proj_metadata.copy()
+        dataset_metadata = get_project_metadata(
+            proj_id,
+            run_metadata,
+            schema='http://www.tardis.edu.au/schemas/ngs/raw_reads',
+            param_suffix='raw_reads'
+        )
 
         # Create a Dataset for each project, associated with both
         # the overall run Experiment, and the project Experiment
