@@ -115,6 +115,33 @@ def get_samplesheet(file_path):
         del samples[-1:]
     return samples, chemistry
 
+def samplesheet_to_dict_by_id(samplesheet_rows):
+    by_sample_id = {}
+    for sample in samplesheet_rows:
+        sample_id = sample['SampleID']
+        by_sample_id[sample_id] = sample.copy()
+        del by_sample_id[sample_id]['SampleID']
+
+    return by_sample_id
+
+def get_number_of_reads_fastq(filepath):
+    """
+    Count the number of reads in a (gzipped) FASTQ file.
+    Assumes fours lines per read.
+
+    :param filepath: string
+    :rtype: int
+    """
+
+    # TODO: This should (optionally?) extract the number of reads from
+    #       the associated FASTQC output - much faster !
+    
+    import subprocess
+    num = subprocess.check_output("zcat %s | echo $((`wc -l`/4))" % filepath,
+                                  shell=True)
+    return int(num.strip())
+
+
 # Copypasta from: https://goo.gl/KpWo1w
 # def unique(seq):
 #     seen = set()
@@ -306,12 +333,54 @@ def create_fastq_dataset(metadata, experiments, uploader):
                                        'parameter_sets']
                                    )
 
-def register_project_datafiles(proj_path, dataset_url, uploader):
+def register_project_datafiles(proj_path, samplesheet, dataset_url, uploader):
     schema = 'http://www.tardis.edu.au/schemas/ngs/fastq'
+
+    sample_dict = samplesheet_to_dict_by_id(samplesheet)
+
     # Upload datafiles for the FASTQ reads in the project, for each Sample
     for sample_path, sample_id in get_sample_directories(proj_path):
         for fastq_path in get_fastq_read_files(sample_path):
-                parameters = {'sample_id': sample_id}
+
+                # TODO: reference_genome, index_sequence, is_control, recipe,
+                #       operator, description, project
+                #
+                # == SampleRef,Index,Description,Control,Recipe,Operator,
+                #    SampleProject
+                #
+                # TODO: number_of_reads
+
+                # sample_id may not be in the SampleSheet dict
+                # if we are dealing the unaligned reads (eg sample_ids
+                # lane1, lane2 etc)
+                # So, we grab either the info for the sample_id, or
+                # we use an empty dict (where all params will then be
+                # the default missing values)
+                sampleinfo = sample_dict.get(sample_id, {})
+
+                reference_genome = sampleinfo.get('SampleRef', '')
+                index_sequence = sampleinfo.get('Index', '')
+                is_control = sampleinfo.get('Control', '')
+                recipe = sampleinfo.get('Recipe', '')
+                operator = sampleinfo.get('Operator', '')
+                description = sampleinfo.get('Description', '')
+                project = sampleinfo.get('SampleProject', '')
+
+                if options.fast:
+                    number_of_reads = 0
+                else:
+                    number_of_reads = get_number_of_reads_fastq(fastq_path)
+
+                parameters = {'sample_id': sample_id,
+                              'reference_genome': reference_genome,
+                              'index_sequence': index_sequence,
+                              'is_control': is_control,
+                              'recipe': recipe,
+                              'operator': operator,
+                              'description': description,
+                              'project': project,
+                              'number_of_reads': number_of_reads,
+                              }
                 datafile_parameter_sets = [
                     {u'schema': schema,
                      u'parameters': dict_to_parameter_list(parameters)}]
@@ -322,11 +391,18 @@ def register_project_datafiles(proj_path, dataset_url, uploader):
                         uploader.storage_box_location,
                         fastq_path)
 
+                if options.fast:
+                    md5_checksum = '__undetermined__'
+                else:
+                    md5_checksum = None  # will be calculated
+
                 try:
                     uploader.upload_file(
                         fastq_path, dataset_url,
                         parameter_sets_list=datafile_parameter_sets,
-                        replica_url=replica_url)
+                        replica_url=replica_url,
+                        md5_checksum=md5_checksum,
+                    )
                 except Exception, e:
                     logger.error("Failed to register Datafile: "
                                  "%s", fastq_path)
@@ -528,7 +604,10 @@ def run_main():
         if proj_id == 'Undetermined_indices':
             proj_path = os.path.join(bcl2fastq_output_dir, proj_id)
 
-        register_project_datafiles(proj_path, dataset_url, uploader)
+        register_project_datafiles(proj_path,
+                                   samplesheet,
+                                   dataset_url,
+                                   uploader)
 
     logger.info("Ingestion of run %s complete !", run_metadata['run_dir'])
     sys.exit(0)
