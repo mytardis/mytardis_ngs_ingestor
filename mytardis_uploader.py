@@ -629,6 +629,12 @@ def add_config_args(parser):
                         dest="dry_run",
                         default=False,
                         help="Dry run (don't create anything)")
+    parser.add_argument("--fast",
+                        action="store_true",
+                        dest="fast",
+                        default=False,
+                        help="Skip some time consuming steps but upload "
+                             "incomplete metadata (eg, no md5 checksums)")
     parser.add_argument("--storage-mode",
                         dest="storage_mode",
                         type=str,
