@@ -1,5 +1,6 @@
 appsettings
 colorlog
+fs
 python-dateutil
 pyyaml # apt: libyaml-dev python-dev
 requests>=2.7.0

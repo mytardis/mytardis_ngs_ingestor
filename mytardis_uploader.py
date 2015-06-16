@@ -653,7 +653,8 @@ def add_config_args(parser):
                         metavar="REGEX")
 
 
-def get_config(default_config_filename='uploader_config.yaml'):
+def get_config(default_config_filename='uploader_config.yaml',
+               add_extra_options_fn=None):
     """
     Parses a config file (default or commandline specified), then
     overrides any settings with those specified on the command line.
@@ -695,6 +696,9 @@ def get_config(default_config_filename='uploader_config.yaml'):
         parser = SettingsParser()
 
     add_config_args(parser)
+    if add_extra_options_fn:
+        add_extra_options_fn(parser)
+
     options = parser.parse_args()
 
     return parser, options

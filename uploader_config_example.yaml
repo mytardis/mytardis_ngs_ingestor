@@ -1,14 +1,14 @@
-# this is the 'location' used by the storage box
+# This is the 'location' used by the storage box
 storage_base_path: /data/instrument
 
-# the path to the directory with data to
+# The path to the directory with data to
 # be uploaded/registerd with MyTardis
 path: /data/instrument/some_expt_001/
 
-# a list of Python regular expressions matching files to exclude
+# A list of Python regular expressions matching files to exclude
 # matches against the absolute path. 'Hidden' files beginning
-# with a period (.) are excluded by default
-# don't use quotes, and expressions are comma delimited without
+# with a period (.) are excluded by default.
+# Don't use quotes, and expressions are comma delimited without
 # regard to escaping so you can't use commas :/
 exclude:
     - '/FastQC\.done$'
@@ -22,11 +22,21 @@ exclude:
 
 username: powerfuladmin
 
-# don't make this config file world readable !
+# Don't make this config file world readable !
 password: ub3rsecre7z!
 
-# the address of the MyTardis server, including :port
+# The address of the MyTardis server, including :port
 url: http://mytardis-server.edu.au:8000
 
 # upload, staging or shared
 storage_mode: upload
+
+# Should we run FastQC on reads before uploading ?
+run_fastqc: False
+
+# The number of threads to use for some paralell processes
+# usually this would be close to the number of cores on the machine
+threads: 4
+
+# The path to the FastQC executable
+fastqc_bin: /usr/bin/fastqc

@@ -7,8 +7,9 @@ import csv
 from datetime import datetime
 
 import os
-from os.path import join
+from os.path import join, splitext
 from dateutil import parser as dateparser
+import subprocess
 
 import xmltodict
 
@@ -27,7 +28,8 @@ def get_run_metadata(run_path):
     end_time, rta_version = rta_complete_parser(run_path)
     metadata['end_time'] = end_time.isoformat(' ')
     metadata['rta_version'] = rta_version
-    metadata['run_dir'] = os.path.relpath(
+    metadata['run_path'] = run_path
+    metadata['run_id'] = os.path.relpath(
         options.path,
         options.storage_base_path
     )
@@ -39,7 +41,7 @@ def get_run_metadata(run_path):
     metadata['instrument_model'] = instrument_config['instrument_model']
     metadata['title'] = "%s sequencing run %s" % (
         metadata['instrument_model'],
-        metadata['run_dir']
+        metadata['run_id']
     )
 
     samplesheet, chemistry = get_samplesheet(join(run_path, 'SampleSheet.csv'))
@@ -61,14 +63,15 @@ def get_run_metadata(run_path):
     return metadata
 
 
-def get_project_metadata(proj_id, run_metadata,
-                         schema='http://www.tardis.edu.au/schemas/ngs/project',
-                         param_suffix='project'):
+def get_project_metadata(proj_id,
+                         run_metadata,
+                         fastqc_summary_json='',
+                         schema='http://www.tardis.edu.au/schemas/ngs/project'):
     end_date = run_metadata['end_time'].split()[0]
     project_title = 'Sequencing Project, %s, %s' % (proj_id, end_date)
     if proj_id == 'Undetermined_indices':
         project_title = '%s, %s, %s' % (proj_id,
-                                        run_metadata['run_dir'],
+                                        run_metadata['run_id'],
                                         end_date)
     proj_metadata = {'title': project_title,
                      'description': project_title,
@@ -80,14 +83,22 @@ def get_project_metadata(proj_id, run_metadata,
     # Project Dataset parameters are suffixed with '__project'
     # (to prevent name clashes with identical parameters at the
     #  Run Experiment level)
-    project_parameters = add_suffix_to_parameter_set(
-        run_metadata['parameter_sets'][0]['parameters'], param_suffix)
+    # project_parameters = add_suffix_to_parameter_set(
+    #    run_metadata['parameter_sets'][0]['parameters'], param_suffix)
+    # project_parameter_list = dict_to_parameter_list(project_parameters)
 
-    project_parameter_list = dict_to_parameter_list(project_parameters)
+    project_parameter_list = list(
+        run_metadata['parameter_sets'][0]['parameters']
+    )
+    project_parameter_list.extend(
+        dict_to_parameter_list({'fastqc_summary_json': fastqc_summary_json})
+    )
+
     proj_metadata['parameter_sets'] = [{u'schema': schema,
                                         u'parameters': project_parameter_list}]
 
     return proj_metadata
+
 
 def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
     """
@@ -103,6 +114,7 @@ def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
                                          suffix)] = p['value']
     return suffixed_parameters
 
+
 def get_samplesheet(file_path):
     # FCID,Lane,SampleID,SampleRef,Index,Description,Control,Recipe,
     # Operator,SampleProject
@@ -115,6 +127,7 @@ def get_samplesheet(file_path):
         del samples[-1:]
     return samples, chemistry
 
+
 def samplesheet_to_dict_by_id(samplesheet_rows):
     by_sample_id = {}
     for sample in samplesheet_rows:
@@ -123,6 +136,7 @@ def samplesheet_to_dict_by_id(samplesheet_rows):
         del by_sample_id[sample_id]['SampleID']
 
     return by_sample_id
+
 
 def get_number_of_reads_fastq(filepath):
     """
@@ -135,8 +149,7 @@ def get_number_of_reads_fastq(filepath):
 
     # TODO: This should (optionally?) extract the number of reads from
     #       the associated FASTQC output - much faster !
-    
-    import subprocess
+
     num = subprocess.check_output("zcat %s | echo $((`wc -l`/4))" % filepath,
                                   shell=True)
     return int(num.strip())
@@ -147,16 +160,6 @@ def get_number_of_reads_fastq(filepath):
 #     seen = set()
 #     seen_add = seen.add
 #     return [x for x in seq if not (x in seen or seen_add(x))]
-
-
-def get_samplesheet_projects(samplesheet):
-    """
-
-    :param samplesheet: dict
-    :rtype: list[str]
-    """
-    for sample in samplesheet:
-        pass
 
 
 def rta_complete_parser(run_path):
@@ -333,7 +336,14 @@ def create_fastq_dataset(metadata, experiments, uploader):
                                        'parameter_sets']
                                    )
 
-def register_project_datafiles(proj_path, samplesheet, dataset_url, uploader):
+
+def register_project_fastq_datafiles(run_id,
+                                     proj_id,
+                                     proj_path,
+                                     samplesheet,
+                                     dataset_url,
+                                     uploader):
+
     schema = 'http://www.tardis.edu.au/schemas/ngs/fastq'
 
     sample_dict = samplesheet_to_dict_by_id(samplesheet)
@@ -342,20 +352,17 @@ def register_project_datafiles(proj_path, samplesheet, dataset_url, uploader):
     for sample_path, sample_id in get_sample_directories(proj_path):
         for fastq_path in get_fastq_read_files(sample_path):
 
-                # TODO: reference_genome, index_sequence, is_control, recipe,
-                #       operator, description, project
-                #
-                # == SampleRef,Index,Description,Control,Recipe,Operator,
-                #    SampleProject
-                #
-                # TODO: number_of_reads
-
                 # sample_id may not be in the SampleSheet dict
                 # if we are dealing the unaligned reads (eg sample_ids
                 # lane1, lane2 etc)
                 # So, we grab either the info for the sample_id, or
                 # we use an empty dict (where all params will then be
                 # the default missing values)
+
+                # TODO: ensure we can also deal with unbarcoded runs,
+                #       where Index is "NoIndex" and sample_ids are
+                #       lane1, lane2 etc.
+
                 sampleinfo = sample_dict.get(sample_id, {})
 
                 reference_genome = sampleinfo.get('SampleRef', '')
@@ -371,7 +378,8 @@ def register_project_datafiles(proj_path, samplesheet, dataset_url, uploader):
                 else:
                     number_of_reads = get_number_of_reads_fastq(fastq_path)
 
-                parameters = {'sample_id': sample_id,
+                parameters = {'run_id': run_id,
+                              'sample_id': sample_id,
                               'reference_genome': reference_genome,
                               'index_sequence': index_sequence,
                               'is_control': is_control,
@@ -398,7 +406,8 @@ def register_project_datafiles(proj_path, samplesheet, dataset_url, uploader):
 
                 try:
                     uploader.upload_file(
-                        fastq_path, dataset_url,
+                        fastq_path,
+                        dataset_url,
                         parameter_sets_list=datafile_parameter_sets,
                         replica_url=replica_url,
                         md5_checksum=md5_checksum,
@@ -413,23 +422,99 @@ def register_project_datafiles(proj_path, samplesheet, dataset_url, uploader):
                             fastq_path,
                             dataset_url)
 
-def get_project_directories(bcl2fastq_out_dir):
-    """
-    Returns an iterator that gives "Project_" directories from
-    the bcl2fastq output directory.
 
-    :param bcl2fastq_out_dir: str
-    :return: Iterator
-    """
-    for item in os.listdir(bcl2fastq_out_dir):
-        proj_path = os.path.join(bcl2fastq_out_dir, item)
-        # we look for directories named Project_*
-        # NOTE: an alternative method would be to use the projects explicitly
-        # listed in SameleSheet.csv, treating it as the one source of
-        # truth and avoiding cases where someone decided to create
-        # an additional Project_ directory (eg Project_Bla.old)
-        if os.path.isdir(proj_path) and ('Project_' in item):
-            yield proj_path
+def get_sample_id_from_fastqc_filename(fastqc_zip_path):
+    return os.path.split(fastqc_zip_path)[1].split('_')[0]
+
+
+def register_project_fastqc_datafiles(run_id,
+                                      proj_id,
+                                      fastqc_out_dir,
+                                      samplesheet,
+                                      dataset_url,
+                                      uploader):
+
+    schema = 'http://www.tardis.edu.au/schemas/ngs/fastqc'
+
+    sample_dict = samplesheet_to_dict_by_id(samplesheet)
+
+    # Upload datafiles for the FASTQC output files
+    for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
+
+            sample_id = get_sample_id_from_fastqc_filename(fastqc_zip_path)
+            parameters = {'run_id': run_id,
+                          'sample_id': sample_id}
+
+            datafile_parameter_sets = [
+                {u'schema': schema,
+                 u'parameters': dict_to_parameter_list(parameters)}]
+
+            replica_url = fastqc_zip_path
+            if uploader.storage_mode == 'shared':
+                replica_url = get_shared_storage_replica_url(
+                    uploader.storage_box_location,
+                    fastqc_zip_path)
+
+            if options.fast:
+                md5_checksum = '__undetermined__'
+            else:
+                md5_checksum = None  # will be calculated
+
+            try:
+                uploader.upload_file(
+                    fastqc_zip_path,
+                    dataset_url,
+                    parameter_sets_list=datafile_parameter_sets,
+                    replica_url=replica_url,
+                    md5_checksum=md5_checksum,
+                )
+            except Exception, e:
+                logger.error("Failed to register Datafile: "
+                             "%s", fastqc_zip_path)
+                logger.debug("Exception: %s", e)
+                sys.exit(1)
+
+            logger.info("Added Datafile: %s (%s)",
+                        fastqc_zip_path,
+                        dataset_url)
+
+
+def get_fastqc_summary_table_for_project(fastqc_out_dir):
+
+    project_summary = []
+    # Upload datafiles for the FASTQC output files
+    for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
+        sample_id = get_sample_id_from_fastqc_filename(fastqc_zip_path)
+        qc_pass_fail_table = parse_fastqc_summary_txt(fastqc_zip_path)
+        project_summary.append((sample_id, qc_pass_fail_table))
+
+    return project_summary
+
+# def get_project_directories(bcl2fastq_out_dir):
+#     """
+#     Returns an iterator that gives "Project_" directories from
+#     the bcl2fastq output directory.
+#
+#     :param bcl2fastq_out_dir: str
+#     :return: Iterator
+#     """
+#     for item in os.listdir(bcl2fastq_out_dir):
+#         proj_path = os.path.join(bcl2fastq_out_dir, item)
+#         # we look for directories named Project_*
+#         # NOTE: an alternative method would be to use the projects explicitly
+#         # listed in SameleSheet.csv, treating it as the one source of
+#         # truth and avoiding cases where someone decided to create
+#         # an additional Project_ directory (eg Project_Bla.old)
+#         if os.path.isdir(proj_path) and ('Project_' in item):
+#             yield proj_path
+
+
+def get_bcl2fastq_output_dir(run_metadata):
+    # suffix = '.pc'
+    suffix = '.ajp'
+    bcl2fastq_output_dir = join(run_metadata['run_path'],
+                                run_metadata['run_id'] + suffix)
+    return bcl2fastq_output_dir
 
 
 def get_sample_directories(project_path):
@@ -456,12 +541,178 @@ def get_fastq_read_files(sample_path):
     """
     for item in os.listdir(sample_path):
         fastq_path = os.path.join(sample_path, item)
-        # we just return things with the .gz extension
+
         # NOTE: an alternative would be to use SampleSheet.csv
         # to construct the expected output filenames
+        # Illumina FASTQ files use the following naming scheme:
+        # <sample id>_<index>_L<lane>_R<read number>_<setnumber>.fastq.gz
+        # For example, the following is a valid FASTQ file name:
+        # NA10831_ATCACG_L002_R1_001.fastq.gz
+        # Note that lane and set numbers are 0-padded to 3 digits.
+        # In the case of non-multiplexed runs, <sample name> will be replaced
+        # with the lane numbers (lane1, lane2, ..., lane8) and <index> will be
+        #  replaced with "NoIndex".
+        # read_number = 1  # or 2?
+        # set_number = 1
+        # fn = '%s_%s_L%03d_R%d_%03d' % (ss['SampleID'],
+        #                                ss['Index'],
+        #                                ss['Lane'],
+        #                                read_number,
+        #                                set_number)
+
+        # we just return things with the .gz extension
         if os.path.splitext(item)[-1:][0] == '.gz' and \
            os.path.isfile(fastq_path):
             yield fastq_path
+
+
+def get_fastqc_zip_files(fastqc_out_path):
+    """
+    Returns an iterator that gives zipped FASTQC result files.
+
+    :param sample_path: str
+    :return: Iterator
+    """
+    for item in os.listdir(fastqc_out_path):
+        fastqc_path = os.path.join(fastqc_out_path, item)
+
+        # we just return things with the .zip extension
+        if os.path.splitext(item)[-1:][0] == '.zip' and \
+           os.path.isfile(fastqc_path):
+            yield fastqc_path
+
+
+def get_fastqc_output_directory(proj_path):
+    return join(proj_path, 'FastQC.out')
+
+
+def run_fastqc(fastq_paths,
+               output_directory=None,
+               fastqc_bin=None,
+               threads=2,
+               extra_options=''):
+
+    tmp_dir = None
+    if not output_directory:
+        try:
+            from tempfile import mkdtemp
+            tmp_dir = mkdtemp()
+            output_directory = tmp_dir
+        except:
+            logger.error('FastQC - failed to create temp directory.')
+            return None
+
+    if not fastqc_bin:
+        # We will assume it's on path with the default name
+        fastqc_bin = 'fastqc'
+
+    cmd = '%s %s --noextract --threads %d --outdir %s %s' % \
+          (fastqc_bin,
+           extra_options,
+           threads,
+           output_directory,
+           ' '.join(fastq_paths))
+
+    logger.info('Running FastQC on: %s', ', '.join(fastq_paths))
+
+    try:
+        # Unfortunately FastQC doesn't always return sensible
+        # exit codes on failure, so we parse the output
+        cmd_out = subprocess.check_output(cmd,
+                                          shell=True,
+                                          stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        logger.error('FastQC stdout: %s', cmd_out)
+        return None
+
+    success = False
+    if 'Analysis complete' in cmd_out.splitlines()[-1]:
+        success = True
+    else:
+        logger.error('FastQC stdout: %s', cmd_out)
+
+    if not success:
+        if tmp_dir is not None:
+            import shutil
+            shutil.rmtree(output_directory)
+            return None
+
+    return output_directory
+
+
+def run_fastqc_on_project(proj_path,
+                          output_directory=None,
+                          fastqc_bin=None,
+                          threads=2):
+
+    if output_directory is None:
+        output_directory = get_fastqc_output_directory(proj_path)
+        try:
+            os.mkdir(output_directory)
+        except:
+            logger.error("FastQC - couldn't create output directory: %s",
+                          output_directory)
+            return None
+
+    if (not os.path.exists(output_directory)) or \
+        (not os.path.isdir(output_directory)):
+        logger.error("FastQC - output path %s isn't a directory "
+                     "or doesn't exist.",
+                     output_directory)
+        return None
+
+    fastq_files = []
+    for sample_path, sample_id in get_sample_directories(proj_path):
+        fastq_files.extend([f for f in get_fastq_read_files(sample_path)])
+
+    fastqc_out = run_fastqc(fastq_files,
+                            output_directory=output_directory,
+                            fastqc_bin=fastqc_bin,
+                            threads=threads)
+    return fastqc_out
+
+
+def parse_file_from_zip(zip_file_path, filename, parser):
+    # eg rootpath =
+    # FastQC.out/15-02380-CE11-T13-L1_AACCAG_L001_R1_001_fastqc.zip
+    # ie   fastq_filename + '_fastqc.zip'
+
+    from fs.opener import opener
+    # from fs.zipfs import ZipFS
+
+    # fs.opener.opener magic detects a filesystem type if we give it
+    # a URI-like string, eg zip://foo/bla/file.zip
+    # (eg https://commons.apache.org/proper/commons-vfs/filesystems.html)
+    # So we munge the path to a zip file to become a compatible URI
+    # (an http, ftp, webdav url could also be used)
+    if splitext(zip_file_path)[1] == '.zip':
+        zip_file_path = 'zip://' + zip_file_path
+
+    with opener.parse(zip_file_path)[0] as vfs:
+        for fn in vfs.walkfiles():
+            if os.path.basename(fn) == filename:
+                with vfs.open(fn, 'r') as f:
+                    return parser(f)
+
+
+def parse_fastqc_summary_txt(zip_file_path):
+
+    def parse(fh):
+           summary = [tuple(line.split('\t')) for line in fh]
+           return summary
+
+    return parse_file_from_zip(zip_file_path,
+                               'summary.txt',
+                               parse)
+
+# TODO: Parse details from 'fastqc_data.txt'
+def parse_fastqc_data_txt(zip_file_path):
+    raise NotImplementedError()
+
+
+# TODO: Extract fastqc_report.html for upload ?
+def extract_fastqc_report_html(zip_file_path):
+    raise NotImplementedError()
 
 
 def get_shared_storage_replica_url(storage_box_location, file_path):
@@ -476,7 +727,6 @@ def get_shared_storage_replica_url(storage_box_location, file_path):
     then replica_url will be:
         expt1/dataset1/file.txt
 
-    :param uploader: str
     :param file_path: str
     :rtype: str
     """
@@ -490,7 +740,22 @@ def run_main():
     logger = setup_logging()
     global logger
 
-    parser, options = get_config()
+    def extra_config_options(parser):
+        parser.add_argument('--threads',
+                            dest="threads",
+                            type=int,
+                            metavar="THREADS")
+        parser.add_argument('--run-fastqc',
+                            dest="run_fastqc",
+                            type=bool,
+                            default=False,
+                            metavar="RUN_FASTQC")
+        parser.add_argument('--fastqc-bin',
+                            dest="fastqc_bin",
+                            type=str,
+                            metavar="FASTQC_BIN")
+
+    parser, options = get_config(add_extra_options_fn=extra_config_options)
     global options
 
     validate_config(parser, options)
@@ -513,7 +778,8 @@ def run_main():
     run_metadata['description'] = options.description
     if not run_metadata['description']:
         run_metadata['description'] = "Automatically ingested by %s on %s" % \
-                           (uploader.user_agent, datetime.now().isoformat(' '))
+                                      (uploader.user_agent,
+                                       datetime.now().isoformat(' '))
 
     try:
         run_expt_url = create_run_experiment(run_metadata, uploader)
@@ -527,7 +793,7 @@ def run_main():
     run_expt_url = urlparse(run_expt_url).path
 
     logger.info("Created run experiment: %s (%s)",
-                run_metadata['run_dir'],
+                run_metadata['run_id'],
                 run_expt_url)
 
     samplesheet, chemistry = get_samplesheet(join(run_path, 'SampleSheet.csv'))
@@ -541,9 +807,30 @@ def run_main():
         proj_metadata = get_project_metadata(
             proj_id,
             run_metadata,
-            schema='http://www.tardis.edu.au/schemas/ngs/project',
-            param_suffix='project'
-        )
+            schema='http://www.tardis.edu.au/schemas/ngs/project')
+
+        # The directory where bcl2fastq puts its output,
+        # in Project_* directories
+        bcl2fastq_output_dir = get_bcl2fastq_output_dir(run_metadata)
+
+        proj_path = os.path.join(bcl2fastq_output_dir, 'Project_' + proj_id)
+        fastqc_out_dir = get_fastqc_output_directory(proj_path)
+
+        if proj_id == 'Undetermined_indices':
+            proj_path = os.path.join(bcl2fastq_output_dir, proj_id)
+
+        # run FastQC if output doesn't exist
+        if options.run_fastqc and not options.fast:
+            run_fastqc_on_project(proj_path,
+                                  fastqc_bin=options.fastqc_bin,
+                                  threads=int(options.threads))
+
+        fqc_summary = []
+        if proj_id != 'Undetermined_indices':
+            fqc_summary = get_fastqc_summary_table_for_project(fastqc_out_dir)
+
+        import json
+        fqc_summary_json = json.dumps(fqc_summary)
 
         # Create an Experiment for each real Project in the run
         # (except Undetermined_indices Datasets which will only be associated
@@ -564,24 +851,25 @@ def run_main():
                         proj_id)
 
         # samples_in_project = [s['SampleID'] for s in samplesheet]
-        # sample_desc = 'FASTQ reads for samples ' + ', '.join(samples_in_project)
+        # sample_desc = 'FASTQ reads for samples '+', '.join(samples_in_project)
 
         dataset_metadata = get_project_metadata(
             proj_id,
             run_metadata,
-            schema='http://www.tardis.edu.au/schemas/ngs/raw_reads',
-            param_suffix='raw_reads'
-        )
+            fastqc_summary_json=fqc_summary_json,
+            schema='http://www.tardis.edu.au/schemas/ngs/raw_reads')
 
         # Create a Dataset for each project, associated with both
         # the overall run Experiment, and the project Experiment
         try:
-            parent_expt_urls = [project_url, run_expt_url]
             # We associate the Undetermined_indices FASTQ reads only
             # with the overall 'run' Experiment (unlike proper Projects
             # which also have their own Project Experiment).
             if proj_id == 'Undetermined_indices':
                 parent_expt_urls = [run_expt_url]
+            else:
+                parent_expt_urls = [project_url, run_expt_url]
+
             dataset_url = create_fastq_dataset(dataset_metadata,
                                                parent_expt_urls,
                                                uploader)
@@ -596,20 +884,22 @@ def run_main():
 
         logger.info("Created FASTQ dataset: %s (%s)", dataset_url, proj_id)
 
-        # The directory where bcl2fastq puts its output,
-        # in Project_* directories
-        bcl2fastq_output_dir = join(run_path, run_metadata['run_dir']+'.pc')
+        register_project_fastq_datafiles(run_metadata['run_id'],
+                                         proj_id,
+                                         proj_path,
+                                         samplesheet,
+                                         dataset_url,
+                                         uploader)
 
-        proj_path = os.path.join(bcl2fastq_output_dir, 'Project_' + proj_id)
-        if proj_id == 'Undetermined_indices':
-            proj_path = os.path.join(bcl2fastq_output_dir, proj_id)
+        if proj_id != 'Undetermined_indices':
+            register_project_fastqc_datafiles(run_metadata['run_id'],
+                                              proj_id,
+                                              fastqc_out_dir,
+                                              samplesheet,
+                                              dataset_url,
+                                              uploader)
 
-        register_project_datafiles(proj_path,
-                                   samplesheet,
-                                   dataset_url,
-                                   uploader)
-
-    logger.info("Ingestion of run %s complete !", run_metadata['run_dir'])
+    logger.info("Ingestion of run %s complete !", run_metadata['run_id'])
     sys.exit(0)
 
 if __name__ == "__main__":
