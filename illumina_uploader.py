@@ -90,12 +90,23 @@ def get_project_metadata(proj_id,
     project_parameter_list = list(
         run_metadata['parameter_sets'][0]['parameters']
     )
-    project_parameter_list.extend(
+
+    # This second (hidden) parameter_set, provides a summary of
+    # FastQC results for every sample in the project, used for
+    # rendering and overview table
+    fastqc_summary_parameters = \
         dict_to_parameter_list({'fastqc_summary_json': fastqc_summary_json})
-    )
+
+    fasqc_summary_parameterset = {
+        u'schema':
+        'http://www.tardis.edu.au/schemas/ngs/project/fastqc_summary',
+        u'parameters': fastqc_summary_parameters
+    }
 
     proj_metadata['parameter_sets'] = [{u'schema': schema,
-                                        u'parameters': project_parameter_list}]
+                                        u'parameters': project_parameter_list},
+                                       fasqc_summary_parameterset
+                                       ]
 
     return proj_metadata
 
