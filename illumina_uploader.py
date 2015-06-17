@@ -338,7 +338,6 @@ def create_fastq_dataset(metadata, experiments, uploader):
 
 
 def register_project_fastq_datafiles(run_id,
-                                     proj_id,
                                      proj_path,
                                      samplesheet,
                                      dataset_url,
@@ -428,15 +427,11 @@ def get_sample_id_from_fastqc_filename(fastqc_zip_path):
 
 
 def register_project_fastqc_datafiles(run_id,
-                                      proj_id,
                                       fastqc_out_dir,
-                                      samplesheet,
                                       dataset_url,
                                       uploader):
 
     schema = 'http://www.tardis.edu.au/schemas/ngs/fastqc'
-
-    sample_dict = samplesheet_to_dict_by_id(samplesheet)
 
     # Upload datafiles for the FASTQC output files
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
@@ -698,12 +693,13 @@ def parse_file_from_zip(zip_file_path, filename, parser):
 def parse_fastqc_summary_txt(zip_file_path):
 
     def parse(fh):
-           summary = [tuple(line.split('\t')) for line in fh]
-           return summary
+        summary = [tuple(line.split('\t')) for line in fh]
+        return summary
 
     return parse_file_from_zip(zip_file_path,
                                'summary.txt',
                                parse)
+
 
 # TODO: Parse details from 'fastqc_data.txt'
 def parse_fastqc_data_txt(zip_file_path):
@@ -740,20 +736,20 @@ def run_main():
     logger = setup_logging()
     global logger
 
-    def extra_config_options(parser):
-        parser.add_argument('--threads',
-                            dest="threads",
-                            type=int,
-                            metavar="THREADS")
-        parser.add_argument('--run-fastqc',
-                            dest="run_fastqc",
-                            type=bool,
-                            default=False,
-                            metavar="RUN_FASTQC")
-        parser.add_argument('--fastqc-bin',
-                            dest="fastqc_bin",
-                            type=str,
-                            metavar="FASTQC_BIN")
+    def extra_config_options(argparser):
+        argparser.add_argument('--threads',
+                               dest="threads",
+                               type=int,
+                               metavar="THREADS")
+        argparser.add_argument('--run-fastqc',
+                               dest="run_fastqc",
+                               type=bool,
+                               default=False,
+                               metavar="RUN_FASTQC")
+        argparser.add_argument('--fastqc-bin',
+                               dest="fastqc_bin",
+                               type=str,
+                               metavar="FASTQC_BIN")
 
     parser, options = get_config(add_extra_options_fn=extra_config_options)
     global options
@@ -885,7 +881,6 @@ def run_main():
         logger.info("Created FASTQ dataset: %s (%s)", dataset_url, proj_id)
 
         register_project_fastq_datafiles(run_metadata['run_id'],
-                                         proj_id,
                                          proj_path,
                                          samplesheet,
                                          dataset_url,
@@ -893,9 +888,7 @@ def run_main():
 
         if proj_id != 'Undetermined_indices':
             register_project_fastqc_datafiles(run_metadata['run_id'],
-                                              proj_id,
                                               fastqc_out_dir,
-                                              samplesheet,
                                               dataset_url,
                                               uploader)
 
