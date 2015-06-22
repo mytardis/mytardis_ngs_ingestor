@@ -704,7 +704,7 @@ def parse_file_from_zip(zip_file_path, filename, parser):
 def parse_fastqc_summary_txt(zip_file_path):
 
     def parse(fh):
-        summary = [tuple(line.split('\t')) for line in fh]
+        summary = [tuple(line.strip().split('\t')) for line in fh]
         return summary
 
     return parse_file_from_zip(zip_file_path,
