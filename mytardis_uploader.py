@@ -9,37 +9,17 @@ import logging
 
 logger = logging.getLogger('mytardis_uploader')
 
-import urllib2
-import base64
 import os
 import mimetypes
 import json
 import requests
 from requests.auth import HTTPBasicAuth
+import backoff
 from time import strftime
 from datetime import datetime
 import csv
 
 DEFAULT_STORAGE_MODE = 'upload'
-
-
-class PreemptiveBasicAuthHandler(urllib2.BaseHandler):
-    def __init__(self, password_mgr=None):
-        if password_mgr is None:
-            password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
-            self.passwd = password_mgr
-            self.add_password = self.passwd.add_password
-
-    def http_request(self, req):
-        uri = req.get_full_url()
-        user, pw = self.passwd.find_user_password(None, uri)
-        if pw is None:
-            return req
-
-        raw = "%s:%s" % (user, pw)
-        auth = 'Basic %s' % base64.b64encode(raw).strip()
-        req.add_unredirected_header('Authorization', auth)
-        return req
 
 
 class MyTardisUploader:
@@ -281,33 +261,27 @@ class MyTardisUploader:
 
         return []
 
-    def _do_create_request(self, data, urlend, method="POST"):
+    @backoff.on_exception(backoff.expo,
+                      requests.exceptions.RequestException,
+                      max_tries=8)
+    def _do_create_request(self, data, urlend):
         url = self.v1_api_url % urlend
         headers = {'Accept': 'application/json',
                    'Content-Type': 'application/json',
                    'User-Agent': self.user_agent}
 
-        auth_handler = PreemptiveBasicAuthHandler()
-        auth_handler.add_password(realm=None,
-                                  uri=url,
-                                  user=self.username,
-                                  passwd=self.password)
-        opener = urllib2.build_opener(auth_handler)
-        # ...and install it globally so it can be used with urlopen.
-        urllib2.install_opener(opener)
-
-        myrequest = urllib2.Request(url=url, data=data,
-                                    headers=headers)
-        myrequest.get_method = lambda: method
-        # print myrequest.get_full_url() + " " + myrequest.data
         try:
-            output = urllib2.urlopen(myrequest)
-        except urllib2.HTTPError, e:
-            logger.error(e)
-            logger.error(e.read())
+            response = requests.post(url,
+                                     data=data,
+                                     headers=headers,
+                                     auth=HTTPBasicAuth(self.username,
+                                                        self.password)
+                                     )
+        except requests.exceptions.RequestException, e:
+            logger.error("Request failed : %s : %s", e.message, url)
             raise e
 
-        return output
+        return response
 
     def _md5_file_calc(self, file_path, blocksize=None):
         """
@@ -332,6 +306,9 @@ class MyTardisUploader:
                 md5.update(chunk)
         return md5.hexdigest()
 
+    @backoff.on_exception(backoff.expo,
+                          requests.exceptions.RequestException,
+                          max_tries=8)
     def _send_datafile(self, data, urlend, filename=None):
         url = self.v1_api_url % urlend
 
@@ -348,44 +325,43 @@ class MyTardisUploader:
             headers = {'Accept': 'application/json',
                        'Content-Type': form.content_type}
 
-            response = requests.post(url,
-                                     data=form,
-                                     headers=headers,
-                                     auth=HTTPBasicAuth(self.username,
-                                                        self.password)
-                                     )
+            try:
+                response = requests.post(url,
+                                         data=form,
+                                         headers=headers,
+                                         auth=HTTPBasicAuth(self.username,
+                                                            self.password)
+                                         )
+            except requests.exceptions.RequestException, e:
+                logger.error("Request failed : %s : %s", e.message, url)
+                raise e
+
             return response
 
     def _register_datafile_staging(self, data, urlend):
         raise NotImplementedError("Registering datafiles in a staging location"
                                   "is not currently implemented.")
 
+    @backoff.on_exception(backoff.expo,
+                          requests.exceptions.RequestException,
+                          max_tries=8)
     def _register_datafile_shared_storage(self, data, urlend):
         url = self.v1_api_url % urlend
         headers = {'Accept': 'application/json',
                    'Content-Type': 'application/json'}
 
-        response = requests.post(url,
-                                 data=data,
-                                 headers=headers,
-                                 auth=HTTPBasicAuth(self.username,
-                                                    self.password)
-                                 )
+        try:
+            response = requests.post(url,
+                                     data=data,
+                                     headers=headers,
+                                     auth=HTTPBasicAuth(self.username,
+                                                        self.password)
+                                     )
+        except requests.exceptions.RequestException, e:
+            logger.error("Request failed : %s : %s", e.message, url)
+            raise e
+
         return response
-
-    def _get_header(self, headers, key):
-        # from urllib2 style
-        # get_header(headers, 'Location')
-
-        import string
-
-        location = None
-        for header in string.split(headers, '\n'):
-            if header.startswith('%s: ' % key):
-                location = string.split(header, '%s: ' % key)[1].strip()
-                break
-
-        return location
 
     def _get_path_from_url(self, url_string):
         from urlparse import urlparse
@@ -449,7 +425,7 @@ class MyTardisUploader:
 
         data = self._do_create_request(exp_json, 'experiment/')
 
-        return data.info().getheaders('Location')[0]
+        return data.headers['Location']
 
     def create_dataset(self, description, experiments_list,
                        parameter_sets_list=None, immutable=False):
@@ -468,7 +444,7 @@ class MyTardisUploader:
 
         data = self._do_create_request(dataset_json, 'dataset/')
 
-        return data.info().getheaders('Location')[0]
+        return data.headers['Location']
 
     def upload_file(self, file_path, dataset_path,
                     parameter_sets_list=None,
