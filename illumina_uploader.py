@@ -66,6 +66,7 @@ def get_run_metadata(run_path):
 def get_project_metadata(proj_id,
                          run_metadata,
                          fastqc_summary_json='',
+                         fastqc_version='',
                          schema='http://www.tardis.edu.au/schemas/ngs/project'):
     end_date = run_metadata['end_time'].split()[0]
     project_title = 'Sequencing Project, %s, %s' % (proj_id, end_date)
@@ -95,7 +96,8 @@ def get_project_metadata(proj_id,
     # FastQC results for every sample in the project, used for
     # rendering and overview table
     fastqc_summary_parameters = \
-        dict_to_parameter_list({'fastqc_summary_json': fastqc_summary_json})
+        dict_to_parameter_list({'fastqc_summary_json': fastqc_summary_json,
+                                'fastqc_version': fastqc_version})
 
     fasqc_summary_parameterset = {
         u'schema':
@@ -438,6 +440,7 @@ def get_sample_id_from_fastqc_filename(fastqc_zip_path):
 
 
 def register_project_fastqc_datafiles(run_id,
+                                      proj_id,
                                       fastqc_out_dir,
                                       dataset_url,
                                       uploader):
@@ -448,8 +451,11 @@ def register_project_fastqc_datafiles(run_id,
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
 
             sample_id = get_sample_id_from_fastqc_filename(fastqc_zip_path)
+            fastqc_data_tables = parse_fastqc_data_txt(fastqc_zip_path)
             parameters = {'run_id': run_id,
-                          'sample_id': sample_id}
+                          'project': proj_id,
+                          'sample_id': sample_id,
+                          'fastqc_version': fastqc_data_tables['version']}
 
             datafile_parameter_sets = [
                 {u'schema': schema,
@@ -492,9 +498,13 @@ def get_fastqc_summary_table_for_project(fastqc_out_dir):
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
         sample_id = get_sample_id_from_fastqc_filename(fastqc_zip_path)
         qc_pass_fail_table = parse_fastqc_summary_txt(fastqc_zip_path)
+
+        # TODO: Currently unused, except for extracting the FastQC version
+        qc_data_table = parse_fastqc_data_txt(fastqc_zip_path)
+
         project_summary.append((sample_id, qc_pass_fail_table))
 
-    return project_summary
+    return project_summary, qc_data_table['version']
 
 # def get_project_directories(bcl2fastq_out_dir):
 #     """
@@ -702,7 +712,10 @@ def parse_file_from_zip(zip_file_path, filename, parser):
 
 
 def parse_fastqc_summary_txt(zip_file_path):
-
+    """
+    Extract the overall PASS/WARN/FAIL summary.txt table from FastQC results
+    contained in a zip file.
+    """
     def parse(fh):
         summary = [tuple(line.strip().split('\t')) for line in fh]
         return summary
@@ -712,9 +725,38 @@ def parse_fastqc_summary_txt(zip_file_path):
                                parse)
 
 
-# TODO: Parse details from 'fastqc_data.txt'
 def parse_fastqc_data_txt(zip_file_path):
-    raise NotImplementedError()
+    """
+    Extract the tables in fastqc_data.txt from FastQC results contained
+    in a zip file.
+    """
+    def parse(fh):
+        data = {'version': fh.readline().split('\t')[1].strip()}
+        section = None
+        for l in fh:
+            line = l.strip()
+            if line[0:2] == '>>':
+                if line == '>>END_MODULE':
+                    # end section
+                    continue
+                else:
+                    # start new section
+                    section = line[2:]
+                    data[section] = {'rows': []}
+                    continue
+            if line[0] == '#':
+                column_labels = tuple(line.split('\t'))
+                data[section]['column_labels'] = column_labels
+                continue
+            else:
+                data_row = tuple(line.split('\t'))
+                data[section]['rows'].append(data_row)
+
+        return data
+
+    return parse_file_from_zip(zip_file_path,
+                               'fastqc_data.txt',
+                               parse)
 
 
 # TODO: Extract fastqc_report.html for upload ?
@@ -834,7 +876,8 @@ def run_main():
 
         fqc_summary = []
         if proj_id != 'Undetermined_indices':
-            fqc_summary = get_fastqc_summary_table_for_project(fastqc_out_dir)
+            fqc_summary, fqc_version = \
+                get_fastqc_summary_table_for_project(fastqc_out_dir)
 
         import json
         fqc_summary_json = json.dumps(fqc_summary)
@@ -864,6 +907,7 @@ def run_main():
             proj_id,
             run_metadata,
             fastqc_summary_json=fqc_summary_json,
+            fastqc_version=fqc_version,
             schema='http://www.tardis.edu.au/schemas/ngs/raw_reads')
 
         # Create a Dataset for each project, associated with both
@@ -899,6 +943,7 @@ def run_main():
 
         if proj_id != 'Undetermined_indices':
             register_project_fastqc_datafiles(run_metadata['run_id'],
+                                              proj_id,
                                               fastqc_out_dir,
                                               dataset_url,
                                               uploader)
