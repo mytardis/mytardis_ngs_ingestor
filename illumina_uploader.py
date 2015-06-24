@@ -741,11 +741,12 @@ def parse_fastqc_data_txt(zip_file_path):
                     continue
                 else:
                     # start new section
-                    section = line[2:]
-                    data[section] = {'rows': []}
+                    section, qc_result = line[2:].split('\t')
+                    data[section] = {'rows': [],
+                                     'qc_result': qc_result}
                     continue
             if line[0] == '#':
-                column_labels = tuple(line.split('\t'))
+                column_labels = tuple(line[1:].split('\t'))
                 data[section]['column_labels'] = column_labels
                 continue
             else:
