@@ -65,6 +65,8 @@ def get_run_metadata(run_path):
 
 def get_project_metadata(proj_id,
                          run_metadata,
+                         run_expt_link=None,
+                         project_expt_link=None,
                          fastqc_summary_json='',
                          fastqc_version='',
                          schema='http://www.tardis.edu.au/schemas/ngs/project'):
@@ -92,6 +94,15 @@ def get_project_metadata(proj_id,
         run_metadata['parameter_sets'][0]['parameters']
     )
 
+    if run_expt_link is not None:
+        project_parameter_list += dict_to_parameter_list(
+            {'run_experiment': api_url_to_view_url(run_expt_link)}
+        )
+    if project_expt_link is not None:
+        project_parameter_list += dict_to_parameter_list(
+            {'project_experiment': api_url_to_view_url(project_expt_link)}
+        )
+
     # This second (hidden) parameter_set, provides a summary of
     # FastQC results for every sample in the project, used for
     # rendering and overview table
@@ -112,6 +123,26 @@ def get_project_metadata(proj_id,
 
     return proj_metadata
 
+def api_url_to_view_url(apiurl):
+    """
+    Takes a MyTardis API URL of the form /v1/api/experiment/998 or
+    and /v1/api/dataset/999, and returns the corresponding view URL,
+    like /experiment/view/998 or /dataset/999.
+
+    This is non-ideal and a bit of a hack, but there doesn't seem to
+    be any easy way to achieve this with the existing MyTardis REST API
+    (or without importing MyTardis server classes here to help).
+
+    :param apiurl: str
+    :rtype: str
+    """
+    pk = apiurl.strip('/').split('/')[-1:][0]
+    if 'experiment' in apiurl:
+        return '/experiment/view/%s' % pk
+    if 'dataset' in apiurl:
+        return '/dataset/%s' % pk
+
+    raise ValueError('Not a valid MyTardis API URL: %s' % apiurl)
 
 def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
     """
@@ -857,6 +888,7 @@ def run_main():
         proj_metadata = get_project_metadata(
             proj_id,
             run_metadata,
+            run_expt_link=run_expt_url,
             schema='http://www.tardis.edu.au/schemas/ngs/project')
 
         # The directory where bcl2fastq puts its output,
@@ -907,6 +939,8 @@ def run_main():
         dataset_metadata = get_project_metadata(
             proj_id,
             run_metadata,
+            run_expt_link=run_expt_url,
+            project_expt_link=project_url,
             fastqc_summary_json=fqc_summary_json,
             fastqc_version=fqc_version,
             schema='http://www.tardis.edu.au/schemas/ngs/raw_reads')
