@@ -3,7 +3,15 @@ storage_base_path: /data/instrument
 
 # The path to the directory with data to
 # be uploaded/registerd with MyTardis
-path: /data/instrument/some_expt_001/
+path: /data/instrument/some_unique_expt_id_001/
+
+# The path to bcl2fastq output. Uses Pythons str.format method
+# with named parameters, where {run_path} is the base path
+# of the run (eg --path config option above) and {run_id}
+# is the unique ID of the run (eg 130613_SNL177_0029_AH0EPTADXX or
+# in the example above, some_unique_expt_id_001)
+# Don't forget the double quotes !
+bcl2fastq_output_path: "{run_path}/{run_id}.bcl2fastq"
 
 # A list of Python regular expressions matching files to exclude
 # matches against the absolute path. 'Hidden' files beginning

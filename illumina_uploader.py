@@ -21,7 +21,7 @@ from mytardis_uploader import setup_logging, get_config, validate_config
 def get_run_metadata(run_path):
     """
 
-    :param run_path: str
+    :type run_path: str
     :rtype: dict
     """
     metadata = {}
@@ -29,10 +29,7 @@ def get_run_metadata(run_path):
     metadata['end_time'] = end_time.isoformat(' ')
     metadata['rta_version'] = rta_version
     metadata['run_path'] = run_path
-    metadata['run_id'] = os.path.relpath(
-        options.path,
-        options.storage_base_path
-    )
+    metadata['run_id'] = os.path.basename(run_path.rstrip(os.path.sep))
 
     runinfo_parameters = runinfo_parser(run_path)
     runinfo_parameters['rta_version'] = rta_version
@@ -133,7 +130,7 @@ def api_url_to_view_url(apiurl):
     be any easy way to achieve this with the existing MyTardis REST API
     (or without importing MyTardis server classes here to help).
 
-    :param apiurl: str
+    :type apiurl: str
     :rtype: str
     """
     pk = apiurl.strip('/').split('/')[-1:][0]
@@ -187,7 +184,7 @@ def get_number_of_reads_fastq(filepath):
     Count the number of reads in a (gzipped) FASTQ file.
     Assumes fours lines per read.
 
-    :param filepath: string
+    :type filepath: str
     :rtype: int
     """
 
@@ -209,7 +206,7 @@ def get_number_of_reads_fastq(filepath):
 def rta_complete_parser(run_path):
     """
 
-    :param run_path: str
+    :type run_path: str
     :rtype: (datetime.DateTime, str)
     """
     # line in format:
@@ -227,7 +224,7 @@ def runinfo_parser(run_path):
     Matches some or all of the fields defined in schema:
     http://www.tardis.edu.au/schemas/sequencing/illumina/run
 
-    :param run_path:
+    :type run_path: str
     :rtype: dict
     """
     with open(join(run_path, "RunInfo.xml"), 'r') as f:
@@ -272,7 +269,7 @@ def illumina_config_parser(run_path):
 
     {"section_name:variable_name": "value"}
 
-    :param run_path: str
+    :type run_path: str
     :rtype: dict
     """
     # we find the approriate config file
@@ -312,7 +309,7 @@ def illumina_config_parser(run_path):
 def dict_to_parameter_list(d):
     """
 
-    :param d: list[dict]
+    :type d: dict
     :rtype: list[dict]
     """
     return [{u'name': k, u'value': v} for k, v in d.items()]
@@ -338,8 +335,8 @@ def merge_dicts(*dict_args):
 def create_run_experiment(metadata, uploader):
     """
 
-    :param metadata: dict
-    :param uploader: mytardis_uploader.MyTardisUploader
+    :type metadata: dict
+    :type uploader: mytardis_uploader.MyTardisUploader
     :rtype: str
     """
     return uploader.create_experiment(
@@ -353,8 +350,8 @@ def create_run_experiment(metadata, uploader):
 def create_project_experiment(metadata, uploader):
     """
 
-    :param metadata: dict
-    :param uploader: mytardis_uploader.MyTardisUploader
+    :type metadata: dict
+    :type uploader: mytardis_uploader.MyTardisUploader
     :rtype: str
     """
     return uploader.create_experiment(metadata['title'],
@@ -369,9 +366,9 @@ def create_project_experiment(metadata, uploader):
 def create_fastq_dataset(metadata, experiments, uploader):
     """
 
-    :param metadata: dict
-    :param experiments: list[str]
-    :param uploader: mytardis_uploader.MyTardisUploader
+    :type metadata: dict
+    :type experiments: list[str]
+    :type uploader: mytardis_uploader.MyTardisUploader
     :rtype: str
     """
     return uploader.create_dataset(metadata['description'],
@@ -385,7 +382,8 @@ def register_project_fastq_datafiles(run_id,
                                      proj_path,
                                      samplesheet,
                                      dataset_url,
-                                     uploader):
+                                     uploader,
+                                     fast_mode=False):
 
     schema = 'http://www.tardis.edu.au/schemas/ngs/fastq'
 
@@ -416,7 +414,7 @@ def register_project_fastq_datafiles(run_id,
                 description = sampleinfo.get('Description', '')
                 project = sampleinfo.get('SampleProject', '')
 
-                if options.fast:
+                if fast_mode:
                     number_of_reads = 0
                 else:
                     number_of_reads = get_number_of_reads_fastq(fastq_path)
@@ -442,7 +440,7 @@ def register_project_fastq_datafiles(run_id,
                         uploader.storage_box_location,
                         fastq_path)
 
-                if options.fast:
+                if fast_mode:
                     md5_checksum = '__undetermined__'
                 else:
                     md5_checksum = None  # will be calculated
@@ -467,14 +465,15 @@ def register_project_fastq_datafiles(run_id,
 
 
 def get_sample_id_from_fastqc_filename(fastqc_zip_path):
-    return os.path.split(fastqc_zip_path)[1].split('_')[0]
+    return os.path.basename(fastqc_zip_path).split('_')[0]
 
 
 def register_project_fastqc_datafiles(run_id,
                                       proj_id,
                                       fastqc_out_dir,
                                       dataset_url,
-                                      uploader):
+                                      uploader,
+                                      fast_mode=False):
 
     schema = 'http://www.tardis.edu.au/schemas/ngs/fastqc'
 
@@ -498,7 +497,7 @@ def register_project_fastqc_datafiles(run_id,
                     uploader.storage_box_location,
                     fastqc_zip_path)
 
-            if options.fast:
+            if fast_mode:
                 md5_checksum = '__undetermined__'
             else:
                 md5_checksum = None  # will be calculated
@@ -522,6 +521,55 @@ def register_project_fastqc_datafiles(run_id,
                         dataset_url)
 
 
+def upload_fastqc_reports(fastqc_out_dir, dataset_url, options):
+
+    for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
+
+        # Since the zipped FastQC output may be migrated to a storage location
+        # on tape (with delayed access), we need to host 'live' html reports
+        # at a location that will always be immediately available
+
+        live_box_uploader = MyTardisUploader(
+            options.url,
+            options.username,
+            options.password,
+            storage_mode='upload',
+            # storage_box_location='/data/cached',
+            storage_box_name='live')
+
+        fastqc_data_tables = parse_fastqc_data_txt(fastqc_zip_path)
+        fqc_version = fastqc_data_tables['version']
+
+        # Depending on the version of FastQC used and specific
+        #       commandline options, we may or may not have an HTML
+        #       report with inline (Base64) images. As such:
+        #       * if html file exists & FastQC version is,
+        #         >= 0.11.3, upload that file (assume inline images)
+        #       * if FastQC version is < 0.11.3, extra the zip file to /tmp,
+        #         create an inline images version, then upload that
+        #
+        #       Currently FastQC always generates a zip file alongside
+        #       any other output, irrespective of command line options.
+        #       For this reason, we always just extract from the zip, since
+        #       we know it should be there
+        with TmpZipExtract(fastqc_zip_path) as tmp_path:
+            fqc_id = splitext(os.path.basename(fastqc_zip_path))[0]
+            report_dir = join(tmp_path, fqc_id)
+            report_file = join(report_dir, 'fastqc_report.html')
+            from distutils.version import LooseVersion as SoftwareVersion
+            inline_report_filename = '%s.html' % fqc_id
+            inline_report_abspath = join(report_dir, inline_report_filename)
+            if SoftwareVersion(fqc_version) < SoftwareVersion('0.11.3'):
+                # convert fastqc_report.html to version with inline images
+                from standalone_html import make_html_images_inline
+                make_html_images_inline(report_file, inline_report_abspath)
+            else:
+                os.rename(report_file, inline_report_abspath)
+
+            location = live_box_uploader.upload_file(inline_report_abspath,
+                                                     dataset_url)
+
+
 def get_fastqc_summary_table_for_project(fastqc_out_dir):
 
     project_summary = []
@@ -542,7 +590,7 @@ def get_fastqc_summary_table_for_project(fastqc_out_dir):
 #     Returns an iterator that gives "Project_" directories from
 #     the bcl2fastq output directory.
 #
-#     :param bcl2fastq_out_dir: str
+#     :type bcl2fastq_out_dir: str
 #     :return: Iterator
 #     """
 #     for item in os.listdir(bcl2fastq_out_dir):
@@ -556,12 +604,11 @@ def get_fastqc_summary_table_for_project(fastqc_out_dir):
 #             yield proj_path
 
 
-def get_bcl2fastq_output_dir(run_metadata):
-    # suffix = '.pc'
-    suffix = '.ajp'
-    bcl2fastq_output_dir = join(run_metadata['run_path'],
-                                run_metadata['run_id'] + suffix)
-    return bcl2fastq_output_dir
+def get_bcl2fastq_output_dir(options, run_metadata):
+    return options.bcl2fastq_output_path.format(
+        run_id=run_metadata['run_id'],
+        run_path=run_metadata['run_path']
+    )
 
 
 def get_sample_directories(project_path):
@@ -569,7 +616,7 @@ def get_sample_directories(project_path):
     Returns an iterator that gives tuples of ("Sample_" directory, Sample ID)
     from within a bcl2fastq Project_ directory.
 
-    :param project_path: str
+    :type project_path: str
     :return: Iterator
     """
     for item in os.listdir(project_path):
@@ -583,7 +630,7 @@ def get_fastq_read_files(sample_path):
     Returns an iterator that gives gzipped FASTQ read files from a
     a bcl2fastq Project_*/Sample_* directory.
 
-    :param sample_path: str
+    :type sample_path: str
     :return: Iterator
     """
     for item in os.listdir(sample_path):
@@ -617,7 +664,7 @@ def get_fastqc_zip_files(fastqc_out_path):
     """
     Returns an iterator that gives zipped FASTQC result files.
 
-    :param sample_path: str
+    :type fastqc_out_path: str
     :return: Iterator
     """
     for item in os.listdir(fastqc_out_path):
@@ -645,7 +692,7 @@ def run_fastqc(fastq_paths,
             from tempfile import mkdtemp
             tmp_dir = mkdtemp()
             output_directory = tmp_dir
-        except:
+        except OSError:
             logger.error('FastQC - failed to create temp directory.')
             return None
 
@@ -694,15 +741,19 @@ def run_fastqc_on_project(proj_path,
 
     if output_directory is None:
         output_directory = get_fastqc_output_directory(proj_path)
+        if os.path.exists(output_directory):
+            logger.error("FastQC - output directory already exists: %s",
+                         output_directory)
+            return None
         try:
             os.mkdir(output_directory)
-        except:
+        except OSError:
             logger.error("FastQC - couldn't create output directory: %s",
-                          output_directory)
+                         output_directory)
             return None
 
     if (not os.path.exists(output_directory)) or \
-        (not os.path.isdir(output_directory)):
+       (not os.path.isdir(output_directory)):
         logger.error("FastQC - output path %s isn't a directory "
                      "or doesn't exist.",
                      output_directory)
@@ -719,7 +770,7 @@ def run_fastqc_on_project(proj_path,
     return fastqc_out
 
 
-def parse_file_from_zip(zip_file_path, filename, parser):
+def file_from_zip(zip_file_path, filename, mode='r'):
     # eg rootpath =
     # FastQC.out/15-02380-CE11-T13-L1_AACCAG_L001_R1_001_fastqc.zip
     # ie   fastq_filename + '_fastqc.zip'
@@ -738,8 +789,11 @@ def parse_file_from_zip(zip_file_path, filename, parser):
     with opener.parse(zip_file_path)[0] as vfs:
         for fn in vfs.walkfiles():
             if os.path.basename(fn) == filename:
-                with vfs.open(fn, 'r') as f:
-                    return parser(f)
+                return vfs.open(fn, mode)
+
+
+def parse_file_from_zip(zip_file_path, filename, parser):
+    return parser(file_from_zip(zip_file_path, filename))
 
 
 def parse_fastqc_summary_txt(zip_file_path):
@@ -791,9 +845,43 @@ def parse_fastqc_data_txt(zip_file_path):
                                parse)
 
 
-# TODO: Extract fastqc_report.html for upload ?
-def extract_fastqc_report_html(zip_file_path):
-    raise NotImplementedError()
+class TmpZipExtract:
+    """
+    A Context Manager class that unzips a zip file to a temporary path
+    and cleans up afterwards, when used with the 'with' statement.
+    """
+    def __init__(self, zip_file_path):
+        self.zip_file_path = zip_file_path
+        self.tmpdir = None
+
+    def __enter__(self):
+        from tempfile import mkdtemp
+        tmpdir = mkdtemp()
+        from zipfile import ZipFile
+        zf = ZipFile(self.zip_file_path)
+        zf.extractall(tmpdir)
+        self.tmpdir = tmpdir
+        return tmpdir
+
+    def __exit__(self, type, value, traceback):
+        import shutil
+        shutil.rmtree(self.tmpdir)
+
+def extract_fastqc_zip(zip_file_path):
+    """
+    Extract a zip file to a temporary path. Returns the path.
+
+    :type zip_file_path: str
+    :rtype: str
+    """
+    from tempfile import mkdtemp
+    tmpdir = mkdtemp()
+    from zipfile import ZipFile
+    zf = ZipFile(zip_file_path)
+    zf.extractall(tmpdir)
+    return tmpdir
+
+    #file_from_zip(zip_file_path, 'fastqc_report.html')
 
 
 def get_shared_storage_replica_url(storage_box_location, file_path):
@@ -808,7 +896,7 @@ def get_shared_storage_replica_url(storage_box_location, file_path):
     then replica_url will be:
         expt1/dataset1/file.txt
 
-    :param file_path: str
+    :type file_path: str
     :rtype: str
     """
     if storage_box_location:
@@ -823,21 +911,25 @@ def run_main():
 
     def extra_config_options(argparser):
         argparser.add_argument('--threads',
-                               dest="threads",
+                               dest='threads',
                                type=int,
-                               metavar="THREADS")
+                               metavar='THREADS')
         argparser.add_argument('--run-fastqc',
-                               dest="run_fastqc",
+                               dest='run_fastqc',
                                type=bool,
                                default=False,
-                               metavar="RUN_FASTQC")
+                               metavar='RUN_FASTQC')
         argparser.add_argument('--fastqc-bin',
-                               dest="fastqc_bin",
+                               dest='fastqc_bin',
                                type=str,
-                               metavar="FASTQC_BIN")
+                               metavar='FASTQC_BIN')
+        argparser.add_argument('--bcl2fastq-output-path',
+                               dest='bcl2fastq_output_path',
+                               default='{run_path}/{run_id}.bcl2fastq',
+                               type=str,
+                               metavar="BCL2FASTQ_OUTPUT_PATH")
 
     parser, options = get_config(add_extra_options_fn=extra_config_options)
-    global options
 
     validate_config(parser, options)
 
@@ -855,6 +947,7 @@ def run_main():
     # Create an Experiment representing the overall sequencing run
     run_path = options.path
     run_metadata = get_run_metadata(run_path)
+
     run_metadata['institute'] = options.institute
     run_metadata['description'] = options.description
     if not run_metadata['description']:
@@ -867,7 +960,7 @@ def run_main():
     except Exception, e:
         logger.error("Failed to create Experiment for sequencing run: %s",
                      run_path)
-        logger.error("Exception: %s", e)
+        logger.error("Exception: %s: %s", type(e).__name__, e)
         sys.exit(1)
 
     # Take just the path of the experiment, eg /api/v1/experiment/187/
@@ -893,7 +986,8 @@ def run_main():
 
         # The directory where bcl2fastq puts its output,
         # in Project_* directories
-        bcl2fastq_output_dir = get_bcl2fastq_output_dir(run_metadata)
+        bcl2fastq_output_dir = get_bcl2fastq_output_dir(options,
+                                                        run_metadata)
 
         proj_path = os.path.join(bcl2fastq_output_dir, 'Project_' + proj_id)
         fastqc_out_dir = get_fastqc_output_directory(proj_path)
@@ -974,14 +1068,18 @@ def run_main():
                                          proj_path,
                                          samplesheet,
                                          dataset_url,
-                                         uploader)
+                                         uploader,
+                                         fast_mode=options.fast)
 
         if proj_id != 'Undetermined_indices':
             register_project_fastqc_datafiles(run_metadata['run_id'],
                                               proj_id,
                                               fastqc_out_dir,
                                               dataset_url,
-                                              uploader)
+                                              uploader,
+                                              fast_mode=options.fast)
+
+            upload_fastqc_reports(fastqc_out_dir, dataset_url, options)
 
     logger.info("Ingestion of run %s complete !", run_metadata['run_id'])
     sys.exit(0)

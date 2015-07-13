@@ -321,7 +321,7 @@ class MyTardisUploader:
 
         with open(filename, 'rb') as f:
             form = MultipartEncoder(fields={'json_data': data,
-                                            'attached_file': (f, 'text/plain')})
+                                            'attached_file': ('text/plain', f)})
             headers = {'Accept': 'application/json',
                        'Content-Type': form.content_type}
 
@@ -338,6 +338,9 @@ class MyTardisUploader:
 
             return response
 
+    @backoff.on_exception(backoff.expo,
+                          requests.exceptions.RequestException,
+                          max_tries=8)
     def _register_datafile_staging(self, data, urlend):
         raise NotImplementedError("Registering datafiles in a staging location"
                                   "is not currently implemented.")
@@ -425,6 +428,11 @@ class MyTardisUploader:
 
         data = self._do_create_request(exp_json, 'experiment/')
 
+        if not data.ok:
+            pass
+            # TODO: log something with data.status_code and data.text
+            # and raise an appropriate exception
+
         return data.headers['Location']
 
     def create_dataset(self, description, experiments_list,
@@ -450,8 +458,6 @@ class MyTardisUploader:
                     parameter_sets_list=None,
                     replica_url='',
                     md5_checksum=None):
-        # print upload_file('cli.py',
-        #                   '/api/v1/dataset/143/').headers['location']
 
         if not parameter_sets_list:
             parameter_sets_list = []
@@ -490,7 +496,7 @@ class MyTardisUploader:
                 'dataset_file/'
             )
         elif self.storage_mode == 'upload':
-            delattr(file_dict, u'replicas')
+            # file_dict.pop(u'replicas', None)
             data = self._send_datafile(
                 json.dumps(file_dict),
                 'dataset_file/',
@@ -500,10 +506,9 @@ class MyTardisUploader:
             # we should never get here
             raise Exception("Invalid storage mode: " + self.storage_mode)
 
-        location = getattr(data.headers, 'location', None)
-        # print "Location: " + str(location)
+        location = data.headers.get('location', None)
 
-        if (data.status_code > 499):
+        if not data.ok:
             logger.error("Registration of data file failed: %s", data.content)
             import sys
             sys.exit()
@@ -539,7 +544,6 @@ def setup_logging():
                                    # '%(name)-12s\t'
                                    '%(levelname)-8s\t'
                                    '%(message)s')
-    logger.setLevel(logging.DEBUG)
 
     logger.addHandler(console_handler)
     logger.setLevel(logging.DEBUG)
