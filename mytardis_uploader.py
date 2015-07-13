@@ -551,7 +551,7 @@ def setup_logging():
     return logger
 
 
-def add_config_args(parser):
+def add_config_args(parser, add_extra_options_fn=None):
     """
     Takes an argparse.ArgumentParser-like object and adds commandline
     parameters to detect and capture values from.
@@ -632,6 +632,9 @@ def add_config_args(parser):
                              "Can be specified multiple times.",
                         metavar="REGEX")
 
+    if add_extra_options_fn:
+        add_extra_options_fn(parser)
+
 
 def get_config(default_config_filename='uploader_config.yaml',
                add_extra_options_fn=None):
@@ -657,7 +660,8 @@ def get_config(default_config_filename='uploader_config.yaml',
     from appsettings import SettingsParser
 
     preparser = ArgumentParser()
-    add_config_args(preparser)
+    add_config_args(preparser,
+                    add_extra_options_fn=add_extra_options_fn)
     precheck_options = preparser.parse_args()
 
     parser = None
@@ -675,9 +679,8 @@ def get_config(default_config_filename='uploader_config.yaml',
     else:
         parser = SettingsParser()
 
-    add_config_args(parser)
-    if add_extra_options_fn:
-        add_extra_options_fn(parser)
+    add_config_args(parser,
+                    add_extra_options_fn=add_extra_options_fn)
 
     options = parser.parse_args()
 

@@ -927,7 +927,7 @@ def run_main():
                                dest='bcl2fastq_output_path',
                                default='{run_path}/{run_id}.bcl2fastq',
                                type=str,
-                               metavar="BCL2FASTQ_OUTPUT_PATH")
+                               metavar='BCL2FASTQ_OUTPUT_PATH')
 
     parser, options = get_config(add_extra_options_fn=extra_config_options)
 
