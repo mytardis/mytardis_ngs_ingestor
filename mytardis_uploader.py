@@ -10,6 +10,7 @@ import logging
 logger = logging.getLogger('mytardis_uploader')
 
 import os
+import sys
 import mimetypes
 import json
 import requests
@@ -402,9 +403,9 @@ class MyTardisUploader:
         # author_list.append({u'name': 'Daouda A.K. Traore', u'url': ''})
         # author_list.append({u'name': 'James C Whisstock', u'url': ''})
 
-        #if not created_time:
-        #    from datetime import datetime
-        #    created_time = datetime.utcnow().isoformat('Z') # Z is UTC
+        # if not created_time:
+        #     from datetime import datetime
+        #     created_time = datetime.utcnow().isoformat('Z') # Z is UTC
 
         exp_dict = {
             u'description': description,
@@ -429,9 +430,8 @@ class MyTardisUploader:
         data = self._do_create_request(exp_json, 'experiment/')
 
         if not data.ok:
-            pass
-            # TODO: log something with data.status_code and data.text
-            # and raise an appropriate exception
+            logger.error("Creating experiment failed: %s", data.content)
+            sys.exit()
 
         return data.headers['Location']
 
@@ -510,7 +510,6 @@ class MyTardisUploader:
 
         if not data.ok:
             logger.error("Registration of data file failed: %s", data.content)
-            import sys
             sys.exit()
 
         return location
