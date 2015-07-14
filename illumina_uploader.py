@@ -50,12 +50,12 @@ def get_run_metadata(run_path):
     parameters = merge_dicts(runinfo_parameters,
                              instrument_config,
                              samplesheet_common_fields)
-    parameter_list = dict_to_parameter_list(parameters)
+    schema = 'http://www.tardis.edu.au/schemas/ngs/run/illumina'
+    parameter_set = dict_to_parameter_set(parameters, schema)
 
     # parameter_list.append({u'name': param_name, u'value': param_value})
-    schema = 'http://www.tardis.edu.au/schemas/ngs/illumina/run'
-    metadata['parameter_sets'] = [{u'schema': schema,
-                                   u'parameters': parameter_list}]
+
+    metadata['parameter_sets'] = [parameter_set]
 
     return metadata
 
@@ -110,7 +110,7 @@ def get_project_metadata(proj_id,
 
     fasqc_summary_parameterset = {
         u'schema':
-        'http://www.tardis.edu.au/schemas/ngs/project/fastqc_summary',
+        'http://www.tardis.edu.au/schemas/ngs/project/__hidden__fastqc_summary',
         u'parameters': fastqc_summary_parameters
     }
 
@@ -225,7 +225,7 @@ def runinfo_parser(run_path):
     """
 
     Matches some or all of the fields defined in schema:
-    http://www.tardis.edu.au/schemas/sequencing/illumina/run
+    http://www.tardis.edu.au/schemas/sequencing/run/illumina
 
     :type run_path: str
     :rtype: dict
@@ -318,6 +318,11 @@ def dict_to_parameter_list(d):
     return [{u'name': k, u'value': v} for k, v in d.items()]
 
 
+def dict_to_parameter_set(d, schema):
+    return {u'schema': schema,
+            u'parameters': dict_to_parameter_list(d)}
+
+
 # def merge_dicts(a, b):
 #     merged = a.copy()
 #     merged.update(b)
@@ -388,7 +393,7 @@ def register_project_fastq_datafiles(run_id,
                                      uploader,
                                      fast_mode=False):
 
-    schema = 'http://www.tardis.edu.au/schemas/ngs/fastq'
+    schema = 'http://www.tardis.edu.au/schemas/ngs/file/fastq'
 
     sample_dict = samplesheet_to_dict_by_id(samplesheet)
 
@@ -433,9 +438,8 @@ def register_project_fastq_datafiles(run_id,
                               'project': project,
                               'number_of_reads': number_of_reads,
                               }
-                datafile_parameter_sets = [
-                    {u'schema': schema,
-                     u'parameters': dict_to_parameter_list(parameters)}]
+                datafile_parameter_sets = \
+                    [dict_to_parameter_set(parameters, schema)]
 
                 replica_url = fastq_path
                 if uploader.storage_mode == 'shared':
@@ -478,7 +482,7 @@ def register_project_fastqc_datafiles(run_id,
                                       uploader,
                                       fast_mode=False):
 
-    schema = 'http://www.tardis.edu.au/schemas/ngs/fastqc'
+    schema = 'http://www.tardis.edu.au/schemas/ngs/file/fastqc'
 
     # Upload datafiles for the FASTQC output files
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
@@ -490,9 +494,8 @@ def register_project_fastqc_datafiles(run_id,
                           'sample_id': sample_id,
                           'fastqc_version': fastqc_version}
 
-            datafile_parameter_sets = [
-                {u'schema': schema,
-                 u'parameters': dict_to_parameter_list(parameters)}]
+            datafile_parameter_sets = \
+                [dict_to_parameter_set(parameters, schema)]
 
             replica_url = fastqc_zip_path
             if uploader.storage_mode == 'shared':
@@ -1038,7 +1041,7 @@ def run_main():
             project_expt_link=project_url,
             fastqc_summary_json=fqc_summary_json,
             fastqc_version=fqc_version,
-            schema='http://www.tardis.edu.au/schemas/ngs/raw_reads')
+            schema='http://www.tardis.edu.au/schemas/ngs/project/raw_reads')
 
         ############################################
         # Create the FastQC Dataset for the project
@@ -1051,11 +1054,20 @@ def run_main():
                 end_date = run_metadata['end_time'].split()[0]
                 fqc_dataset_title = "FastQC reports for Project %s, %s" % \
                                     (proj_id, end_date)
+                fqc_metadata = get_project_metadata(
+                    proj_id,
+                    run_metadata,
+                    run_expt_link=run_expt_url,
+                    project_expt_link=project_url,
+                    fastqc_summary_json=fqc_summary_json,
+                    fastqc_version=fqc_version,
+                    schema='http://www.tardis.edu.au/schemas/ngs/project/fastqc'
+                )
 
                 fqc_dataset_url = uploader.create_dataset(
                     fqc_dataset_title,
                     parent_expt_urls,
-                    parameter_sets_list=dataset_metadata['parameter_sets']
+                    parameter_sets_list=fqc_metadata['parameter_sets']
                 )
 
                 # Take just the path, eg: /api/v1/dataset/363
