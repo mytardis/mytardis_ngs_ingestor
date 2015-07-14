@@ -120,6 +120,7 @@ def get_project_metadata(proj_id,
 
     return proj_metadata
 
+
 def api_url_to_view_url(apiurl):
     """
     Takes a MyTardis API URL of the form /v1/api/experiment/998 or
@@ -140,6 +141,7 @@ def api_url_to_view_url(apiurl):
         return '/dataset/%s' % pk
 
     raise ValueError('Not a valid MyTardis API URL: %s' % apiurl)
+
 
 def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
     """
@@ -481,11 +483,11 @@ def register_project_fastqc_datafiles(run_id,
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
 
             sample_id = get_sample_id_from_fastqc_filename(fastqc_zip_path)
-            fastqc_data_tables = parse_fastqc_data_txt(fastqc_zip_path)
+            fastqc_version = parse_fastqc_data_txt(fastqc_zip_path)['version']
             parameters = {'run_id': run_id,
                           'project': proj_id,
                           'sample_id': sample_id,
-                          'fastqc_version': fastqc_data_tables['version']}
+                          'fastqc_version': fastqc_version}
 
             datafile_parameter_sets = [
                 {u'schema': schema,
@@ -577,13 +579,10 @@ def get_fastqc_summary_table_for_project(fastqc_out_dir):
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
         sample_id = get_sample_id_from_fastqc_filename(fastqc_zip_path)
         qc_pass_fail_table = parse_fastqc_summary_txt(fastqc_zip_path)
-
-        # TODO: Currently unused, except for extracting the FastQC version
-        qc_data_table = parse_fastqc_data_txt(fastqc_zip_path)
-
+        fastqc_version = parse_fastqc_data_txt(fastqc_zip_path)['version']
         project_summary.append((sample_id, qc_pass_fail_table))
 
-    return project_summary, qc_data_table['version']
+    return project_summary, fastqc_version
 
 # def get_project_directories(bcl2fastq_out_dir):
 #     """
@@ -947,6 +946,7 @@ def run_main():
     # Create an Experiment representing the overall sequencing run
     run_path = options.path
     run_metadata = get_run_metadata(run_path)
+    run_id = run_metadata['run_id']
 
     run_metadata['institute'] = options.institute
     run_metadata['description'] = options.description
@@ -966,8 +966,8 @@ def run_main():
     # Take just the path of the experiment, eg /api/v1/experiment/187/
     run_expt_url = urlparse(run_expt_url).path
 
-    logger.info("Created run experiment: %s (%s)",
-                run_metadata['run_id'],
+    logger.info("Created Run Experiment: %s (%s)",
+                run_id,
                 run_expt_url)
 
     samplesheet, chemistry = get_samplesheet(join(run_path, 'SampleSheet.csv'))
@@ -1039,7 +1039,53 @@ def run_main():
             fastqc_version=fqc_version,
             schema='http://www.tardis.edu.au/schemas/ngs/raw_reads')
 
-        # Create a Dataset for each project, associated with both
+        ############################################
+        # Create the FastQC Dataset for the project
+        if proj_id != 'Undetermined_indices':
+            try:
+                parent_expt_urls = [project_url, run_expt_url]
+
+                # TODO: encapsulate this in a create_fastqc_dataset function
+                #       for consistency ?
+                end_date = run_metadata['end_time'].split()[0]
+                fqc_dataset_title = "FastQC reports for Project %s, %s" % \
+                                    (proj_id, end_date)
+
+                fqc_dataset_url = uploader.create_dataset(
+                    fqc_dataset_title,
+                    parent_expt_urls,
+                    parameter_sets_list=dataset_metadata['parameter_sets']
+                )
+
+                # Take just the path, eg: /api/v1/dataset/363
+                fqc_dataset_url = urlparse(fqc_dataset_url).path
+                # Add the LINK parameter from the FASTQ dataset to it's
+                # associated FastQC dataset
+                dataset_metadata['parameter_sets'][0]['parameters'].append(
+                    {'name': 'fastqc_dataset',
+                     'value': api_url_to_view_url(fqc_dataset_url)})
+
+            except Exception, e:
+                logger.error("Failed to create FastQC Dataset for Project: %s",
+                             proj_id)
+                logger.debug("Exception: %s", e)
+                sys.exit(1)
+
+            logger.info("Created FastQC Dataset: %s (%s)",
+                        fqc_dataset_url,
+                        proj_id)
+
+            register_project_fastqc_datafiles(run_id,
+                                              proj_id,
+                                              fastqc_out_dir,
+                                              fqc_dataset_url,
+                                              uploader,
+                                              fast_mode=options.fast)
+
+            upload_fastqc_reports(fastqc_out_dir, fqc_dataset_url, options)
+
+        #################################################################
+        # Create the FASTQ Dataset for the project, associated with both
         # the overall run Experiment, and the project Experiment
         try:
             # We associate the Undetermined_indices FASTQ reads only
@@ -1050,38 +1096,28 @@ def run_main():
             else:
                 parent_expt_urls = [project_url, run_expt_url]
 
-            dataset_url = create_fastq_dataset(dataset_metadata,
-                                               parent_expt_urls,
-                                               uploader)
+            proj_dataset_url = create_fastq_dataset(dataset_metadata,
+                                                    parent_expt_urls,
+                                                    uploader)
         except Exception, e:
-            logger.error("Failed to create Dataset for project: %s",
+            logger.error("Failed to create Dataset for Project: %s",
                          proj_id)
             logger.debug("Exception: %s", e)
             sys.exit(1)
 
         # Take just the path, eg: /api/v1/dataset/363
-        dataset_url = urlparse(dataset_url).path
+        proj_dataset_url = urlparse(proj_dataset_url).path
 
-        logger.info("Created FASTQ dataset: %s (%s)", dataset_url, proj_id)
+        logger.info("Created FASTQ Dataset: %s (%s)", proj_dataset_url, proj_id)
 
-        register_project_fastq_datafiles(run_metadata['run_id'],
+        register_project_fastq_datafiles(run_id,
                                          proj_path,
                                          samplesheet,
-                                         dataset_url,
+                                         proj_dataset_url,
                                          uploader,
                                          fast_mode=options.fast)
 
-        if proj_id != 'Undetermined_indices':
-            register_project_fastqc_datafiles(run_metadata['run_id'],
-                                              proj_id,
-                                              fastqc_out_dir,
-                                              dataset_url,
-                                              uploader,
-                                              fast_mode=options.fast)
-
-            upload_fastqc_reports(fastqc_out_dir, dataset_url, options)
-
-    logger.info("Ingestion of run %s complete !", run_metadata['run_id'])
+    logger.info("Ingestion of run %s complete !", run_id)
     sys.exit(0)
 
 if __name__ == "__main__":
