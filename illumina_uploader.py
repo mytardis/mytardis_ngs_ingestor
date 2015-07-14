@@ -122,6 +122,28 @@ def get_project_metadata(proj_id,
     return proj_metadata
 
 
+def get_fastqc_dataset_metadata(proj_id,
+                                raw_reads_dataset_url,
+                                fastqc_version,
+                                metadata):
+    schema = 'http://www.tardis.edu.au/schemas/ngs/project/fastqc'
+    end_date = metadata['end_time'].split()[0]
+    fqc_dataset_title = "FastQC reports for Project %s, %s" % \
+                        (proj_id, end_date)
+    metadata['title'] = fqc_dataset_title
+    # We want the 'main' parameter set (ie NOT the __hidden__fastqc_summary)
+    params = parameter_set_to_dict(metadata['parameter_sets'][0])
+    fqc_params = {
+        'run_id': params['run_id'],
+        'project': proj_id,
+        'raw_reads_dataset': raw_reads_dataset_url,
+        'fastqc_version': fastqc_version,
+    }
+
+    metadata['parameter_sets'][0] = dict_to_parameter_set(fqc_params, schema)
+    return metadata
+
+
 def api_url_to_view_url(apiurl):
     """
     Takes a MyTardis API URL of the form /v1/api/experiment/998 or
@@ -321,6 +343,14 @@ def dict_to_parameter_list(d):
 def dict_to_parameter_set(d, schema):
     return {u'schema': schema,
             u'parameters': dict_to_parameter_list(d)}
+
+
+def parameter_set_to_dict(param_set):
+    d = {}
+    for param in param_set['parameters']:
+        d[param['name']] = param['value']
+
+    return d
 
 
 # def merge_dicts(a, b):
@@ -909,8 +939,8 @@ def get_shared_storage_replica_url(storage_box_location, file_path):
 
 
 def run_main():
-    logger = setup_logging()
     global logger
+    logger = setup_logging()
 
     def extra_config_options(argparser):
         argparser.add_argument('--threads',
@@ -1049,11 +1079,8 @@ def run_main():
             try:
                 parent_expt_urls = [project_url, run_expt_url]
 
-                # TODO: encapsulate this in a create_fastqc_dataset function
-                #       for consistency ?
-                end_date = run_metadata['end_time'].split()[0]
-                fqc_dataset_title = "FastQC reports for Project %s, %s" % \
-                                    (proj_id, end_date)
+                # Start with a clean copy of the project metadata, using
+                # the FastQC dataset schema
                 fqc_metadata = get_project_metadata(
                     proj_id,
                     run_metadata,
@@ -1064,8 +1091,25 @@ def run_main():
                     schema='http://www.tardis.edu.au/schemas/ngs/project/fastqc'
                 )
 
+                # TODO: proj_dataset_url should actually be a URL .. but ..
+                # we have a chicken-egg problem here - we want the URL
+                # for the FASTQ dataset here, to add as a parameter, but
+                # we are adding the FastQC dataset URL so we can add it's
+                # URL to the FASTQ dataset.
+                # We need to be able to update the FastQC dataset parameters
+                # in a second API call after we've added the FASTQ dataset.
+                proj_dataset_url = "%s__%s" % (run_id, proj_id)
+
+                # Then discard parts, repopulate some parameters
+                fqc_metadata = get_fastqc_dataset_metadata(proj_id,
+                                                           proj_dataset_url,
+                                                           fqc_version,
+                                                           fqc_metadata)
+
+                # TODO: encapsulate this in a create_fastqc_dataset function
+                #       for consistency ?
                 fqc_dataset_url = uploader.create_dataset(
-                    fqc_dataset_title,
+                    fqc_metadata['title'],
                     parent_expt_urls,
                     parameter_sets_list=fqc_metadata['parameter_sets']
                 )
