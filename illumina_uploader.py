@@ -104,8 +104,9 @@ def get_project_metadata(proj_id,
     # FastQC results for every sample in the project, used for
     # rendering and overview table
     fastqc_summary_parameters = \
-        dict_to_parameter_list({'fastqc_summary_json': fastqc_summary_json,
-                                'fastqc_version': fastqc_version})
+        dict_to_parameter_list(
+            {'__hidden__fastqc_summary_json': fastqc_summary_json,
+             'fastqc_version': fastqc_version})
 
     fasqc_summary_parameterset = {
         u'schema':
