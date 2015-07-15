@@ -212,14 +212,26 @@ def get_number_of_reads_fastq(filepath):
     :type filepath: str
     :rtype: int
     """
-
-    # TODO: This should (optionally?) extract the number of reads from
-    #       the associated FASTQC output - much faster !
-
     num = subprocess.check_output("zcat %s | echo $((`wc -l`/4))" % filepath,
                                   shell=True)
     return int(num.strip())
 
+
+def get_read_length_fastq(filepath):
+    """
+    Return the length of the first read in a (gzipped) FASTQ file.
+
+    :param filepath: Path to the (gzipped) FASTQ file
+    :type filepath: str
+    :return: Length of the first read in the FASTQ file
+    :rtype: int
+    """
+    num = subprocess.check_output("zcat %s | "
+                                  "head -n 2 | "
+                                  "tail -n 1 | "
+                                  "wc --chars" % filepath,
+                                  shell=True)
+    return int(num.strip()) - 1
 
 # Copypasta from: https://goo.gl/KpWo1w
 # def unique(seq):
@@ -421,6 +433,7 @@ def register_project_fastq_datafiles(run_id,
                                      samplesheet,
                                      dataset_url,
                                      uploader,
+                                     fastqc_data=None,
                                      fast_mode=False):
 
     schema = 'http://www.tardis.edu.au/schemas/ngs/file/fastq'
@@ -452,11 +465,6 @@ def register_project_fastq_datafiles(run_id,
                 description = sampleinfo.get('Description', '')
                 project = sampleinfo.get('SampleProject', '')
 
-                if fast_mode:
-                    number_of_reads = 0
-                else:
-                    number_of_reads = get_number_of_reads_fastq(fastq_path)
-
                 parameters = {'run_id': run_id,
                               'sample_id': sample_id,
                               'reference_genome': reference_genome,
@@ -466,8 +474,30 @@ def register_project_fastq_datafiles(run_id,
                               'operator': operator,
                               'description': description,
                               'project': project,
-                              'number_of_reads': number_of_reads,
                               }
+
+                if fastqc_data is not None and sample_id in fastqc_data:
+                    basic_stats = fastqc_data[sample_id]['Basic Statistics']
+                    for row in basic_stats['rows']:
+                        k = row[0]
+                        v = row[1]
+                        if 'Total Sequences' in k:
+                            parameters['number_of_reads'] = int(v)
+                        if 'Sequences flagged as poor quality' in k:
+                            parameters['number_of_poor_quality_reads'] = int(v)
+                        if 'Sequence length' in k:
+                            parameters['read_length'] = int(v)
+                elif not fast_mode:
+                    # If there is no FastQC data with read counts etc (eg
+                    # for Undetermined_indicies) we calculate our own
+                    logger.info("Calculating number of reads for: %s",
+                                fastq_path)
+                    parameters['number_of_reads'] = \
+                        get_number_of_reads_fastq(fastq_path)
+                    logger.info("Calculating read length for: %s", fastq_path)
+                    parameters['read_length'] = \
+                        get_read_length_fastq(fastq_path)
+
                 datafile_parameter_sets = \
                     [dict_to_parameter_set(parameters, schema)]
 
@@ -606,17 +636,19 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, options):
                                                      dataset_url)
 
 
-def get_fastqc_summary_table_for_project(fastqc_out_dir):
+def get_fastqc_summary_for_project(fastqc_out_dir):
 
     project_summary = []
+    sample_details = {}
     # Upload datafiles for the FASTQC output files
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
         sample_id = get_sample_id_from_fastqc_filename(fastqc_zip_path)
         qc_pass_fail_table = parse_fastqc_summary_txt(fastqc_zip_path)
-        fastqc_version = parse_fastqc_data_txt(fastqc_zip_path)['version']
         project_summary.append((sample_id, qc_pass_fail_table))
+        sample_details[sample_id] = parse_fastqc_data_txt(fastqc_zip_path)
+        fastqc_version = sample_details[sample_id]['version']
 
-    return project_summary, fastqc_version
+    return project_summary, sample_details, fastqc_version
 
 # def get_project_directories(bcl2fastq_out_dir):
 #     """
@@ -834,21 +866,44 @@ def parse_fastqc_summary_txt(zip_file_path):
     Extract the overall PASS/WARN/FAIL summary.txt table from FastQC results
     contained in a zip file.
     """
-    def parse(fh):
+    def _parse(fh):
         summary = [tuple(line.strip().split('\t')) for line in fh]
         return summary
 
     return parse_file_from_zip(zip_file_path,
                                'summary.txt',
-                               parse)
+                               _parse)
 
 
 def parse_fastqc_data_txt(zip_file_path):
     """
     Extract the tables in fastqc_data.txt from FastQC results contained
     in a zip file.
+
+    Returns a dictionary representing the tables in the file,
+    keyed by section headers in the form:
+
+     {u'Basic Statistics':
+      {'column_labels': (u'Measure', u'Value'),
+      'rows': [
+       (u'Filename', u'14-06207-SOX-5_AGTGAG_L001_R1_001.fastq.gz'),
+       (u'File type', u'Conventional base calls'),
+       (u'Encoding', u'Sanger / Illumina 1.9'), (u'Total Sequences', u'157171'),
+       (u'Filtered Sequences', u'0'), (u'Sequence length', u'51'),
+       (u'%GC', u'40')
+      ],
+      'qc_result': u'pass'},
+
+      u'version': '0.12',
+     }
+
+     The FastQC version is stored under data['version'].
+
+
+    :type zip_file_path: str
+    :return: dict
     """
-    def parse(fh):
+    def _parse(fh):
         data = {'version': fh.readline().split('\t')[1].strip()}
         section = None
         for l in fh:
@@ -875,7 +930,7 @@ def parse_fastqc_data_txt(zip_file_path):
 
     return parse_file_from_zip(zip_file_path,
                                'fastqc_data.txt',
-                               parse)
+                               _parse)
 
 
 class TmpZipExtract:
@@ -1037,8 +1092,8 @@ def run_main():
 
         fqc_summary = []
         if proj_id != 'Undetermined_indices':
-            fqc_summary, fqc_version = \
-                get_fastqc_summary_table_for_project(fastqc_out_dir)
+            fqc_summary, fqc_details, fqc_version = \
+                get_fastqc_summary_for_project(fastqc_out_dir)
 
         import json
         fqc_summary_json = json.dumps(fqc_summary)
@@ -1172,6 +1227,7 @@ def run_main():
                                          samplesheet,
                                          proj_dataset_url,
                                          uploader,
+                                         fastqc_data=fqc_details,
                                          fast_mode=options.fast)
 
     logger.info("Ingestion of run %s complete !", run_id)
