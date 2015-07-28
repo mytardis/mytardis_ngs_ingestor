@@ -476,17 +476,12 @@ def register_project_fastq_datafiles(run_id,
                               'project': project,
                               }
 
-                if fastqc_data is not None and sample_id in fastqc_data:
-                    basic_stats = fastqc_data[sample_id]['Basic Statistics']
-                    for row in basic_stats['rows']:
-                        k = row[0]
-                        v = row[1]
-                        if 'Total Sequences' in k:
-                            parameters['number_of_reads'] = int(v)
-                        if 'Sequences flagged as poor quality' in k:
-                            parameters['number_of_poor_quality_reads'] = int(v)
-                        if 'Sequence length' in k:
-                            parameters['read_length'] = int(v)
+                if fastqc_data is not None \
+                        and 'samples' in fastqc_data \
+                        and sample_id in fastqc_data['samples']:
+                    basic_stats = fastqc_data['samples'][sample_id]
+                    del basic_stats['qc_checks']
+                    parameters.update(basic_stats)
                 elif not fast_mode:
                     # If there is no FastQC data with read counts etc (eg
                     # for Undetermined_indicies) we calculate our own
@@ -637,18 +632,52 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, options):
 
 
 def get_fastqc_summary_for_project(fastqc_out_dir):
+    """
 
-    project_summary = []
-    sample_details = {}
-    # Upload datafiles for the FASTQC output files
+    Returns a nested data structure representing FastQC results
+    for all samples in a project. Includes QC PASS/WARN/FAIL tests,
+    original FASTQ filename and some basic statistics (eg number of reads,
+    GC content).
+
+    eg:
+
+    {"samples" : [ ("OCT4-15",
+                    { "qc_checks" : [["Basic Statistics", "PASS"],],
+                      "filename" : "OCT4-15_TGGTGA_L001_R1_001.fastq.gz",
+                      "number_of_reads": 1042034623,
+                      ...
+                    }
+                   ),
+                   ...
+                 ],
+     "version" : "0.11.2"
+    }
+
+    :type fastqc_out_dir: str
+    :rtype project_summary: dict
+    """
+    project_summary = {u'samples': []}
+    fqc_detailed_data = {}
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
         sample_id = get_sample_id_from_fastqc_filename(fastqc_zip_path)
-        qc_pass_fail_table = parse_fastqc_summary_txt(fastqc_zip_path)
-        project_summary.append((sample_id, qc_pass_fail_table))
-        sample_details[sample_id] = parse_fastqc_data_txt(fastqc_zip_path)
-        fastqc_version = sample_details[sample_id]['version']
 
-    return project_summary, sample_details, fastqc_version
+        qc_pass_fail_table_raw = parse_fastqc_summary_txt(fastqc_zip_path)
+        fastq_filename = qc_pass_fail_table_raw[0][2]
+        qc_pass_fail_table = []
+        # remove the filename column
+        for result, check, fn in qc_pass_fail_table_raw:
+            qc_pass_fail_table.append((check, result))
+
+        # project_summary.append((sample_id, qc_pass_fail_table))
+        fqc_detailed_data[sample_id] = parse_fastqc_data_txt(fastqc_zip_path)
+        basic_stats = _extract_fastqc_basic_stats(fqc_detailed_data, sample_id)
+        sample_data = {u'qc_checks': qc_pass_fail_table,
+                       u'filename': fastq_filename}
+        sample_data.update(basic_stats)
+        project_summary[u'samples'].append((sample_id, sample_data))
+        project_summary[u'version'] = fqc_detailed_data[sample_id]['version']
+
+    return project_summary
 
 # def get_project_directories(bcl2fastq_out_dir):
 #     """
@@ -933,6 +962,24 @@ def parse_fastqc_data_txt(zip_file_path):
                                _parse)
 
 
+def _extract_fastqc_basic_stats(fastqc_data, sample_id):
+    basic_stats = fastqc_data[sample_id]['Basic Statistics']
+    stats = {}
+    for row in basic_stats['rows']:
+        k = row[0]
+        v = row[1]
+        if 'Total Sequences' in k:
+            stats['number_of_reads'] = int(v)
+        if 'Sequences flagged as poor quality' in k:
+            stats['number_of_poor_quality_reads'] = int(v)
+        if 'Sequence length' in k:
+            stats['read_length'] = int(v)
+        if '%GC' in k:
+            stats['percent_gc'] = float(v)
+
+        return stats
+
+
 class TmpZipExtract:
     """
     A Context Manager class that unzips a zip file to a temporary path
@@ -1090,10 +1137,10 @@ def run_main():
                                   fastqc_bin=options.fastqc_bin,
                                   threads=int(options.threads))
 
-        fqc_summary = []
+        fqc_summary = {}
         if proj_id != 'Undetermined_indices':
-            fqc_summary, fqc_details, fqc_version = \
-                get_fastqc_summary_for_project(fastqc_out_dir)
+            fqc_summary = get_fastqc_summary_for_project(fastqc_out_dir)
+            fqc_version = fqc_summary[u'version']
 
         import json
         fqc_summary_json = json.dumps(fqc_summary)
@@ -1227,7 +1274,7 @@ def run_main():
                                          samplesheet,
                                          proj_dataset_url,
                                          uploader,
-                                         fastqc_data=fqc_details,
+                                         fastqc_data=fqc_summary,
                                          fast_mode=options.fast)
 
     logger.info("Ingestion of run %s complete !", run_id)
