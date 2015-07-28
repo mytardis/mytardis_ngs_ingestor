@@ -977,7 +977,7 @@ def _extract_fastqc_basic_stats(fastqc_data, sample_id):
         if '%GC' in k:
             stats['percent_gc'] = float(v)
 
-        return stats
+    return stats
 
 
 class TmpZipExtract:
