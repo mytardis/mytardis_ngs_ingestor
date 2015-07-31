@@ -226,9 +226,9 @@ def get_read_length_fastq(filepath):
     :return: Length of the first read in the FASTQ file
     :rtype: int
     """
-    num = subprocess.check_output("zcat %s | "
-                                  "head -n 2 | "
-                                  "tail -n 1 | "
+    num = subprocess.check_output("zcat -f %s | "
+                                  "head -n 2  | "
+                                  "tail -n 1  | "
                                   "wc --chars" % filepath,
                                   shell=True)
     return int(num.strip()) - 1
@@ -478,9 +478,9 @@ def register_project_fastq_datafiles(run_id,
 
                 if fastqc_data is not None \
                         and 'samples' in fastqc_data \
-                        and sample_id in fastqc_data['samples']:
-                    basic_stats = fastqc_data['samples'][sample_id]
-                    del basic_stats['qc_checks']
+                        and sample_id in dict(fastqc_data['samples']):
+                    basic_stats = dict(fastqc_data['samples'])[sample_id]
+                    basic_stats.pop('qc_checks', None)  # remove this table
                     parameters.update(basic_stats)
                 elif not fast_mode:
                     # If there is no FastQC data with read counts etc (eg
@@ -503,7 +503,7 @@ def register_project_fastq_datafiles(run_id,
                         fastq_path)
 
                 if fast_mode:
-                    md5_checksum = '__undetermined__'
+                    md5_checksum = ''  # '__undetermined__'
                 else:
                     md5_checksum = None  # will be calculated
 
