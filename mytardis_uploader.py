@@ -46,6 +46,11 @@ class MyTardisUploader:
                                           __version__,
                                           self.user_agent_url)
 
+    def _json_request_headers(self):
+        return {'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': self.user_agent}
+
     def upload_directory(self,
                          file_path,
                          title='',
@@ -239,7 +244,7 @@ class MyTardisUploader:
                    (os.path.abspath(file_path),
                     dataset_name,
                     file_name)
-        #print filename
+        # print filename
 
         parameter_sets = self._get_parametersets_from_csv('datafile',
                                                           file_path,
@@ -263,13 +268,11 @@ class MyTardisUploader:
         return []
 
     @backoff.on_exception(backoff.expo,
-                      requests.exceptions.RequestException,
-                      max_tries=8)
-    def _do_create_request(self, data, urlend):
-        url = self.v1_api_url % urlend
-        headers = {'Accept': 'application/json',
-                   'Content-Type': 'application/json',
-                   'User-Agent': self.user_agent}
+                          requests.exceptions.RequestException,
+                          max_tries=8)
+    def _do_post_request(self, data, urlend):
+        url = self.v1_api_url % (urlend.rstrip('/') + '/')
+        headers = self._json_request_headers()
 
         try:
             response = requests.post(url,
@@ -323,8 +326,8 @@ class MyTardisUploader:
         with open(filename, 'rb') as f:
             form = MultipartEncoder(fields={'json_data': data,
                                             'attached_file': ('text/plain', f)})
-            headers = {'Accept': 'application/json',
-                       'Content-Type': form.content_type}
+            headers = self._json_request_headers()
+            headers['Content-Type'] = form.content_type
 
             try:
                 response = requests.post(url,
@@ -351,8 +354,7 @@ class MyTardisUploader:
                           max_tries=8)
     def _register_datafile_shared_storage(self, data, urlend):
         url = self.v1_api_url % urlend
-        headers = {'Accept': 'application/json',
-                   'Content-Type': 'application/json'}
+        headers = self._json_request_headers()
 
         try:
             response = requests.post(url,
@@ -427,7 +429,7 @@ class MyTardisUploader:
 
         logger.debug("Experiment JSON: %s", exp_json)
 
-        data = self._do_create_request(exp_json, 'experiment/')
+        data = self._do_post_request(exp_json, 'experiment')
 
         if not data.ok:
             logger.error("Creating experiment failed: %s", data.content)
@@ -435,8 +437,34 @@ class MyTardisUploader:
 
         return data.headers['Location']
 
+    def query_instrument(self, name):
+        url = self.v1_api_url % 'instrument'
+        query_params = {u'name': name}
+        headers = self._json_request_headers()
+        response = requests.get(url,
+                                params=query_params,
+                                headers=headers,
+                                auth=HTTPBasicAuth(self.username,
+                                                   self.password)
+                                )
+        return response.json()
+
+    def query_group(self, name):
+        url = self.v1_api_url % 'group'
+        query_params = {u'name': name}
+        headers = self._json_request_headers()
+        response = requests.get(url,
+                                params=query_params,
+                                headers=headers,
+                                auth=HTTPBasicAuth(self.username,
+                                                   self.password)
+                                )
+        return response.json()
+
     def create_dataset(self, description, experiments_list,
-                       parameter_sets_list=None, immutable=False):
+                       instrument=None,
+                       parameter_sets_list=None,
+                       immutable=False):
 
         if not parameter_sets_list:
             parameter_sets_list = []
@@ -448,9 +476,14 @@ class MyTardisUploader:
             u'parameter_sets': parameter_sets_list
         }
 
+        if instrument is not None:
+            instrument_resource_uri = \
+                self.query_instrument(instrument)['objects'][0]['resource_uri']
+            dataset_dict[u'instrument'] = instrument_resource_uri
+
         dataset_json = json.dumps(dataset_dict)
 
-        data = self._do_create_request(dataset_json, 'dataset/')
+        data = self._do_post_request(dataset_json, 'dataset')
 
         return data.headers['Location']
 
@@ -513,6 +546,39 @@ class MyTardisUploader:
             sys.exit()
 
         return location
+
+    def _resource_uri_to_id(self, uri):
+        """
+        Takes resource URI like: http://example.org/api/v1/experiment/998
+        and returns just the id value (998).
+
+        :type uri: str
+        :rtype: int
+        """
+        from urlparse import urlparse
+        resource_id = int(urlparse(uri).path.rstrip('/').split('/')[-1:][0])
+        return resource_id
+
+    def share_experiment_with_group(self, experiment, group_name):
+        group_id = self.query_group(group_name)['objects'][0]['id']
+        experiment_id = self._resource_uri_to_id(experiment)
+        data = {
+            u'pluginId': u'django_group',
+            u'entityId': unicode(group_id),
+            u'content_object': unicode(experiment),
+            u'content_type': u'experiment',
+            u'object_id': unicode(experiment_id),
+            u'aclOwnershipType': 1,
+            u'isOwner': True,
+            u'canRead': True,
+            u'canWrite': True,
+            u'canDelete': False,
+            u'effectiveDate': None,
+            u'expiryDate': None
+        }
+
+        response = self._do_post_request(json.dumps(data), 'objectacl')
+        return response
 
 
 def setup_logging():
@@ -603,6 +669,13 @@ def add_config_args(parser, add_extra_options_fn=None):
                         type=str,
                         help="Experiment INSTITUTE (eg university)",
                         metavar="INSTITUTE")
+    parser.add_argument("--owners",
+                        dest="experiment_owner_groups",
+                        nargs="+",
+                        help="A list of groups (by name) that will be given "
+                             "ownership of ingested experiments (space"
+                             "separated)",
+                        metavar="EXPERIMENT_OWNER_GROUPS")
     parser.add_argument("-r", "--dry",
                         action="store_true",
                         dest="dry_run",

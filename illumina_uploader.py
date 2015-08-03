@@ -389,12 +389,14 @@ def create_run_experiment(metadata, uploader):
     :type uploader: mytardis_uploader.MyTardisUploader
     :rtype: str
     """
-    return uploader.create_experiment(
+    expt_url = uploader.create_experiment(
         metadata['title'],
         metadata['institute'],
         metadata['description'],
         end_time=metadata['end_time'],
         parameter_sets_list=metadata['parameter_sets'])
+
+    return expt_url
 
 
 def create_project_experiment(metadata, uploader):
@@ -404,13 +406,14 @@ def create_project_experiment(metadata, uploader):
     :type uploader: mytardis_uploader.MyTardisUploader
     :rtype: str
     """
-    return uploader.create_experiment(metadata['title'],
-                                      metadata['institute'],
-                                      metadata['description'],
-                                      end_time=metadata['end_time'],
-                                      parameter_sets_list=metadata[
-                                          'parameter_sets']
-                                      )
+    expt_url = uploader.create_experiment(
+        metadata['title'],
+        metadata['institute'],
+        metadata['description'],
+        end_time=metadata['end_time'],
+        parameter_sets_list=metadata['parameter_sets'])
+
+    return expt_url
 
 
 def create_fastq_dataset(metadata, experiments, uploader):
@@ -421,8 +424,14 @@ def create_fastq_dataset(metadata, experiments, uploader):
     :type uploader: mytardis_uploader.MyTardisUploader
     :rtype: str
     """
+
+    run_params = parameter_set_to_dict(metadata['parameter_sets'][0])
+    instrument_name = "%s %s" % (run_params['instrument_model'],
+                                 run_params['instrument_id'])
+
     return uploader.create_dataset(metadata['description'],
                                    experiments,
+                                   instrument=instrument_name,
                                    parameter_sets_list=metadata[
                                        'parameter_sets']
                                    )
@@ -1093,14 +1102,18 @@ def run_main():
 
     try:
         run_expt_url = create_run_experiment(run_metadata, uploader)
+
+        # Take just the path of the experiment, eg /api/v1/experiment/187/
+        run_expt_url = urlparse(run_expt_url).path
+
+        for group in options.experiment_owner_groups:
+            uploader.share_experiment_with_group(run_expt_url, group)
+
     except Exception, e:
         logger.error("Failed to create Experiment for sequencing run: %s",
                      run_path)
         logger.error("Exception: %s: %s", type(e).__name__, e)
         sys.exit(1)
-
-    # Take just the path of the experiment, eg /api/v1/experiment/187/
-    run_expt_url = urlparse(run_expt_url).path
 
     logger.info("Created Run Experiment: %s (%s)",
                 run_id,
@@ -1151,13 +1164,17 @@ def run_main():
         if proj_id != 'Undetermined_indices':
             try:
                 project_url = create_project_experiment(proj_metadata, uploader)
+
+                project_url = urlparse(project_url).path
+
+                for group in options.experiment_owner_groups:
+                    uploader.share_experiment_with_group(project_url, group)
+
             except Exception, e:
                 logger.error("Failed to create Experiment for project: %s",
                              proj_id)
                 logger.debug("Exception: %s", e)
                 sys.exit(1)
-
-            project_url = urlparse(project_url).path
 
             logger.info("Created Project Experiment: %s (%s)",
                         project_url,
