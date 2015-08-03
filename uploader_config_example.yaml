@@ -14,7 +14,7 @@ path: /data/instrument/some_unique_expt_id_001/
 bcl2fastq_output_path: "{run_path}/{run_id}.bcl2fastq"
 
 # A list of groups (by name) that will be given ownership of ingested
-# experiments. Typically this contains that facility manager group.
+# experiments. Typically this contains the facility manager group.
 experiment_owner_groups:
     - mhtp-facility-managers
     - somegreatgroup
