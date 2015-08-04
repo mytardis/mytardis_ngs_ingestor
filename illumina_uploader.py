@@ -5,16 +5,20 @@ import sys
 from urlparse import urlparse
 import csv
 from datetime import datetime
+import subprocess
+from tempfile import mkdtemp
+import atexit
 
 import os
-from os.path import join, splitext
+from os.path import join, splitext, exists, isdir, isfile
 from dateutil import parser as dateparser
-import subprocess
-
 import xmltodict
+import json
 
 from mytardis_uploader import MyTardisUploader
 from mytardis_uploader import setup_logging, get_config, validate_config
+
+
 # from mytardis_uploader import get_exclude_patterns_as_regex_list
 
 
@@ -68,7 +72,7 @@ def get_project_metadata(proj_id,
                          fastqc_version='',
                          schema='http://www.tardis.edu.au/schemas/ngs/project'):
     end_date = run_metadata['end_time'].split()[0]
-    project_title = 'Sequencing Project, %s, %s' % (proj_id, end_date)
+    project_title = 'FASTQ reads, %s, %s' % (proj_id, end_date)
     if proj_id == 'Undetermined_indices':
         project_title = '%s, %s, %s' % (proj_id,
                                         run_metadata['run_id'],
@@ -697,13 +701,13 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
 #     :return: Iterator
 #     """
 #     for item in os.listdir(bcl2fastq_out_dir):
-#         proj_path = os.path.join(bcl2fastq_out_dir, item)
+#         proj_path = join(bcl2fastq_out_dir, item)
 #         # we look for directories named Project_*
 #         # NOTE: an alternative method would be to use the projects explicitly
 #         # listed in SameleSheet.csv, treating it as the one source of
 #         # truth and avoiding cases where someone decided to create
 #         # an additional Project_ directory (eg Project_Bla.old)
-#         if os.path.isdir(proj_path) and ('Project_' in item):
+#         if isdir(proj_path) and ('Project_' in item):
 #             yield proj_path
 
 
@@ -723,8 +727,8 @@ def get_sample_directories(project_path):
     :return: Iterator
     """
     for item in os.listdir(project_path):
-        sample_path = os.path.join(project_path, item)
-        if os.path.isdir(sample_path) and ('Sample_' in item):
+        sample_path = join(project_path, item)
+        if isdir(sample_path) and ('Sample_' in item):
             yield sample_path, item.split('Sample_')[1]
 
 
@@ -737,7 +741,7 @@ def get_fastq_read_files(sample_path):
     :return: Iterator
     """
     for item in os.listdir(sample_path):
-        fastq_path = os.path.join(sample_path, item)
+        fastq_path = join(sample_path, item)
 
         # NOTE: an alternative would be to use SampleSheet.csv
         # to construct the expected output filenames
@@ -759,7 +763,7 @@ def get_fastq_read_files(sample_path):
 
         # we just return things with the .gz extension
         if os.path.splitext(item)[-1:][0] == '.gz' and \
-           os.path.isfile(fastq_path):
+           isfile(fastq_path):
             yield fastq_path
 
 
@@ -771,11 +775,11 @@ def get_fastqc_zip_files(fastqc_out_path):
     :return: Iterator
     """
     for item in os.listdir(fastqc_out_path):
-        fastqc_path = os.path.join(fastqc_out_path, item)
+        fastqc_path = join(fastqc_out_path, item)
 
         # we just return things with the .zip extension
         if os.path.splitext(item)[-1:][0] == '.zip' and \
-           os.path.isfile(fastqc_path):
+           isfile(fastqc_path):
             yield fastqc_path
 
 
@@ -792,8 +796,7 @@ def run_fastqc(fastq_paths,
     tmp_dir = None
     if not output_directory:
         try:
-            from tempfile import mkdtemp
-            tmp_dir = mkdtemp()
+            tmp_dir = create_tmp_dir()
             output_directory = tmp_dir
         except OSError:
             logger.error('FastQC - failed to create temp directory.')
@@ -844,7 +847,7 @@ def run_fastqc_on_project(proj_path,
 
     if output_directory is None:
         output_directory = get_fastqc_output_directory(proj_path)
-        if os.path.exists(output_directory):
+        if exists(output_directory):
             logger.error("FastQC - output directory already exists: %s",
                          output_directory)
             return None
@@ -855,8 +858,8 @@ def run_fastqc_on_project(proj_path,
                          output_directory)
             return None
 
-    if (not os.path.exists(output_directory)) or \
-       (not os.path.isdir(output_directory)):
+    if (not exists(output_directory)) or \
+       (not isdir(output_directory)):
         logger.error("FastQC - output path %s isn't a directory "
                      "or doesn't exist.",
                      output_directory)
@@ -866,11 +869,11 @@ def run_fastqc_on_project(proj_path,
     for sample_path, sample_id in get_sample_directories(proj_path):
         fastq_files.extend([f for f in get_fastq_read_files(sample_path)])
 
-    fastqc_out = run_fastqc(fastq_files,
-                            output_directory=output_directory,
-                            fastqc_bin=fastqc_bin,
-                            threads=threads)
-    return fastqc_out
+    fqc_output_directory = run_fastqc(fastq_files,
+                                      output_directory=output_directory,
+                                      fastqc_bin=fastqc_bin,
+                                      threads=threads)
+    return fqc_output_directory
 
 
 def file_from_zip(zip_file_path, filename, mode='r'):
@@ -1011,22 +1014,6 @@ class TmpZipExtract:
         import shutil
         shutil.rmtree(self.tmpdir)
 
-def extract_fastqc_zip(zip_file_path):
-    """
-    Extract a zip file to a temporary path. Returns the path.
-
-    :type zip_file_path: str
-    :rtype: str
-    """
-    from tempfile import mkdtemp
-    tmpdir = mkdtemp()
-    from zipfile import ZipFile
-    zf = ZipFile(zip_file_path)
-    zf.extractall(tmpdir)
-    return tmpdir
-
-    #file_from_zip(zip_file_path, 'fastqc_report.html')
-
 
 def get_shared_storage_replica_url(storage_box_location, file_path):
     """
@@ -1049,9 +1036,18 @@ def get_shared_storage_replica_url(storage_box_location, file_path):
         return replica_url
 
 
+def create_tmp_dir(*args, **kwargs):
+    tmpdir = mkdtemp(*args, **kwargs)
+    global TMPDIRS
+    TMPDIRS.append(tmpdir)
+    return tmpdir
+
+
 def run_main():
     global logger
     logger = setup_logging()
+    global TMPDIRS
+    TMPDIRS = []
 
     def extra_config_options(argparser):
         argparser.add_argument('--threads',
@@ -1138,24 +1134,33 @@ def run_main():
         bcl2fastq_output_dir = get_bcl2fastq_output_dir(options,
                                                         run_metadata)
 
-        proj_path = os.path.join(bcl2fastq_output_dir, 'Project_' + proj_id)
-        fastqc_out_dir = get_fastqc_output_directory(proj_path)
+        proj_path = join(bcl2fastq_output_dir, 'Project_' + proj_id)
 
         if proj_id == 'Undetermined_indices':
-            proj_path = os.path.join(bcl2fastq_output_dir, proj_id)
+            proj_path = join(bcl2fastq_output_dir, proj_id)
 
-        # run FastQC if output doesn't exist
-        if options.run_fastqc and not options.fast:
-            run_fastqc_on_project(proj_path,
-                                  fastqc_bin=options.fastqc_bin,
-                                  threads=int(options.threads))
+        fastqc_out_dir = get_fastqc_output_directory(proj_path)
+
+        # Run FastQC if output doesn't exist.
+        # We output to a tmp dir since we don't expect to have write
+        # permissions to the primary data directory
+        if options.run_fastqc \
+                and not options.fast \
+                and not exists(fastqc_out_dir):
+            fqc_tmp_dir = create_tmp_dir()
+            fastqc_out_dir = run_fastqc_on_project(
+                proj_path,
+                output_directory=fqc_tmp_dir,
+                fastqc_bin=options.fastqc_bin,
+                threads=int(options.threads)
+            )
 
         fqc_summary = {}
-        if proj_id != 'Undetermined_indices':
+        fqc_version = ''
+        if exists(fastqc_out_dir):
             fqc_summary = get_fastqc_summary_for_project(fastqc_out_dir)
             fqc_version = fqc_summary[u'version']
 
-        import json
         fqc_summary_json = json.dumps(fqc_summary)
 
         # Create an Experiment for each real Project in the run
@@ -1194,7 +1199,7 @@ def run_main():
 
         ############################################
         # Create the FastQC Dataset for the project
-        if proj_id != 'Undetermined_indices':
+        if exists(fastqc_out_dir):
             try:
                 parent_expt_urls = [project_url, run_expt_url]
 
@@ -1251,12 +1256,17 @@ def run_main():
                         fqc_dataset_url,
                         proj_id)
 
-            register_project_fastqc_datafiles(run_id,
-                                              proj_id,
-                                              fastqc_out_dir,
-                                              fqc_dataset_url,
-                                              uploader,
-                                              fast_mode=options.fast)
+            # We don't add the FastQC zips for those in temporary directories
+            # eg, for 'Undetermined_indices' (since these won't be present on
+            # shared storage).
+            # We always upload the html reports to be serverd live (below).
+            if fastqc_out_dir and fastqc_out_dir not in TMPDIRS:
+                register_project_fastqc_datafiles(run_id,
+                                                  proj_id,
+                                                  fastqc_out_dir,
+                                                  fqc_dataset_url,
+                                                  uploader,
+                                                  fast_mode=options.fast)
 
             upload_fastqc_reports(fastqc_out_dir, fqc_dataset_url, options)
 
@@ -1296,6 +1306,14 @@ def run_main():
 
     logger.info("Ingestion of run %s complete !", run_id)
     sys.exit(0)
+
+
+@atexit.register
+def _cleanup_tmp():
+    import shutil
+    for tmpdir in TMPDIRS:
+        if exists(tmpdir):
+            shutil.rmtree(tmpdir)
 
 if __name__ == "__main__":
     run_main()

@@ -45,8 +45,9 @@ url: http://mytardis-server.edu.au:8000
 # upload, staging or shared
 storage_mode: upload
 
-# Should we run FastQC on reads before uploading ?
-run_fastqc: False
+# Should we run FastQC on reads before uploading
+# if expected output directory doens't exist ?
+run_fastqc: True
 
 # The number of threads to use for some paralell processes
 # usually this would be close to the number of cores on the machine
