@@ -134,7 +134,10 @@ def get_fastqc_dataset_metadata(proj_id,
     end_date = metadata['end_time'].split()[0]
     fqc_dataset_title = "FastQC reports for Project %s, %s" % \
                         (proj_id, end_date)
+    if proj_id == 'Undetermined_indices':
+        fqc_dataset_title = "FastQC reports for %s, %s" % (proj_id, end_date)
     metadata['title'] = fqc_dataset_title
+    
     # We want the 'main' parameter set (ie NOT the __hidden__fastqc_summary)
     params = parameter_set_to_dict(metadata['parameter_sets'][0])
     fqc_params = {
