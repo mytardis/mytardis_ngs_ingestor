@@ -72,7 +72,7 @@ def get_project_metadata(proj_id,
                          fastqc_version='',
                          schema='http://www.tardis.edu.au/schemas/ngs/project'):
     end_date = run_metadata['end_time'].split()[0]
-    project_title = 'FASTQ reads, %s, %s' % (proj_id, end_date)
+    project_title = 'Sequencing Project, %s, %s' % (proj_id, end_date)
     if proj_id == 'Undetermined_indices':
         project_title = '%s, %s, %s' % (proj_id,
                                         run_metadata['run_id'],
@@ -420,7 +420,14 @@ def create_project_experiment(metadata, uploader):
     return expt_url
 
 
-def create_fastq_dataset(metadata, experiments, uploader):
+def instrument_name_from_metadata(metadata):
+    run_params = parameter_set_to_dict(metadata['parameter_sets'][0])
+    instrument_name = "%s %s" % (run_params['instrument_model'],
+                                 run_params['instrument_id'])
+    return instrument_name
+
+
+def create_fastq_dataset(proj_id, metadata, experiments, uploader):
     """
 
     :type metadata: dict
@@ -430,10 +437,11 @@ def create_fastq_dataset(metadata, experiments, uploader):
     """
 
     run_params = parameter_set_to_dict(metadata['parameter_sets'][0])
-    instrument_name = "%s %s" % (run_params['instrument_model'],
-                                 run_params['instrument_id'])
+    instrument_name = instrument_name_from_metadata(metadata)
 
-    return uploader.create_dataset(metadata['description'],
+    end_date = metadata['end_time'].split()[0]
+    description = 'FASTQ reads, %s, %s' % (proj_id, end_date)
+    return uploader.create_dataset(description,
                                    experiments,
                                    instrument=instrument_name,
                                    parameter_sets_list=metadata[
@@ -1198,12 +1206,18 @@ def ingest_project(run_path=None):
             fastqc_version=fqc_version,
             schema='http://www.tardis.edu.au/schemas/ngs/project/raw_reads')
 
+        # We associate Undetermined_indices Datasets with the overall 'run'
+        # Experiment only (unlike proper Project Datasets which also have
+        # their own Project Experiment).
+        if proj_id == 'Undetermined_indices':
+            parent_expt_urls = [run_expt_url]
+        else:
+            parent_expt_urls = [project_url, run_expt_url]
+
         ############################################
         # Create the FastQC Dataset for the project
         if exists(fastqc_out_dir):
             try:
-                parent_expt_urls = [project_url, run_expt_url]
-
                 # Start with a clean copy of the project metadata, using
                 # the FastQC dataset schema
                 fqc_metadata = get_project_metadata(
@@ -1275,15 +1289,8 @@ def ingest_project(run_path=None):
         # Create the FASTQ Dataset for the project, associated with both
         # the overall run Experiment, and the project Experiment
         try:
-            # We associate the Undetermined_indices FASTQ reads only
-            # with the overall 'run' Experiment (unlike proper Projects
-            # which also have their own Project Experiment).
-            if proj_id == 'Undetermined_indices':
-                parent_expt_urls = [run_expt_url]
-            else:
-                parent_expt_urls = [project_url, run_expt_url]
-
-            proj_dataset_url = create_fastq_dataset(dataset_metadata,
+            proj_dataset_url = create_fastq_dataset(proj_id,
+                                                    dataset_metadata,
                                                     parent_expt_urls,
                                                     uploader)
         except Exception, e:
@@ -1322,6 +1329,10 @@ if __name__ == "__main__":
     except:
         import traceback
         traceback.print_exc(file=sys.stdout)
+        _cleanup_tmp()
         sys.exit(1)
+
+    # since atexit doesn't seem to work
+    _cleanup_tmp()
 
     sys.exit(0)
