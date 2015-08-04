@@ -532,7 +532,7 @@ def register_project_fastq_datafiles(run_id,
                     logger.error("Failed to register Datafile: "
                                  "%s", fastq_path)
                     logger.debug("Exception: %s", e)
-                    sys.exit(1)
+                    raise e
 
                 logger.info("Added Datafile: %s (%s)",
                             fastq_path,
@@ -588,7 +588,7 @@ def register_project_fastqc_datafiles(run_id,
                 logger.error("Failed to register Datafile: "
                              "%s", fastqc_zip_path)
                 logger.debug("Exception: %s", e)
-                sys.exit(1)
+                raise e
 
             logger.info("Added Datafile: %s (%s)",
                         fastqc_zip_path,
@@ -1043,7 +1043,7 @@ def create_tmp_dir(*args, **kwargs):
     return tmpdir
 
 
-def run_main():
+def ingest_project(run_path=None):
     global logger
     logger = setup_logging()
     global TMPDIRS
@@ -1085,7 +1085,8 @@ def run_main():
     )
 
     # Create an Experiment representing the overall sequencing run
-    run_path = options.path
+    if not run_path:
+        run_path = options.path
     run_metadata = get_run_metadata(run_path)
     run_id = run_metadata['run_id']
 
@@ -1109,7 +1110,7 @@ def run_main():
         logger.error("Failed to create Experiment for sequencing run: %s",
                      run_path)
         logger.error("Exception: %s: %s", type(e).__name__, e)
-        sys.exit(1)
+        raise e
 
     logger.info("Created Run Experiment: %s (%s)",
                 run_id,
@@ -1179,7 +1180,7 @@ def run_main():
                 logger.error("Failed to create Experiment for project: %s",
                              proj_id)
                 logger.debug("Exception: %s", e)
-                sys.exit(1)
+                raise e
 
             logger.info("Created Project Experiment: %s (%s)",
                         project_url,
@@ -1250,7 +1251,7 @@ def run_main():
                 logger.error("Failed to create FastQC Dataset for Project: %s",
                              proj_id)
                 logger.debug("Exception: %s", e)
-                sys.exit(1)
+                raise e
 
             logger.info("Created FastQC Dataset: %s (%s)",
                         fqc_dataset_url,
@@ -1289,7 +1290,7 @@ def run_main():
             logger.error("Failed to create Dataset for Project: %s",
                          proj_id)
             logger.debug("Exception: %s", e)
-            sys.exit(1)
+            raise e
 
         # Take just the path, eg: /api/v1/dataset/363
         proj_dataset_url = urlparse(proj_dataset_url).path
@@ -1305,15 +1306,22 @@ def run_main():
                                          fast_mode=options.fast)
 
     logger.info("Ingestion of run %s complete !", run_id)
-    sys.exit(0)
-
 
 @atexit.register
 def _cleanup_tmp():
     import shutil
+    global TMPDIRS
     for tmpdir in TMPDIRS:
         if exists(tmpdir):
             shutil.rmtree(tmpdir)
+            logger.info("Removed temp directory: %s", tmpdir)
 
 if __name__ == "__main__":
-    run_main()
+    try:
+        ingest_project()
+    except:
+        import traceback
+        traceback.print_exc(file=sys.stdout)
+        sys.exit(1)
+
+    sys.exit(0)
