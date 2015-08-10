@@ -137,7 +137,7 @@ def get_fastqc_dataset_metadata(proj_id,
     if proj_id == 'Undetermined_indices':
         fqc_dataset_title = "FastQC reports for %s, %s" % (proj_id, end_date)
     metadata['title'] = fqc_dataset_title
-    
+
     # We want the 'main' parameter set (ie NOT the __hidden__fastqc_summary)
     params = parameter_set_to_dict(metadata['parameter_sets'][0])
     fqc_params = {
@@ -495,7 +495,7 @@ def register_project_fastq_datafiles(run_id,
                               'index_sequence': index_sequence,
                               'is_control': is_control,
                               'recipe': recipe,
-                              'operator': operator,
+                              'operator_name': operator,
                               'description': description,
                               'project': project,
                               }
@@ -1054,6 +1054,22 @@ def create_tmp_dir(*args, **kwargs):
     return tmpdir
 
 
+def dump_schema_fixtures_as_json():
+    import models
+    dump_classes = ['DemultiplexedSamples', 'FastqcOutput',
+                    'FastqcReports', 'FastqRawReads',
+                    'HiddenFastqcProjectSummary', 'IlluminaSequencingRun',
+                    'NucleotideRawReads']
+    s = []
+    for k, v in models.__dict__.items():
+        if k in dump_classes:
+            f = v()
+            s.extend(f.to_schema())
+            s.extend(f.to_parameter_schema())
+    import json
+    print json.dumps(s, indent=True)
+
+
 def ingest_project(run_path=None):
     global logger
     logger = setup_logging()
@@ -1079,8 +1095,16 @@ def ingest_project(run_path=None):
                                default='{run_path}/{run_id}.bcl2fastq',
                                type=str,
                                metavar='BCL2FASTQ_OUTPUT_PATH')
+        argparser.add_argument('--dump-fixtures',
+                               dest='dump_fixtures',
+                               action='store_true')
 
     parser, options = get_config(add_extra_options_fn=extra_config_options)
+
+
+    if options.dump_fixtures:
+        dump_schema_fixtures_as_json()
+        sys.exit(1)
 
     validate_config(parser, options)
 
@@ -1329,9 +1353,10 @@ def _cleanup_tmp():
 if __name__ == "__main__":
     try:
         ingest_project()
-    except:
-        import traceback
-        traceback.print_exc(file=sys.stdout)
+    except Exception, e:
+        if e != SystemExit:
+            import traceback
+            traceback.print_exc(file=sys.stdout)
         _cleanup_tmp()
         sys.exit(1)
 
