@@ -3,14 +3,19 @@
 # (as JSON) and generates a set of Python base classes
 # as a data model for use by REST API clients.
 #
-# _attributes (prefixed with an underscore) are added
-# to the classes so that in theory they can be used to regenerate
-# the original JSON fixtures from which they were derived. The goal
-# is to use the class definition as the 'one source of truth' and
-# regenerate JSON fixtures when the class is modified.
+# Extra 'fields' from the schema are added to classes as underscore prefixed
+# _attributes, like '_immutable__schema' and '_immutable__attr_schema'
+# so that in theory they can be used to regenerate the original JSON fixtures
+# from which they were derived. The goal is to use the class definition as the
+# 'one source of truth' and regenerate JSON fixtures when the class is modified.
+# Class names are derived from the 'subtype' defined in the schema, and a
+# prefixed with 'Base' (eg some-subtype becomes SomeSubtypeBase) - these
+# parent classes can be imported and overridden to keep a separation between
+# generated code and hand written methods.
+
 #
 # Usage:
-# python fixture_to_class.py myfixture.json
+# python fixture_to_class.py myfixture.json >models.py
 #
 
 import sys
@@ -70,7 +75,7 @@ def wrap_python_code(code):
         unpaired_ticks = ll.count(u"'") % 2
         if unpaired_ticks > 0:
             if ll[-1:] != u"'":
-                ll = ll + u"'"
+                ll += u"'"
                 open_quote_next_line = True
             quoted.append(ll)
         else:
@@ -112,7 +117,7 @@ class ClassDef:
         for a in self.attributes:
             attribs.append(
                 "# %s fixture\n" % a.name +
-                wrap_python_code("self._%s__schema = %s" %
+                wrap_python_code("self._%s__attr_schema = %s" %
                                  (a.name, a.fixture)) +
                 "  # type: dict\n")
 
@@ -134,7 +139,7 @@ class ClassDef:
             vv = str(v)
             if isinstance(v, (str, unicode)):
                 vv = '"%s"' % v
-            attribs.append("self._%s = %s  # type: %s" %
+            attribs.append("self._%s__schema = %s  # type: %s" %
                            (k, vv, type(v).__name__))
 
         return '\n'.join(attribs)
@@ -197,29 +202,34 @@ if __name__ == "__main__":
 
     for namespace, klass in classes.items():
         print '''
-class %s(%s):
+class %(name)s(%(parent)s):
     """
-%s
+%(docstring_text)s
 
-%s
+%(docstring_types)s
     """
 
     def __init__(self):
-        super(%s, self).__init__()
-%s
+        super(%(name)s, self).__init__()
+%(self_attributes)s
 
         # Dictionaries to allow reconstitution of the schema for each parameter
 
-%s
+%(parameter_schema_meta)s
 
-%s
-''' % (klass.name,
-       klass.parent_class,
-       "",
-       # indent(json.dumps(klass.fixture, indent=True), INDENT),
-       indent(klass.format_attrib_docstring(), INDENT),
-       # indent(klass.format_class_attributes(), INDENT),
-       klass.parent_class,
-       indent(klass.format_instance_attributes(), INDENT * 2),
-       indent(klass.format_instance_attribute_schema_dicts(), INDENT * 2),
-       indent(klass.format_fixture_to_instance_attrs(), INDENT * 2))
+%(schema_meta)s
+''' % {
+            'name': klass.name,
+            'parent': 'MyTardisParameterSet',  # klass.parent_class,
+            'docstring_text': "",
+            # unused
+            'fixture_json': indent(json.dumps(klass.fixture, indent=True),
+                                   INDENT),
+            'docstring_types': indent(klass.format_attrib_docstring(), INDENT),
+            'self_attributes': indent(klass.format_instance_attributes(),
+                                      INDENT * 2),
+            'parameter_schema_meta': indent(
+                klass.format_instance_attribute_schema_dicts(), INDENT * 2),
+            'schema_meta': indent(klass.format_fixture_to_instance_attrs(),
+                                  INDENT * 2)
+        }
