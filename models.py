@@ -278,7 +278,7 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
         self._immutable__schema = True  # type: bool
 
 
-class NucleotideRawReadsBase(MyTardisParameterSet):
+class NucleotideRawReadsDatasetBase(MyTardisParameterSet):
     """
 
 
@@ -297,7 +297,7 @@ class NucleotideRawReadsBase(MyTardisParameterSet):
     """
 
     def __init__(self):
-        super(NucleotideRawReadsBase, self).__init__()
+        super(NucleotideRawReadsDatasetBase, self).__init__()
         # Run Unique ID
         self.run_id = None  # type: unicode
         
@@ -525,14 +525,14 @@ class HiddenFastqcProjectSummaryBase(MyTardisParameterSet):
     """
 
 
-    :type _hidden_fastqc_summary_json: dict
+    :type hidden_fastqc_summary_json: dict
     :type fastqc_version: unicode
     """
 
     def __init__(self):
         super(HiddenFastqcProjectSummaryBase, self).__init__()
         # (Hidden) FastQC summary for all samples (JSON)
-        self._hidden_fastqc_summary_json = None  # type: dict
+        self.hidden_fastqc_summary_json = None  # type: dict
         
         # FastQC software version
         self.fastqc_version = None  # type: unicode
@@ -540,14 +540,14 @@ class HiddenFastqcProjectSummaryBase(MyTardisParameterSet):
 
         # Dictionaries to allow reconstitution of the schema for each parameter
 
-        # _hidden_fastqc_summary_json fixture
-        self.__hidden_fastqc_summary_json__attr_schema = {u'pk': None,
+        # hidden_fastqc_summary_json fixture
+        self._hidden_fastqc_summary_json__attr_schema = {u'pk': None,
         u'model': u'tardis_portal.parametername', u'fields': {u'name':
-        u'__hidden__fastqc_summary_json', u'data_type': 8, u'immutable': True,
+        u'hidden_fastqc_summary_json', u'data_type': 8, u'immutable': True,
         u'is_searchable': False, u'choices': u'', u'comparison_type': 1,
         u'full_name': u'(Hidden) FastQC summary for all samples (JSON)',
         u'units': u'fastqc-summary-table', u'order': 9999, u'schema': [u'http:'
-        u'//www.tardis.edu.au/schemas/ngs/project/__hidden__fastqc_summary']}}  # type: dict
+        u'//www.tardis.edu.au/schemas/ngs/project/hidden_fastqc_summary']}}  # type: dict
         
         # fastqc_version fixture
         self._fastqc_version__attr_schema = {u'pk': None, u'model':
@@ -565,7 +565,7 @@ class HiddenFastqcProjectSummaryBase(MyTardisParameterSet):
         self._pk__schema = None  # type: NoneType
         self._type__schema = 2  # type: int
         self._hidden__schema = True  # type: bool
-        self._namespace__schema = "http://www.tardis.edu.au/schemas/ngs/project/__hidden__fastqc_summary"  # type: unicode
+        self._namespace__schema = "http://www.tardis.edu.au/schemas/ngs/project/hidden_fastqc_summary"  # type: unicode
         self._immutable__schema = True  # type: bool
 
 

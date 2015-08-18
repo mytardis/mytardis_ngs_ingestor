@@ -17,138 +17,165 @@ import json
 
 from mytardis_uploader import MyTardisUploader
 from mytardis_uploader import setup_logging, get_config, validate_config
-
-
 # from mytardis_uploader import get_exclude_patterns_as_regex_list
 
+from mytardis_models import Experiment, Dataset, DataFile
+from models import DemultiplexedSamplesBase, FastqcOutputBase, \
+    FastqcReportsBase, FastqRawReadsBase, HiddenFastqcProjectSummaryBase, \
+    IlluminaSequencingRunBase, NucleotideRawReadsDatasetBase
 
-def get_run_metadata(run_path):
+# a module level list of temporary directories that have been
+# created, so these can be cleaned up upon premature exit
+TMPDIRS = []
+
+
+class DemultiplexedSamples(DemultiplexedSamplesBase):
+    pass
+
+
+class FastqcOutput(FastqcOutputBase):
+    pass
+
+
+class FastqcReports(FastqcReportsBase):
+    pass
+
+
+class FastqRawReads(FastqRawReadsBase):
+    pass
+
+
+class HiddenFastqcProjectSummary(HiddenFastqcProjectSummaryBase):
+    pass
+
+
+class IlluminaSequencingRun(IlluminaSequencingRunBase):
+    pass
+
+
+class NucleotideRawReadsDataset(NucleotideRawReadsDatasetBase):
+    pass
+
+
+def _format_day(dt):
+    return dt.strftime("%d-%b-%Y")
+
+
+def create_run_experiment_object(run_path):
     """
 
     :type run_path: str
-    :rtype: dict
+    :rtype: Experiment
     """
-    metadata = {}
+
+    # TODO: grab start time metadata from somewhere
+    #       (eg maybe from Logs/CycleTimes.txt)
     end_time, rta_version = rta_complete_parser(run_path)
-    metadata['end_time'] = end_time.isoformat(' ')
-    metadata['rta_version'] = rta_version
-    metadata['run_path'] = run_path
-    metadata['run_id'] = os.path.basename(run_path.rstrip(os.path.sep))
 
     runinfo_parameters = runinfo_parser(run_path)
-    runinfo_parameters['rta_version'] = rta_version
     instrument_config = illumina_config_parser(run_path)
-
-    metadata['instrument_model'] = instrument_config['instrument_model']
-    metadata['title'] = "%s sequencing run %s" % (
-        metadata['instrument_model'],
-        metadata['run_id']
-    )
+    instrument_model = instrument_config.get('system:instrumenttype', '')
 
     samplesheet, chemistry = get_samplesheet(join(run_path, 'SampleSheet.csv'))
-    samplesheet_common_fields = {'chemistry': chemistry,
-                                 'operator_name':
-                                     samplesheet[0].get('Operator', '')
-                                 }
 
-    parameters = merge_dicts(runinfo_parameters,
-                             instrument_config,
-                             samplesheet_common_fields)
-    schema = 'http://www.tardis.edu.au/schemas/ngs/run/illumina'
-    parameter_set = dict_to_parameter_set(parameters, schema)
+    run = IlluminaSequencingRun()
+    run.instrument_model = instrument_model
+    # run.run_path = run_path
+    run.run_id = os.path.basename(run_path.rstrip(os.path.sep))
+    run.from_dict(runinfo_parameters)
+    run.rta_version = rta_version
+    run.chemistry = chemistry
+    run.operator_name = samplesheet[0].get('Operator', '')
+    run._samplesheet = samplesheet
 
-    # parameter_list.append({u'name': param_name, u'value': param_value})
+    expt = Experiment()
+    expt.title = "%s sequencing run %s" % (run.instrument_model, run.run_id)
+    expt.end_time = end_time
+    expt.parameters = run
+    expt.run_path = run_path
 
-    metadata['parameter_sets'] = [parameter_set]
-
-    return metadata
+    return expt
 
 
-def get_project_metadata(proj_id,
-                         run_metadata,
-                         run_expt_link=None,
-                         project_expt_link=None,
-                         fastqc_summary_json='',
-                         fastqc_version='',
-                         schema='http://www.tardis.edu.au/schemas/ngs/project'):
-    end_date = run_metadata['end_time'].split()[0]
+def create_project_experiment_object(
+        proj_id,
+        run_expt,
+        run_expt_link=None):
+
+    """
+
+    :type proj_id: str
+    :type run_expt: Experiment
+    :type run_expt_link: str
+    :rtype: Experiment
+    """
+
+    end_date = _format_day(run_expt.end_time)
     project_title = 'Sequencing Project, %s, %s' % (proj_id, end_date)
     if proj_id == 'Undetermined_indices':
         project_title = '%s, %s, %s' % (proj_id,
-                                        run_metadata['run_id'],
+                                        run_expt.parameters.run_id,
                                         end_date)
-    proj_metadata = {'title': project_title,
-                     'description': project_title,
-                     'institute': run_metadata['institute'],
-                     'end_time': run_metadata['end_time'],
-                     }
 
-    # project_parameters = run_metadata
-    # Project Dataset parameters are suffixed with '__project'
-    # (to prevent name clashes with identical parameters at the
-    #  Run Experiment level)
-    # project_parameters = add_suffix_to_parameter_set(
-    #    run_metadata['parameter_sets'][0]['parameters'], param_suffix)
-    # project_parameter_list = dict_to_parameter_list(project_parameters)
+    proj_expt = Experiment()
+    proj_expt.title = project_title
+    proj_expt.description = project_title
+    proj_expt.institution_name = run_expt.institution_name
+    proj_expt.end_time = run_expt.end_time
+    proj_expt.run_path = run_expt.run_path
 
-    project_parameter_list = list(
-        run_metadata['parameter_sets'][0]['parameters']
-    )
-
+    project_params = DemultiplexedSamples()
+    project_params.from_dict(run_expt.parameters.to_dict(),
+                             existing_only=False)
     if run_expt_link is not None:
-        project_parameter_list += dict_to_parameter_list(
-            {'run_experiment': api_url_to_view_url(run_expt_link)}
-        )
-    if project_expt_link is not None:
-        project_parameter_list += dict_to_parameter_list(
-            {'project_experiment': api_url_to_view_url(project_expt_link)}
-        )
+        project_params.run_experiment = api_url_to_view_url(run_expt_link)
+    proj_expt.parameter_sets.append(project_params)
 
-    # This second (hidden) parameter_set, provides a summary of
-    # FastQC results for every sample in the project, used for
-    # rendering and overview table
-    fastqc_summary_parameters = \
-        dict_to_parameter_list(
-            {'__hidden__fastqc_summary_json': fastqc_summary_json,
-             'fastqc_version': fastqc_version})
-
-    fasqc_summary_parameterset = {
-        u'schema':
-        'http://www.tardis.edu.au/schemas/ngs/project/__hidden__fastqc_summary',
-        u'parameters': fastqc_summary_parameters
-    }
-
-    proj_metadata['parameter_sets'] = [{u'schema': schema,
-                                        u'parameters': project_parameter_list},
-                                       fasqc_summary_parameterset
-                                       ]
-
-    return proj_metadata
+    return proj_expt
 
 
-def get_fastqc_dataset_metadata(proj_id,
-                                raw_reads_dataset_url,
-                                fastqc_version,
-                                metadata):
-    schema = 'http://www.tardis.edu.au/schemas/ngs/project/fastqc'
-    end_date = metadata['end_time'].split()[0]
+def create_fastqc_dataset_object(run_id,
+                                 proj_id,
+                                 end_time,
+                                 experiments,
+                                 raw_reads_dataset_url,
+                                 fastqc_summary=None):
+    end_date = _format_day(end_time)
     fqc_dataset_title = "FastQC reports for Project %s, %s" % \
                         (proj_id, end_date)
     if proj_id == 'Undetermined_indices':
         fqc_dataset_title = "FastQC reports for %s, %s" % (proj_id, end_date)
-    metadata['title'] = fqc_dataset_title
 
-    # We want the 'main' parameter set (ie NOT the __hidden__fastqc_summary)
-    params = parameter_set_to_dict(metadata['parameter_sets'][0])
-    fqc_params = {
-        'run_id': params['run_id'],
+    fqc_dataset = Dataset()
+    fqc_dataset.experiments = experiments
+    fqc_dataset.description = fqc_dataset_title
+
+    fqc_version = ''
+    if fastqc_summary is not None:
+        fqc_version = fastqc_summary.get('version', '')
+
+    params = {
+        'run_id': run_id,
         'project': proj_id,
         'raw_reads_dataset': raw_reads_dataset_url,
-        'fastqc_version': fastqc_version,
+        'fastqc_version': fqc_version,
     }
+    fqc_params = FastqcReports()
+    fqc_params.from_dict(params)
 
-    metadata['parameter_sets'][0] = dict_to_parameter_set(fqc_params, schema)
-    return metadata
+    fqc_dataset.parameter_sets.append(fqc_params)
+
+    # This second (hidden) parameter_set, provides a summary of
+    # FastQC results for every sample in the project, used for
+    # rendering and overview table
+    if fastqc_summary is not None:
+        fastqc_summary_params = HiddenFastqcProjectSummary()
+        fastqc_summary_params.hidden_fastqc_summary_json = \
+            json.dumps(fastqc_summary)
+        fastqc_summary_params.fastqc_version = fqc_version
+        fqc_dataset.parameter_sets.append(fastqc_summary_params)
+
+    return fqc_dataset
 
 
 def api_url_to_view_url(apiurl):
@@ -258,8 +285,8 @@ def rta_complete_parser(run_path):
     with open(join(run_path, "RTAComplete.txt"), 'r') as f:
         day, time, version = f.readline().split(',')
 
-    date_time = dateparser.parse("%s %s" % (day, time))
-    return date_time, version
+    end_time = dateparser.parse("%s %s" % (day, time))
+    return end_time, version
 
 
 def runinfo_parser(run_path):
@@ -307,7 +334,7 @@ def illumina_config_parser(run_path):
     """
     Extacts data from an Illumina run Config/*_Effective.cfg file.
 
-    Returns a dictionary with key/values of interest, where keys have
+    Returns a dictionary with key/values, where keys have
     the [section] from the Windows INI-style file are prepended,
     separated by colon. eg
 
@@ -343,11 +370,13 @@ def illumina_config_parser(run_path):
                     v = s[1].split(';')[0]
                 v = v.strip()
                 allinfo['%s:%s' % (section, k)] = v
-    info = {}
-    if 'system:instrumenttype' in allinfo:
-        info['instrument_model'] = allinfo['system:instrumenttype']
 
-    return info
+    # select just the keys of interest to return
+    # info = {}
+    # if 'system:instrumenttype' in allinfo:
+    #    info['instrument_model'] = allinfo['system:instrumenttype']
+
+    return allinfo
 
 
 def dict_to_parameter_list(d):
@@ -389,67 +418,74 @@ def merge_dicts(*dict_args):
     return result
 
 
-def create_run_experiment(metadata, uploader):
+def create_experiment_on_server(experiment, uploader):
     """
 
-    :type metadata: dict
+    :type experiment: mytardis_models.Experiment
     :type uploader: mytardis_uploader.MyTardisUploader
+    :return: The url path of the experiment created.
     :rtype: str
     """
-    expt_url = uploader.create_experiment(
-        metadata['title'],
-        metadata['institute'],
-        metadata['description'],
-        end_time=metadata['end_time'],
-        parameter_sets_list=metadata['parameter_sets'])
+    expt_url = uploader.create_experiment(experiment.package())
 
     return expt_url
 
 
-def create_project_experiment(metadata, uploader):
+def format_instrument_name(instrument_model, instrument_id):
     """
 
-    :type metadata: dict
-    :type uploader: mytardis_uploader.MyTardisUploader
-    :rtype: str
+    :type instrument_model: str
+    :type instrument_id: str
+    :rtype: unicode
     """
-    expt_url = uploader.create_experiment(
-        metadata['title'],
-        metadata['institute'],
-        metadata['description'],
-        end_time=metadata['end_time'],
-        parameter_sets_list=metadata['parameter_sets'])
-
-    return expt_url
-
-
-def instrument_name_from_metadata(metadata):
-    run_params = parameter_set_to_dict(metadata['parameter_sets'][0])
-    instrument_name = "%s %s" % (run_params['instrument_model'],
-                                 run_params['instrument_id'])
+    instrument_name = u'%s %s' % (instrument_model, instrument_id)
     return instrument_name
 
 
-def create_fastq_dataset(proj_id, metadata, experiments, uploader):
+def create_fastq_dataset_on_server(
+        proj_id, proj_expt, experiments, uploader,
+        run_expt_link=None,
+        project_expt_link=None,
+        fastqc_summary=None):
     """
 
-    :type metadata: dict
+    :type proj_expt: Experiment
     :type experiments: list[str]
     :type uploader: mytardis_uploader.MyTardisUploader
     :rtype: str
     """
+    fastq_dataset = Dataset()
+    fastq_dataset.experiments = experiments
+    end_date = _format_day(proj_expt.end_time)
+    fastq_dataset.description = 'FASTQ reads, %s, %s' % (proj_id, end_date)
 
-    run_params = parameter_set_to_dict(metadata['parameter_sets'][0])
-    instrument_name = instrument_name_from_metadata(metadata)
+    dataset_params = NucleotideRawReadsDataset()
+    dataset_params.from_dict(proj_expt.parameters.to_dict(),
+                             existing_only=True)
+    if run_expt_link is not None:
+        dataset_params.run_experiment = api_url_to_view_url(run_expt_link)
+    if project_expt_link is not None:
+        dataset_params.project_experiment = \
+            api_url_to_view_url(project_expt_link)
+    fastq_dataset.parameter_sets.append(dataset_params)
 
-    end_date = metadata['end_time'].split()[0]
-    description = 'FASTQ reads, %s, %s' % (proj_id, end_date)
-    return uploader.create_dataset(description,
-                                   experiments,
-                                   instrument=instrument_name,
-                                   parameter_sets_list=metadata[
-                                       'parameter_sets']
-                                   )
+    # This second (hidden) parameter_set, provides a summary of
+    # FastQC results for every sample in the project, used for
+    # rendering and overview table
+    if fastqc_summary is not None:
+        fqc_version = fastqc_summary.get('version', '')
+        fastqc_summary_params = HiddenFastqcProjectSummary()
+        fastqc_summary_params.hidden_fastqc_summary_json = \
+            json.dumps(fastqc_summary)
+        fastqc_summary_params.fastqc_version = fqc_version
+        fastq_dataset.parameter_sets.append(fastqc_summary_params)
+
+    instrument_name = format_instrument_name(
+        proj_expt.parameters.instrument_model,
+        proj_expt.parameters.instrument_id)
+
+    return uploader.create_dataset(fastq_dataset.package(),
+                                   instrument=instrument_name)
 
 
 def register_project_fastq_datafiles(run_id,
@@ -459,8 +495,6 @@ def register_project_fastq_datafiles(run_id,
                                      uploader,
                                      fastqc_data=None,
                                      fast_mode=False):
-
-    schema = 'http://www.tardis.edu.au/schemas/ngs/file/fastq'
 
     sample_dict = samplesheet_to_dict_by_id(samplesheet)
 
@@ -517,8 +551,11 @@ def register_project_fastq_datafiles(run_id,
                     parameters['read_length'] = \
                         get_read_length_fastq(fastq_path)
 
-                datafile_parameter_sets = \
-                    [dict_to_parameter_set(parameters, schema)]
+                fq_datafile = DataFile()
+                datafile_params = FastqRawReads()
+                datafile_params.from_dict(parameters, existing_only=True)
+                fq_datafile.parameters = datafile_params
+                datafile_parameter_sets = fq_datafile.package_parameter_sets()
 
                 replica_url = fastq_path
                 if uploader.storage_mode == 'shared':
@@ -539,11 +576,11 @@ def register_project_fastq_datafiles(run_id,
                         replica_url=replica_url,
                         md5_checksum=md5_checksum,
                     )
-                except Exception, e:
+                except Exception, ex:
                     logger.error("Failed to register Datafile: "
                                  "%s", fastq_path)
-                    logger.debug("Exception: %s", e)
-                    raise e
+                    logger.debug("Exception: %s", ex)
+                    raise ex
 
                 logger.info("Added Datafile: %s (%s)",
                             fastq_path,
@@ -561,8 +598,6 @@ def register_project_fastqc_datafiles(run_id,
                                       uploader,
                                       fast_mode=False):
 
-    schema = 'http://www.tardis.edu.au/schemas/ngs/file/fastqc'
-
     # Upload datafiles for the FASTQC output files
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
 
@@ -573,8 +608,11 @@ def register_project_fastqc_datafiles(run_id,
                           'sample_id': sample_id,
                           'fastqc_version': fastqc_version}
 
-            datafile_parameter_sets = \
-                [dict_to_parameter_set(parameters, schema)]
+            fqc_datafile = DataFile()
+            fqc_params = FastqcOutput()
+            fqc_params.from_dict(parameters)
+            fqc_datafile.parameters = fqc_params
+            datafile_parameter_sets = fqc_datafile.package_parameter_sets()
 
             replica_url = fastqc_zip_path
             if uploader.storage_mode == 'shared':
@@ -595,11 +633,11 @@ def register_project_fastqc_datafiles(run_id,
                     replica_url=replica_url,
                     md5_checksum=md5_checksum,
                 )
-            except Exception, e:
+            except Exception, ex:
                 logger.error("Failed to register Datafile: "
                              "%s", fastqc_zip_path)
-                logger.debug("Exception: %s", e)
-                raise e
+                logger.debug("Exception: %s", ex)
+                raise ex
 
             logger.info("Added Datafile: %s (%s)",
                         fastqc_zip_path,
@@ -651,8 +689,7 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, options):
             else:
                 os.rename(report_file, inline_report_abspath)
 
-            location = live_box_uploader.upload_file(inline_report_abspath,
-                                                     dataset_url)
+            live_box_uploader.upload_file(inline_report_abspath, dataset_url)
 
 
 def get_fastqc_summary_for_project(fastqc_out_dir):
@@ -722,10 +759,10 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
 #             yield proj_path
 
 
-def get_bcl2fastq_output_dir(options, run_metadata):
+def get_bcl2fastq_output_dir(options, run_id, run_path):
     return options.bcl2fastq_output_path.format(
-        run_id=run_metadata['run_id'],
-        run_path=run_metadata['run_path']
+        run_id=run_id,
+        run_path=run_path
     )
 
 
@@ -826,6 +863,7 @@ def run_fastqc(fastq_paths,
 
     logger.info('Running FastQC on: %s', ', '.join(fastq_paths))
 
+    cmd_out = None
     try:
         # Unfortunately FastQC doesn't always return sensible
         # exit codes on failure, so we parse the output
@@ -1056,10 +1094,10 @@ def create_tmp_dir(*args, **kwargs):
 
 def dump_schema_fixtures_as_json():
     import models
-    dump_classes = ['DemultiplexedSamples', 'FastqcOutput',
-                    'FastqcReports', 'FastqRawReads',
-                    'HiddenFastqcProjectSummary', 'IlluminaSequencingRun',
-                    'NucleotideRawReads']
+    dump_classes = ['DemultiplexedSamplesBase', 'FastqcOutputBase',
+                    'FastqcReportsBase', 'FastqRawReadsBase',
+                    'HiddenFastqcProjectSummaryBase',
+                    'IlluminaSequencingRunBase', 'NucleotideRawReadsBase']
     s = []
     for k, v in models.__dict__.items():
         if k in dump_classes:
@@ -1101,7 +1139,6 @@ def ingest_project(run_path=None):
 
     parser, options = get_config(add_extra_options_fn=extra_config_options)
 
-
     if options.dump_fixtures:
         dump_schema_fixtures_as_json()
         sys.exit(1)
@@ -1122,18 +1159,18 @@ def ingest_project(run_path=None):
     # Create an Experiment representing the overall sequencing run
     if not run_path:
         run_path = options.path
-    run_metadata = get_run_metadata(run_path)
-    run_id = run_metadata['run_id']
+    run_expt = create_run_experiment_object(run_path)
+    run_id = run_expt.parameters.run_id
 
-    run_metadata['institute'] = options.institute
-    run_metadata['description'] = options.description
-    if not run_metadata['description']:
-        run_metadata['description'] = "Automatically ingested by %s on %s" % \
-                                      (uploader.user_agent,
-                                       datetime.now().isoformat(' '))
+    run_expt.institution_name = options.institute
+    run_expt.description = options.description
+    if not run_expt.description:
+        run_expt.description = "Automatically ingested by %s on %s" % \
+                               (uploader.user_agent,
+                                datetime.now().isoformat(' '))
 
     try:
-        run_expt_url = create_run_experiment(run_metadata, uploader)
+        run_expt_url = create_experiment_on_server(run_expt, uploader)
 
         # Take just the path of the experiment, eg /api/v1/experiment/187/
         run_expt_url = urlparse(run_expt_url).path
@@ -1159,16 +1196,16 @@ def ingest_project(run_path=None):
     projects.append('Undetermined_indices')
 
     for proj_id in projects:
-        proj_metadata = get_project_metadata(
+        proj_expt = create_project_experiment_object(
             proj_id,
-            run_metadata,
-            run_expt_link=run_expt_url,
-            schema='http://www.tardis.edu.au/schemas/ngs/project')
+            run_expt,
+            run_expt_link=run_expt_url)
 
         # The directory where bcl2fastq puts its output,
         # in Project_* directories
         bcl2fastq_output_dir = get_bcl2fastq_output_dir(options,
-                                                        run_metadata)
+                                                        run_id,
+                                                        run_path)
 
         proj_path = join(bcl2fastq_output_dir, 'Project_' + proj_id)
 
@@ -1192,19 +1229,16 @@ def ingest_project(run_path=None):
             )
 
         fqc_summary = {}
-        fqc_version = ''
         if exists(fastqc_out_dir):
             fqc_summary = get_fastqc_summary_for_project(fastqc_out_dir)
-            fqc_version = fqc_summary[u'version']
-
-        fqc_summary_json = json.dumps(fqc_summary)
 
         # Create an Experiment for each real Project in the run
         # (except Undetermined_indices Datasets which will only be associated
         #  with the parent 'run' Experiment)
+        project_url = None
         if proj_id != 'Undetermined_indices':
             try:
-                project_url = create_project_experiment(proj_metadata, uploader)
+                project_url = create_experiment_on_server(proj_expt, uploader)
 
                 project_url = urlparse(project_url).path
 
@@ -1224,15 +1258,6 @@ def ingest_project(run_path=None):
         # samples_in_project = [s['SampleID'] for s in samplesheet]
         # sample_desc = 'FASTQ reads for samples '+', '.join(samples_in_project)
 
-        dataset_metadata = get_project_metadata(
-            proj_id,
-            run_metadata,
-            run_expt_link=run_expt_url,
-            project_expt_link=project_url,
-            fastqc_summary_json=fqc_summary_json,
-            fastqc_version=fqc_version,
-            schema='http://www.tardis.edu.au/schemas/ngs/project/raw_reads')
-
         # We associate Undetermined_indices Datasets with the overall 'run'
         # Experiment only (unlike proper Project Datasets which also have
         # their own Project Experiment).
@@ -1245,48 +1270,34 @@ def ingest_project(run_path=None):
         # Create the FastQC Dataset for the project
         if exists(fastqc_out_dir):
             try:
-                # Start with a clean copy of the project metadata, using
-                # the FastQC dataset schema
-                fqc_metadata = get_project_metadata(
-                    proj_id,
-                    run_metadata,
-                    run_expt_link=run_expt_url,
-                    project_expt_link=project_url,
-                    fastqc_summary_json=fqc_summary_json,
-                    fastqc_version=fqc_version,
-                    schema='http://www.tardis.edu.au/schemas/ngs/project/fastqc'
-                )
-
-                # TODO: proj_dataset_url should actually be a URL .. but ..
+                # TODO: fq_dataset_url should actually be a URL .. but ..
                 # we have a chicken-egg problem here - we want the URL
                 # for the FASTQ dataset here, to add as a parameter, but
                 # we are adding the FastQC dataset URL so we can add it's
                 # URL to the FASTQ dataset.
                 # We need to be able to update the FastQC dataset parameters
                 # in a second API call after we've added the FASTQ dataset.
-                proj_dataset_url = "%s__%s" % (run_id, proj_id)
+                fq_dataset_url = "%s__%s" % (run_id, proj_id)
 
                 # Then discard parts, repopulate some parameters
-                fqc_metadata = get_fastqc_dataset_metadata(proj_id,
-                                                           proj_dataset_url,
-                                                           fqc_version,
-                                                           fqc_metadata)
+                fqc_dataset = create_fastqc_dataset_object(
+                    run_id,
+                    proj_id,
+                    proj_expt.end_time,
+                    parent_expt_urls,
+                    fq_dataset_url,
+                    fastqc_summary=fqc_summary)
 
                 # TODO: encapsulate this in a create_fastqc_dataset function
                 #       for consistency ?
-                fqc_dataset_url = uploader.create_dataset(
-                    fqc_metadata['title'],
-                    parent_expt_urls,
-                    parameter_sets_list=fqc_metadata['parameter_sets']
-                )
+                fqc_dataset_url = uploader.create_dataset(fqc_dataset.package())
 
                 # Take just the path, eg: /api/v1/dataset/363
                 fqc_dataset_url = urlparse(fqc_dataset_url).path
                 # Add the LINK parameter from the FASTQ dataset to it's
                 # associated FastQC dataset
-                dataset_metadata['parameter_sets'][0]['parameters'].append(
-                    {'name': 'fastqc_dataset',
-                     'value': api_url_to_view_url(fqc_dataset_url)})
+                proj_expt.parameters.fastqc_dataset = \
+                    api_url_to_view_url(fqc_dataset_url)
 
             except Exception, e:
                 logger.error("Failed to create FastQC Dataset for Project: %s",
@@ -1316,10 +1327,12 @@ def ingest_project(run_path=None):
         # Create the FASTQ Dataset for the project, associated with both
         # the overall run Experiment, and the project Experiment
         try:
-            proj_dataset_url = create_fastq_dataset(proj_id,
-                                                    dataset_metadata,
-                                                    parent_expt_urls,
-                                                    uploader)
+            fq_dataset_url = create_fastq_dataset_on_server(
+                proj_id,
+                proj_expt,
+                parent_expt_urls,
+                uploader,
+                fastqc_summary=fqc_summary)
         except Exception, e:
             logger.error("Failed to create Dataset for Project: %s",
                          proj_id)
@@ -1327,19 +1340,20 @@ def ingest_project(run_path=None):
             raise e
 
         # Take just the path, eg: /api/v1/dataset/363
-        proj_dataset_url = urlparse(proj_dataset_url).path
+        fq_dataset_url = urlparse(fq_dataset_url).path
 
-        logger.info("Created FASTQ Dataset: %s (%s)", proj_dataset_url, proj_id)
+        logger.info("Created FASTQ Dataset: %s (%s)", fq_dataset_url, proj_id)
 
         register_project_fastq_datafiles(run_id,
                                          proj_path,
                                          samplesheet,
-                                         proj_dataset_url,
+                                         fq_dataset_url,
                                          uploader,
                                          fastqc_data=fqc_summary,
                                          fast_mode=options.fast)
 
     logger.info("Ingestion of run %s complete !", run_id)
+
 
 @atexit.register
 def _cleanup_tmp():

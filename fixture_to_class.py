@@ -136,7 +136,7 @@ class ClassDef:
         fields['pk'] = self.fixture['pk']
         fields['model'] = self.fixture['model']
         for k, v in fields.items():
-            vv = str(v)
+            vv = unicode(v)
             if isinstance(v, (str, unicode)):
                 vv = '"%s"' % v
             attribs.append("self._%s__schema = %s  # type: %s" %
