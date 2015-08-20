@@ -1,6 +1,10 @@
 # This is the 'location' used by the storage box
 storage_base_path: /data/instrument
 
+# The name of the default MyTardis StorageBox to use.
+# If in doubt, leave as default.
+storage_box_name: default
+
 # The path to the directory with data to
 # be uploaded/registerd with MyTardis
 path: /data/instrument/some_unique_expt_id_001/

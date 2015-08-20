@@ -1153,7 +1153,8 @@ def ingest_project(run_path=None):
         options.username,
         options.password,
         storage_mode=options.storage_mode,
-        storage_box_location=options.storage_base_path
+        storage_box_location=options.storage_base_path,
+        storage_box_name=options.storage_box_name
     )
 
     # Create an Experiment representing the overall sequencing run

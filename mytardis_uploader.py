@@ -639,6 +639,13 @@ def add_config_args(parser, add_extra_options_fn=None):
                         help="The STORAGE_BASE_PATH of all experiments,"
                              "when using 'shared' storage mode.",
                         metavar="STORAGE_BASE_PATH")
+    parser.add_argument("--storage-box-name",
+                        dest="storage_box_name",
+                        type=str,
+                        default='default',
+                        help="The name of the MyTardis StorageBox to ingest"
+                             "data into.",
+                        metavar="STORAGE_BOX_NAME")
     parser.add_argument("-l", "--url",
                         dest="url",
                         type=str,
@@ -852,9 +859,9 @@ def run():
     exclude_patterns = \
         get_exclude_patterns_as_regex_list(options.exclude)
 
-    pw = options.password
-    if not pw:
-        pw = getpass.getpass()
+    password = options.password
+    if not password:
+        password = getpass.getpass()
 
     file_path = options.path
     if file_path is '.':
@@ -863,24 +870,22 @@ def run():
     institute = options.institute
     description = options.description
     test_run = options.dry_run
-    mytardis_url = options.url
-    username = options.username
-    password = pw
-    storage_mode = options.storage_mode
-    base_path = options.storage_base_path
 
-    mytardis_uploader = MyTardisUploader(mytardis_url,
-                                         username,
-                                         password,
-                                         storage_mode=storage_mode,
-                                         storage_box_location=base_path)
+    mytardis_uploader = MyTardisUploader(
+        options.url,
+        options.username,
+        password,
+        storage_mode=options.storage_mode,
+        storage_box_location=options.storage_base_path,
+        storage_box_name=options.storage_box_name)
 
-    mytardis_uploader.upload_directory(file_path,
-                                       title=title,
-                                       description=description,
-                                       institute=institute,
-                                       test_run=test_run,
-                                       exclude_patterns=exclude_patterns)
+    mytardis_uploader.upload_directory(
+        file_path,
+        title=title,
+        description=description,
+        institute=institute,
+        test_run=test_run,
+        exclude_patterns=exclude_patterns)
 
     # raw_data_expt = create_experiment
     # upload_directory_as_child_experiments(raw_data_expt)
