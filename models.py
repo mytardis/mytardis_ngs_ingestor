@@ -594,7 +594,16 @@ class FastqRawReadsBase(MyTardisParameterSet):
         
         # Sample ID
         self.sample_id = None  # type: unicode
-        
+
+        # Sample name
+        self.sample_name = None  # type: unicode
+
+        # Lane
+        self.lane = None  # type: int
+
+        # Read number
+        self.read = None  # type: int
+
         # Reference genome
         self.reference_genome = None  # type: unicode
         
@@ -643,7 +652,31 @@ class FastqRawReadsBase(MyTardisParameterSet):
         u'choices': u'', u'comparison_type': 1, u'full_name': u'Sample ID',
         u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/file/fastq']}}  # type: dict
-        
+
+        # sample_name fixture
+        self._sample_name__attr_schema = {u'pk': None, u'model':
+        u'tardis_portal.parametername', u'fields': {u'name': u'sample_name',
+        u'data_type': 2, u'immutable': True, u'is_searchable': False,
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Sample name',
+        u'units': u'', u'order': 9999, u'schema':
+        [u'http://www.tardis.edu.au/schemas/ngs/file/fastq']}}  # type: dict
+
+        # lane fixture
+        self._lane__attr_schema = {u'pk': None, u'model':
+        u'tardis_portal.parametername', u'fields': {u'name':
+        u'lane', u'data_type': 1, u'immutable': True,
+        u'is_searchable': False, u'choices': u'', u'comparison_type': 1,
+        u'full_name': u'Lane', u'units': u'', u'order': 9999,
+        u'schema': [u'http://www.tardis.edu.au/schemas/ngs/file/fastq']}}
+
+        # read fixture
+        self._read__attr_schema = {u'pk': None, u'model':
+        u'tardis_portal.parametername', u'fields': {u'name':
+        u'read', u'data_type': 1, u'immutable': True,
+        u'is_searchable': False, u'choices': u'', u'comparison_type': 1,
+        u'full_name': u'Read number', u'units': u'', u'order': 9999,
+        u'schema': [u'http://www.tardis.edu.au/schemas/ngs/file/fastq']}}
+
         # reference_genome fixture
         self._reference_genome__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name':

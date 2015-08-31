@@ -499,21 +499,23 @@ def register_project_fastq_datafiles(run_id,
     sample_dict = samplesheet_to_dict_by_id(samplesheet)
 
     # Upload datafiles for the FASTQ reads in the project, for each Sample
-    for sample_path, sample_id in get_sample_directories(proj_path):
+    for sample_path, sample_name in get_sample_directories(proj_path):
         for fastq_path in get_fastq_read_files(sample_path):
 
-                # sample_id may not be in the SampleSheet dict
-                # if we are dealing the unaligned reads (eg sample_ids
+                sample_id = get_sample_id_from_fastq_filename(fastq_path)
+
+                # sample_name may not be in the SampleSheet dict
+                # if we are dealing the unaligned reads (eg sample_names
                 # lane1, lane2 etc)
-                # So, we grab either the info for the sample_id, or
+                # So, we grab either the info for the sample_name, or
                 # we use an empty dict (where all params will then be
                 # the default missing values)
 
                 # TODO: ensure we can also deal with unbarcoded runs,
-                #       where Index is "NoIndex" and sample_ids are
+                #       where Index is "NoIndex" and sample_names are
                 #       lane1, lane2 etc.
 
-                sampleinfo = sample_dict.get(sample_id, {})
+                sampleinfo = sample_dict.get(sample_name, {})
 
                 reference_genome = sampleinfo.get('SampleRef', '')
                 index_sequence = sampleinfo.get('Index', '')
@@ -522,9 +524,19 @@ def register_project_fastq_datafiles(run_id,
                 operator = sampleinfo.get('Operator', '')
                 description = sampleinfo.get('Description', '')
                 project = sampleinfo.get('SampleProject', '')
+                lane = int(sampleinfo.get('Lane'))
+                # flowcell ID is already attached to the Dataset metadata
+                # and can be inferrd from the sample_id, so we don't make
+                # a special field for it
+                # fcid = sampleinfo.get('FCID')
+
+                # the read number isn't encoded in SampleSheet.csv, so we
+                # extract it from the FASTQ filename instead
+                read = parse_fastq_filename(fastq_path).get('read', None)
 
                 parameters = {'run_id': run_id,
                               'sample_id': sample_id,
+                              'sample_name': sample_name,
                               'reference_genome': reference_genome,
                               'index_sequence': index_sequence,
                               'is_control': is_control,
@@ -532,17 +544,26 @@ def register_project_fastq_datafiles(run_id,
                               'operator_name': operator,
                               'description': description,
                               'project': project,
+                              'lane': lane,
+                              'read': read,
                               }
 
-                if fastqc_data is not None \
-                        and 'samples' in fastqc_data \
-                        and sample_id in dict(fastqc_data['samples']):
-                    basic_stats = dict(fastqc_data['samples'])[sample_id]
-                    basic_stats.pop('qc_checks', None)  # remove this table
+                fqc_completed_list = []
+                if fastqc_data is not None:
+                    fqc_completed_list = [s['filename']
+                                          for s in fastqc_data['samples']]
+
+                filename = os.path.basename(fastq_path)
+                if filename in fqc_completed_list:
+                    # grab the FastQC data for just this FASTQ file
+                    sample_fqcdata = next((s for s in fastqc_data['samples'] if
+                                           s['filename'] == filename), None)
+                    basic_stats = sample_fqcdata['basic_stats']
                     parameters.update(basic_stats)
                 elif not fast_mode:
-                    # If there is no FastQC data with read counts etc (eg
-                    # for Undetermined_indicies) we calculate our own
+                    # If there is no FastQC data with read counts etc for
+                    # this sample (e for Undetermined_indicies) we calculate
+                    # our own
                     logger.info("Calculating number of reads for: %s",
                                 fastq_path)
                     parameters['number_of_reads'] = \
@@ -587,8 +608,74 @@ def register_project_fastq_datafiles(run_id,
                             dataset_url)
 
 
-def get_sample_id_from_fastqc_filename(fastqc_zip_path):
-    return os.path.basename(fastqc_zip_path).split('_')[0]
+def parse_fastq_filename(filepath):
+    """
+    Takes a string like:
+    /some/path/15-05065_ACCTCA_L001_R1_001.fastq.gz
+
+    Returns a dictionary like:
+    {'read': 1,
+    'index': u'ACCTCA',
+    'set_number': 1,
+    'lane': 1,
+    'sample_name': u'15-05065'}
+
+    :type filepath: str
+    :rtype: dict
+    """
+    noext = os.path.basename(filepath).split('.fastq.gz')[0]
+    sample_name, index, lane, read, set_number = noext.rsplit('_', 4)
+    return dict(sample_name=sample_name,
+                index=index,
+                lane=int(lane[1:]),
+                read=int(read[1:]),
+                set_number=int(set_number))
+
+
+def get_sample_id_from_fastq_filename(filepath):
+    """
+    Takes:
+    15-02380-CE11-T13-L1_AACCAG_L001_R1_001.fastq.gz
+
+    Returns a sample ID that should be unique within a run,
+    consisting of the sample name, index, lane and read pair:
+    15-02380-CE11-T13-L1_AACCAG_L001_R1_001
+
+    :param filepath: a filename (possibly including a path)
+    :type filepath: str
+    :return: Unique sample ID
+    :rtype: str
+    """
+    return os.path.basename(filepath).split('.fastq.gz')[0]
+
+
+def get_sample_name_from_fastq_filename(filepath):
+    """
+    Takes:
+    15-02380-CE11-T13-L1_AACCAG_L001_R1_001.fastq.gz
+
+    Returns just the sample name:
+    15-02380-CE11-T13-L1
+
+    :param filepath: a filename (possibly including a path)
+    :type filepath: str
+    :return: Short sample name
+    :rtype: str
+    """
+    parts = parse_fastq_filename(filepath)
+    return parts['sample_name']
+
+
+def get_sample_id_from_fastqc_zip_filename(filepath):
+    return os.path.basename(filepath).split('_fastqc.zip')[0]
+
+
+def get_sample_name_from_fastqc_filename(fastqc_zip_path):
+    return os.path.basename(fastqc_zip_path).split('_')[:1]
+
+
+def generate_fastqc_report_filename(sample_id):
+    return sample_id + "_fastqc.html"
 
 
 def register_project_fastqc_datafiles(run_id,
@@ -601,8 +688,8 @@ def register_project_fastqc_datafiles(run_id,
     # Upload datafiles for the FASTQC output files
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
 
-            sample_id = get_sample_id_from_fastqc_filename(fastqc_zip_path)
             fastqc_version = parse_fastqc_data_txt(fastqc_zip_path)['version']
+            sample_id = get_sample_name_from_fastqc_filename(fastqc_zip_path)
             parameters = {'run_id': run_id,
                           'project': proj_id,
                           'sample_id': sample_id,
@@ -676,11 +763,11 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, options):
         #       For this reason, we always just extract from the zip, since
         #       we know it should be there
         with TmpZipExtract(fastqc_zip_path) as tmp_path:
-            fqc_id = splitext(os.path.basename(fastqc_zip_path))[0]
-            report_dir = join(tmp_path, fqc_id)
+            sample_id = get_sample_id_from_fastqc_zip_filename(fastqc_zip_path)
+            report_dir = join(tmp_path, sample_id + "_fastqc")
             report_file = join(report_dir, 'fastqc_report.html')
             from distutils.version import LooseVersion as SoftwareVersion
-            inline_report_filename = '%s.html' % fqc_id
+            inline_report_filename = generate_fastqc_report_filename(sample_id)
             inline_report_abspath = join(report_dir, inline_report_filename)
             if SoftwareVersion(fqc_version) < SoftwareVersion('0.11.3'):
                 # convert fastqc_report.html to version with inline images
@@ -702,16 +789,23 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
 
     eg:
 
-    {"samples" : [ ("OCT4-15",
-                    { "qc_checks" : [["Basic Statistics", "PASS"],],
+    {"samples" : [  { "sample_id": "OCT4-15_TGGTGA_L001_R1_001",
+                      "sample_name": "OCT4-15",
+                      "index": "TGGTGA",
+                      "lane": "1",
+                      "read_pair": "1",
+                      "illumina_sample_sheet": { .... },
+                      "qc_checks" : [("Basic Statistics", "PASS"),],
+                      "basic_stats": {"number_of_reads": 1042034623, ...},
+                      "fastqc_version" : "0.11.2",
                       "filename" : "OCT4-15_TGGTGA_L001_R1_001.fastq.gz",
-                      "number_of_reads": 1042034623,
+                      "fastqc_report_filename":
+                                   "OCT4-15_TGGTGA_L001_R1_001_fastqc.html",
                       ...
-                    }
-                   ),
+                    }.
+                    { "sample_id": .... },
                    ...
                  ],
-     "version" : "0.11.2"
     }
 
     :type fastqc_out_dir: str
@@ -720,10 +814,12 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
     project_summary = {u'samples': []}
     fqc_detailed_data = {}
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
-        sample_id = get_sample_id_from_fastqc_filename(fastqc_zip_path)
-
         qc_pass_fail_table_raw = parse_fastqc_summary_txt(fastqc_zip_path)
         fastq_filename = qc_pass_fail_table_raw[0][2]
+        fqfile_details = parse_fastq_filename(fastq_filename)
+        sample_id = get_sample_id_from_fastq_filename(fastq_filename)
+        fqc_report_filename = generate_fastqc_report_filename(sample_id)
+
         qc_pass_fail_table = []
         # remove the filename column
         for result, check, fn in qc_pass_fail_table_raw:
@@ -732,11 +828,20 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
         # project_summary.append((sample_id, qc_pass_fail_table))
         fqc_detailed_data[sample_id] = parse_fastqc_data_txt(fastqc_zip_path)
         basic_stats = _extract_fastqc_basic_stats(fqc_detailed_data, sample_id)
-        sample_data = {u'qc_checks': qc_pass_fail_table,
-                       u'filename': fastq_filename}
-        sample_data.update(basic_stats)
-        project_summary[u'samples'].append((sample_id, sample_data))
-        project_summary[u'version'] = fqc_detailed_data[sample_id]['version']
+        fqc_version = fqc_detailed_data[sample_id]['version']
+        sample_data = {u'sample_id': sample_id,
+                       u'sample_name': fqfile_details['sample_name'],
+                       u'qc_checks': qc_pass_fail_table,
+                       u'basic_stats': basic_stats,
+                       u'fastqc_version': fqc_version,
+                       u'filename': fastq_filename,
+                       u'fastqc_report_filename': fqc_report_filename,
+                       u'index': fqfile_details['index'],
+                       u'lane': fqfile_details['lane'],
+                       u'read': fqfile_details['read'],
+                       u'illumina_sample_sheet': { }, # TODO: just the line for this sample
+                       }
+        project_summary[u'samples'].append(sample_data)
 
     return project_summary
 
@@ -854,7 +959,7 @@ def run_fastqc(fastq_paths,
         # We will assume it's on path with the default name
         fastqc_bin = 'fastqc'
 
-    cmd = '%s %s --noextract --threads %d --outdir %s %s' % \
+    cmd = 'nice %s %s --noextract --threads %d --outdir %s %s' % \
           (fastqc_bin,
            extra_options,
            threads,
