@@ -47,7 +47,9 @@ class IlluminaSequencingRunBase(MyTardisParameterSet):
         
         # Illumina RTA version
         self.rta_version = None  # type: unicode
-        
+
+        # Ingestor User Agent
+        self.ingestor_useragent = None  # type: unicode
 
         # Dictionaries to allow reconstitution of the schema for each parameter
 
@@ -123,7 +125,16 @@ class IlluminaSequencingRunBase(MyTardisParameterSet):
         u'choices': u'', u'comparison_type': 1, u'full_name': u'Illumina RTA'
         u'version', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}}  # type: dict
-        
+
+        # ingestor_useragent fixture
+        self._ingestor_useragent__attr_schema = {u'pk': None, u'model':
+        u'tardis_portal.parametername',
+        u'fields': {u'name': u'ingestor_useragent',
+        u'data_type': 2, u'immutable': True, u'is_searchable': False,
+        u'choices': u'', u'comparison_type': 1,
+        u'full_name': u'Ingestor User Agent', u'units': u'',
+        u'order': 9999, u'schema':
+        [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}}  # type: dict
 
         self._subtype__schema = "illumina-sequencing-run"  # type: unicode
         self._model__schema = "tardis_portal.schema"  # type: unicode
@@ -182,7 +193,9 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
         
         # Illumina RTA version
         self.rta_version = None  # type: unicode
-        
+
+        # Ingestor User Agent
+        self.ingestor_useragent = None  # type: unicode
 
         # Dictionaries to allow reconstitution of the schema for each parameter
 
@@ -266,7 +279,16 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
         u'choices': u'', u'comparison_type': 1, u'full_name': u'Illumina RTA'
         u'version', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project']}}  # type: dict
-        
+
+        # ingestor_useragent fixture
+        self._ingestor_useragent__attr_schema = {u'pk': None, u'model':
+        u'tardis_portal.parametername',
+        u'fields': {u'name': u'ingestor_useragent',
+        u'data_type': 2, u'immutable': True, u'is_searchable': False,
+        u'choices': u'', u'comparison_type': 1,
+        u'full_name': u'Ingestor User Agent', u'units': u'',
+        u'order': 9999, u'schema':
+        [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}}  # type: dict
 
         self._subtype__schema = "demultiplexed-samples"  # type: unicode
         self._model__schema = "tardis_portal.schema"  # type: unicode

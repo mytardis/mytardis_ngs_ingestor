@@ -78,6 +78,7 @@ def create_run_experiment_object(run_path):
 
     samplesheet, chemistry = get_samplesheet(join(run_path, 'SampleSheet.csv'))
 
+    # the MyTardis ParameterSet
     run = IlluminaSequencingRun()
     run.instrument_model = instrument_model
     # run.run_path = run_path
@@ -88,6 +89,7 @@ def create_run_experiment_object(run_path):
     run.operator_name = samplesheet[0].get('Operator', '')
     run._samplesheet = samplesheet
 
+    # the MyTardis Experiment
     expt = Experiment()
     expt.title = "%s sequencing run %s" % (run.instrument_model, run.run_id)
     expt.end_time = end_time
@@ -152,7 +154,7 @@ def create_fastqc_dataset_object(run_id,
 
     fqc_version = ''
     if fastqc_summary is not None:
-        fqc_version = fastqc_summary.get('version', '')
+        fqc_version = fastqc_summary.get('fastqc_version', '')
 
     params = {
         'run_id': run_id,
@@ -462,6 +464,8 @@ def create_fastq_dataset_on_server(
     dataset_params = NucleotideRawReadsDataset()
     dataset_params.from_dict(proj_expt.parameters.to_dict(),
                              existing_only=True)
+    dataset_params.ingestor_useragent = uploader.user_agent
+
     if run_expt_link is not None:
         dataset_params.run_experiment = api_url_to_view_url(run_expt_link)
     if project_expt_link is not None:
@@ -473,7 +477,7 @@ def create_fastq_dataset_on_server(
     # FastQC results for every sample in the project, used for
     # rendering and overview table
     if fastqc_summary is not None:
-        fqc_version = fastqc_summary.get('version', '')
+        fqc_version = fastqc_summary.get('fastqc_version', '')
         fastqc_summary_params = HiddenFastqcProjectSummary()
         fastqc_summary_params.hidden_fastqc_summary_json = \
             json.dumps(fastqc_summary)
@@ -688,7 +692,8 @@ def register_project_fastqc_datafiles(run_id,
     # Upload datafiles for the FASTQC output files
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
 
-            fastqc_version = parse_fastqc_data_txt(fastqc_zip_path)['version']
+            fastqc_version = \
+                parse_fastqc_data_txt(fastqc_zip_path)['fastqc_version']
             sample_id = get_sample_name_from_fastqc_filename(fastqc_zip_path)
             parameters = {'run_id': run_id,
                           'project': proj_id,
@@ -748,7 +753,7 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, options):
             storage_box_name='live')
 
         fastqc_data_tables = parse_fastqc_data_txt(fastqc_zip_path)
-        fqc_version = fastqc_data_tables['version']
+        fqc_version = fastqc_data_tables['fastqc_version']
 
         # Depending on the version of FastQC used and specific
         #       commandline options, we may or may not have an HTML
@@ -797,7 +802,6 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
                       "illumina_sample_sheet": { .... },
                       "qc_checks" : [("Basic Statistics", "PASS"),],
                       "basic_stats": {"number_of_reads": 1042034623, ...},
-                      "fastqc_version" : "0.11.2",
                       "filename" : "OCT4-15_TGGTGA_L001_R1_001.fastq.gz",
                       "fastqc_report_filename":
                                    "OCT4-15_TGGTGA_L001_R1_001_fastqc.html",
@@ -806,12 +810,13 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
                     { "sample_id": .... },
                    ...
                  ],
+    "fastqc_version" : "0.11.2",
     }
 
     :type fastqc_out_dir: str
     :rtype project_summary: dict
     """
-    project_summary = {u'samples': []}
+    project_summary = {u'samples': [], u'fastqc_version': None}
     fqc_detailed_data = {}
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
         qc_pass_fail_table_raw = parse_fastqc_summary_txt(fastqc_zip_path)
@@ -828,20 +833,20 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
         # project_summary.append((sample_id, qc_pass_fail_table))
         fqc_detailed_data[sample_id] = parse_fastqc_data_txt(fastqc_zip_path)
         basic_stats = _extract_fastqc_basic_stats(fqc_detailed_data, sample_id)
-        fqc_version = fqc_detailed_data[sample_id]['version']
         sample_data = {u'sample_id': sample_id,
                        u'sample_name': fqfile_details['sample_name'],
                        u'qc_checks': qc_pass_fail_table,
                        u'basic_stats': basic_stats,
-                       u'fastqc_version': fqc_version,
                        u'filename': fastq_filename,
                        u'fastqc_report_filename': fqc_report_filename,
                        u'index': fqfile_details['index'],
                        u'lane': fqfile_details['lane'],
                        u'read': fqfile_details['read'],
-                       u'illumina_sample_sheet': { }, # TODO: just the line for this sample
+                       u'illumina_sample_sheet': { },  # TODO: just the SampleSheet line for this sample
                        }
         project_summary[u'samples'].append(sample_data)
+        project_summary[u'fastqc_version'] = \
+            fqc_detailed_data[sample_id]['fastqc_version']
 
     return project_summary
 
@@ -1089,17 +1094,16 @@ def parse_fastqc_data_txt(zip_file_path):
       ],
       'qc_result': u'pass'},
 
-      u'version': '0.12',
+      u'fastqc_version': '0.12',
      }
 
-     The FastQC version is stored under data['version'].
-
+     The FastQC version is stored under data['fastqc_version'].
 
     :type zip_file_path: str
     :return: dict
     """
     def _parse(fh):
-        data = {'version': fh.readline().split('\t')[1].strip()}
+        data = {'fastqc_version': fh.readline().split('\t')[1].strip()}
         section = None
         for l in fh:
             line = l.strip()
@@ -1270,6 +1274,7 @@ def ingest_project(run_path=None):
 
     run_expt.institution_name = options.institute
     run_expt.description = options.description
+    run_expt.parameters.ingestor_useragent = uploader.user_agent
     if not run_expt.description:
         run_expt.description = "Automatically ingested by %s on %s" % \
                                (uploader.user_agent,
@@ -1306,6 +1311,8 @@ def ingest_project(run_path=None):
             proj_id,
             run_expt,
             run_expt_link=run_expt_url)
+
+        proj_expt.parameters.ingestor_useragent = uploader.user_agent
 
         # The directory where bcl2fastq puts its output,
         # in Project_* directories
@@ -1393,6 +1400,8 @@ def ingest_project(run_path=None):
                     parent_expt_urls,
                     fq_dataset_url,
                     fastqc_summary=fqc_summary)
+
+                fqc_dataset.parameters.ingestor_useragent = uploader.user_agent
 
                 # TODO: encapsulate this in a create_fastqc_dataset function
                 #       for consistency ?
