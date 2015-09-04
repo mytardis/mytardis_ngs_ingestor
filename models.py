@@ -17,6 +17,9 @@ class IlluminaSequencingRunBase(MyTardisParameterSet):
     :type chemistry: unicode
     :type operator_name: unicode
     :type rta_version: unicode
+    :type ingestor_useragent: unicode
+    :type demultiplexing_program: unicode
+    :type demultiplexing_commandline_options: unicode
     """
 
     def __init__(self):
@@ -50,6 +53,12 @@ class IlluminaSequencingRunBase(MyTardisParameterSet):
 
         # Ingestor User Agent
         self.ingestor_useragent = None  # type: unicode
+
+        # Demultiplexing program version
+        self.demultiplexing_program = None  # type: unicode
+
+        # Demultiplexing program commandline options
+        self.demultiplexing_commandline_options = None  # type: unicode
 
         # Dictionaries to allow reconstitution of the schema for each parameter
 
@@ -136,6 +145,32 @@ class IlluminaSequencingRunBase(MyTardisParameterSet):
         u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}}  # type: dict
 
+        self._demultiplexing_program__attr_schema = {
+         u'pk': None, u'model':
+         u'tardis_portal.parametername',
+         u'fields':
+         {u'name': u'demultiplexing_program',
+          u'data_type': 2, u'immutable': True,
+          u'is_searchable': False,
+          u'choices': u'', u'comparison_type': 1,
+          u'full_name': u'Demultiplexing program version', u'units': u'',
+          u'order': 9999, u'schema':
+          [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}
+        }  # type: dict
+
+        self._demultiplexing_commandline_options__attr_schema = {
+         u'pk': None, u'model':
+         u'tardis_portal.parametername',
+         u'fields':
+         {u'name': u'demultiplexing_commandline_options',
+          u'data_type': 2, u'immutable': True,
+          u'is_searchable': False,
+          u'choices': u'', u'comparison_type': 1,
+          u'full_name': u'Demultiplexing commandline options', u'units': u'',
+          u'order': 9999, u'schema':
+          [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}
+        }  # type: dict
+
         self._subtype__schema = "illumina-sequencing-run"  # type: unicode
         self._model__schema = "tardis_portal.schema"  # type: unicode
         self._name__schema = "Illumina Sequencing Run"  # type: unicode
@@ -160,6 +195,9 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
     :type chemistry: unicode
     :type operator_name: unicode
     :type rta_version: unicode
+    :type ingestor_useragent: unicode
+    :type demultiplexing_program: unicode
+    :type demultiplexing_commandline_options: unicode
     """
 
     def __init__(self):
@@ -196,6 +234,12 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
 
         # Ingestor User Agent
         self.ingestor_useragent = None  # type: unicode
+
+        # Demultiplexing program version
+        self.demultiplexing_program = None  # type: unicode
+
+        # Demultiplexing program commandline options
+        self.demultiplexing_commandline_options = None  # type: unicode
 
         # Dictionaries to allow reconstitution of the schema for each parameter
 
@@ -288,7 +332,33 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
         u'choices': u'', u'comparison_type': 1,
         u'full_name': u'Ingestor User Agent', u'units': u'',
         u'order': 9999, u'schema':
-        [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}}  # type: dict
+        [u'http://www.tardis.edu.au/schemas/ngs/project']}}  # type: dict
+
+        self._demultiplexing_program__attr_schema = {
+            u'pk': None, u'model':
+                u'tardis_portal.parametername',
+            u'fields':
+            {u'name': u'demultiplexing_program',
+             u'data_type': 2, u'immutable': True,
+             u'is_searchable': False,
+             u'choices': u'', u'comparison_type': 1,
+             u'full_name': u'Demultiplexing program version', u'units': u'',
+             u'order': 9999, u'schema':
+            [u'http://www.tardis.edu.au/schemas/ngs/project']}
+        }  # type: dict
+
+        self._demultiplexing_commandline_options__attr_schema = {
+            u'pk': None, u'model': u'tardis_portal.parametername',
+            u'fields':
+            {u'name': u'demultiplexing_commandline_options',
+             u'data_type': 2, u'immutable': True,
+             u'is_searchable': False,
+             u'choices': u'', u'comparison_type': 1,
+             u'full_name': u'Demultiplexing commandline options',
+             u'units': u'',
+             u'order': 9999, u'schema':
+            [u'http://www.tardis.edu.au/schemas/ngs/project']}
+        }  # type: dict
 
         self._subtype__schema = "demultiplexed-samples"  # type: unicode
         self._model__schema = "tardis_portal.schema"  # type: unicode

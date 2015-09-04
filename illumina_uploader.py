@@ -528,7 +528,9 @@ def register_project_fastq_datafiles(run_id,
                 operator = sampleinfo.get('Operator', '')
                 description = sampleinfo.get('Description', '')
                 project = sampleinfo.get('SampleProject', '')
-                lane = int(sampleinfo.get('Lane'))
+                lane = sampleinfo.get('Lane', None)
+                if lane is not None:
+                    lane = int(lane)
                 # flowcell ID is already attached to the Dataset metadata
                 # and can be inferrd from the sample_id, so we don't make
                 # a special field for it
@@ -867,6 +869,54 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
 #         # an additional Project_ directory (eg Project_Bla.old)
 #         if isdir(proj_path) and ('Project_' in item):
 #             yield proj_path
+
+
+def get_demultiplexer_info(demultiplexed_output_path):
+    """
+    Determine which demultiplexing program (eg bcl2fastq) and commandline
+    options that were used to partition reads from the run into individual
+    samples (based on index).
+
+    eg. {'version': 'bcl2fastq 1.8.3,
+         'commandline_options':
+         '--input-dir ./Data/Intensities/BaseCalls ' +
+         '--output-dir ./130613_SNL177_0029_AH0EPTADXX.pc ' +
+         '--sample-sheet ./SampleSheet.csv --no-eamss'}
+
+    :param demultiplexed_output_path: bcl2fastq (or similar) output path
+    :type demultiplexed_output_path: str
+    :return: Name and version number of program used for demultiplexing reads.
+    :rtype: dict
+    """
+    # Parse DemultiplexConfig.xml for bcl2fastq version
+    # NOTE: parsing Makefile would be another option
+    demulti_config_path = join(demultiplexed_output_path,
+                               "DemultiplexConfig.xml")
+    if exists(demulti_config_path):
+        with open(demulti_config_path, 'r') as f:
+            xml = xmltodict.parse(f)
+            version = xml['DemultiplexConfig']['Software']['@Version']
+            version = ' '.join(version.split('-'))
+            cmdline = xml['DemultiplexConfig']['Software']['@CmdAndArgs']
+            cmdline = cmdline.split(' ', 1)[1]
+            return {'version': version,
+                    'commandline_options': cmdline}
+
+    """
+    # get the verison assuming the local version of bcl2fastq was used
+    out = subprocess.check_output("bcl2fastq --version", shell=True)
+    if len(out) >= 2 and 'bcl2fastq' in out[1]:
+        version = out[1].strip()
+        return {'version': version,
+                'commandline_options': None}
+
+    # get the version of locally installed tagdust
+    out = subprocess.check_output("tagdust --version", shell=True)
+    if len(out) >= 1 and 'Tagdust' in out[1]:
+        version = out[1].strip()
+        return {'version': version,
+                'commandline_options': None}
+    """
 
 
 def get_bcl2fastq_output_dir(options, run_id, run_path):
@@ -1217,7 +1267,7 @@ def dump_schema_fixtures_as_json():
     print json.dumps(s, indent=True)
 
 
-def ingest_project(run_path=None):
+def ingest_run(run_path=None):
     global logger
     logger = setup_logging()
     global TMPDIRS
@@ -1272,9 +1322,20 @@ def ingest_project(run_path=None):
     run_expt = create_run_experiment_object(run_path)
     run_id = run_expt.parameters.run_id
 
+    # The directory where bcl2fastq puts its output,
+    # in Project_* directories
+    bcl2fastq_output_dir = get_bcl2fastq_output_dir(options,
+                                                    run_id,
+                                                    run_path)
+
     run_expt.institution_name = options.institute
     run_expt.description = options.description
     run_expt.parameters.ingestor_useragent = uploader.user_agent
+    demultiplexer_info = get_demultiplexer_info(bcl2fastq_output_dir)
+    run_expt.parameters.demultiplexing_program = \
+        demultiplexer_info.get('version', '')
+    run_expt.parameters.demultiplexing_commandline_options = \
+        demultiplexer_info.get('commandline_options', '')
     if not run_expt.description:
         run_expt.description = "Automatically ingested by %s on %s" % \
                                (uploader.user_agent,
@@ -1313,12 +1374,10 @@ def ingest_project(run_path=None):
             run_expt_link=run_expt_url)
 
         proj_expt.parameters.ingestor_useragent = uploader.user_agent
-
-        # The directory where bcl2fastq puts its output,
-        # in Project_* directories
-        bcl2fastq_output_dir = get_bcl2fastq_output_dir(options,
-                                                        run_id,
-                                                        run_path)
+        proj_expt.parameters.demultiplexing_program = \
+            run_expt.parameters.demultiplexing_program
+        proj_expt.parameters.demultiplexing_commandline_options = \
+            run_expt.parameters.demultiplexing_commandline_options
 
         proj_path = join(bcl2fastq_output_dir, 'Project_' + proj_id)
 
@@ -1481,7 +1540,7 @@ def _cleanup_tmp():
 
 if __name__ == "__main__":
     try:
-        ingest_project()
+        ingest_run()
     except Exception, e:
         if e != SystemExit:
             import traceback
