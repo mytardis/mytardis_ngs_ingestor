@@ -752,8 +752,9 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, options):
             options.password,
             storage_mode='upload',
             # storage_box_location='/data/cached',
-            storage_box_name='live',
+            # storage_box_name='live',
             # storage_box_name='object_store',
+            storage_box_name=options.live_storage_box_name,
         )
 
         fastqc_data_tables = parse_fastqc_data_txt(fastqc_zip_path)
@@ -1297,6 +1298,11 @@ def ingest_run(run_path=None):
         argparser.add_argument('--dump-fixtures',
                                dest='dump_fixtures',
                                action='store_true')
+        argparser.add_argument('--live-storage-box-name',
+                               dest='live_storage_box_name',
+                               default='live',
+                               type=str,
+                               metavar='LIVE_STORAGE_BOX_NAME')
 
     parser, options = get_config(add_extra_options_fn=extra_config_options)
 

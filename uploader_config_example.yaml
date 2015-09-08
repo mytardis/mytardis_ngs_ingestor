@@ -5,6 +5,16 @@ storage_base_path: /data/instrument
 # If in doubt, leave as default.
 storage_box_name: default
 
+# Default MyTardis storage mode - upload, staging or shared
+storage_mode: upload
+
+# The name of the MyTardis StorageBox where highly available 'live'
+# files that need to be served immediately (eg small HTML report files)
+# will be uploaded. An S3-style object store is a often a good option.
+# These files should never be migrated to tape.
+live_storage_box_name: live
+# live_storage_box_name: object_store
+
 # The path to the directory with data to
 # be uploaded/registerd with MyTardis
 path: /data/instrument/some_unique_expt_id_001/
@@ -45,9 +55,6 @@ password: ub3rsecre7z!
 
 # The address of the MyTardis server, including :port
 url: http://mytardis-server.edu.au:8000
-
-# upload, staging or shared
-storage_mode: upload
 
 # Should we run FastQC on reads before uploading
 # if expected output directory doens't exist ?
