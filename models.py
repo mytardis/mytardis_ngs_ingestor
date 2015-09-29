@@ -529,9 +529,8 @@ class NucleotideRawReadsDatasetBase(MyTardisParameterSet):
         u'choices': u'', u'comparison_type': 1, u'full_name': u'Illumina RTA'
         u'version', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project/raw_reads']}}  # type: dict
-        
 
-        self._subtype__schema = "nucleotide-raw-reads"  # type: unicode
+        self._subtype__schema = "nucleotide-raw-reads-dataset"  # type: unicode
         self._model__schema = "tardis_portal.schema"  # type: unicode
         self._name__schema = "Nucleotide Sequencing Project Raw Reads"  # type: unicode
         self._pk__schema = None  # type: NoneType
@@ -601,7 +600,6 @@ class FastqcReportsBase(MyTardisParameterSet):
         u'full_name': u'FastQC software version', u'units': u'', u'order':
         9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project/fastqc']}}  # type: dict
-        
 
         self._subtype__schema = "fastqc-reports"  # type: unicode
         self._model__schema = "tardis_portal.schema"  # type: unicode
@@ -649,7 +647,6 @@ class HiddenFastqcProjectSummaryBase(MyTardisParameterSet):
         u'full_name': u'FastQC software version', u'units': u'', u'order':
         9999, u'schema': [u'http://www.tardis.edu.au/schemas/ngs/project/__hid'
         u'den__fastqc_summary']}}  # type: dict
-        
 
         self._subtype__schema = "hidden-fastqc-project-summary"  # type: unicode
         self._model__schema = "tardis_portal.schema"  # type: unicode
@@ -850,7 +847,6 @@ class FastqRawReadsBase(MyTardisParameterSet):
         u'choices': u'', u'comparison_type': 1, u'full_name': u'Read length',
         u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/file/fastq']}}  # type: dict
-        
 
         self._subtype__schema = "fastq-raw-reads"  # type: unicode
         self._model__schema = "tardis_portal.schema"  # type: unicode
@@ -921,7 +917,6 @@ class FastqcOutputBase(MyTardisParameterSet):
         u'full_name': u'FastQC software version', u'units': u'', u'order':
         9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/file/fastqc']}}  # type: dict
-        
 
         self._subtype__schema = "fastqc-output"  # type: unicode
         self._model__schema = "tardis_portal.schema"  # type: unicode
@@ -931,4 +926,3 @@ class FastqcOutputBase(MyTardisParameterSet):
         self._hidden__schema = False  # type: bool
         self._namespace__schema = "http://www.tardis.edu.au/schemas/ngs/file/fastqc"  # type: unicode
         self._immutable__schema = True  # type: bool
-
