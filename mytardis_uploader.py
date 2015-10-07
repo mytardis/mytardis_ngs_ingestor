@@ -20,6 +20,16 @@ from time import strftime
 import datetime
 import csv
 
+import urllib3
+logging.captureWarnings(True)
+
+# https://urllib3.readthedocs.org/en/latest/contrib.html#module-urllib3.contrib.pyopenssl
+try:
+    import urllib3.contrib.pyopenssl
+    urllib3.contrib.pyopenssl.inject_into_urllib3()
+except ImportError:
+    pass
+
 DEFAULT_STORAGE_MODE = 'upload'
 
 
@@ -31,6 +41,7 @@ class MyTardisUploader:
                  storage_mode=DEFAULT_STORAGE_MODE,
                  storage_box_location='',
                  storage_box_name='default',
+                 verify_certificate=True,
                  ):
 
         self.mytardis_url = mytardis_url
@@ -45,6 +56,8 @@ class MyTardisUploader:
         self.user_agent = "%s/%s (%s)" % (self.user_agent_name,
                                           __version__,
                                           self.user_agent_url)
+        # True, False, or the path to the certificate (.pem)
+        self.verify_certificate = verify_certificate
 
     def _json_request_headers(self):
         return {'Accept': 'application/json',
@@ -284,6 +297,11 @@ class MyTardisUploader:
 
         return []
 
+    def _raise_502(self, response):
+        e = requests.exceptions.RequestException(response=response)
+        e.message = "%s %s" % (response.status_code, response.reason)
+        raise e
+
     @backoff.on_exception(backoff.expo,
                           requests.exceptions.RequestException,
                           max_tries=8)
@@ -296,8 +314,15 @@ class MyTardisUploader:
                                      data=data,
                                      headers=headers,
                                      auth=HTTPBasicAuth(self.username,
-                                                        self.password)
+                                                        self.password),
+                                     verify=self.verify_certificate,
                                      )
+            # 502 Bad Gateway triggers retries, since the proxy web
+            # server (eg Nginx or Apache) in front of MyTardis could be
+            # temporarily restarting
+            if response.status_code == 502:
+                self._raise_502(response)
+
         except requests.exceptions.RequestException, e:
             logger.error("Request failed : %s : %s", e.message, url)
             raise e
@@ -351,8 +376,13 @@ class MyTardisUploader:
                                          data=form,
                                          headers=headers,
                                          auth=HTTPBasicAuth(self.username,
-                                                            self.password)
+                                                            self.password),
+                                         verify=self.verify_certificate,
                                          )
+
+                if response.status_code == 502:
+                    self._raise_502(response)
+
             except requests.exceptions.RequestException, e:
                 logger.error("Request failed : %s : %s", e.message, url)
                 raise e
@@ -378,8 +408,13 @@ class MyTardisUploader:
                                      data=data,
                                      headers=headers,
                                      auth=HTTPBasicAuth(self.username,
-                                                        self.password)
+                                                        self.password),
+                                     verify=self.verify_certificate,
                                      )
+
+            if response.status_code == 502:
+                self._raise_502(response)
+
         except requests.exceptions.RequestException, e:
             logger.error("Request failed : %s : %s", e.message, url)
             raise e
@@ -419,12 +454,15 @@ class MyTardisUploader:
 
         expt_json = self.dict_to_json(expt_dict)
 
-        logger.debug("Experiment JSON: %s", expt_json)
+        # logger.debug("Experiment JSON: %s", expt_json)
 
         data = self._do_post_request(expt_json, 'experiment')
 
         if not data.ok or 'Location' not in data.headers:
-            logger.error("Creating experiment failed: %s", data.content)
+            logger.error("Creating experiment failed: %s (%s) - %s",
+                         data.reason,
+                         data.status_code,
+                         data.content)
             sys.exit(1)
 
         return data.headers.get('Location', None)
@@ -437,7 +475,8 @@ class MyTardisUploader:
                                 params=query_params,
                                 headers=headers,
                                 auth=HTTPBasicAuth(self.username,
-                                                   self.password)
+                                                   self.password),
+                                verify=self.verify_certificate,
                                 )
         return response.json()
 
@@ -449,7 +488,8 @@ class MyTardisUploader:
                                 params=query_params,
                                 headers=headers,
                                 auth=HTTPBasicAuth(self.username,
-                                                   self.password)
+                                                   self.password),
+                                verify=self.verify_certificate,
                                 )
         return response.json()
 
@@ -582,8 +622,10 @@ class MyTardisUploader:
         return response
 
 
-def setup_logging():
-    console_handler = logging.StreamHandler()
+def setup_logging(loglevel=logging.DEBUG):
+    logger.setLevel(loglevel)
+
+    console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setLevel(logging.DEBUG)
 
     try:
@@ -612,7 +654,20 @@ def setup_logging():
                                    '%(message)s')
 
     logger.addHandler(console_handler)
-    logger.setLevel(logging.DEBUG)
+
+    low_level_request_logging = False
+    if low_level_request_logging:
+        try:
+            import http.client as http_client
+        except ImportError:
+            # Python 2
+            import httplib as http_client
+
+        http_client.HTTPConnection.debuglevel = 1
+
+        requests_log = logging.getLogger("requests.packages.urllib3")
+        requests_log.setLevel(logging.DEBUG)
+        requests_log.propagate = True
 
     return logger
 
@@ -711,6 +766,25 @@ def add_config_args(parser, add_extra_options_fn=None):
                         help="Exclude files with paths matching this regex. "
                              "Can be specified multiple times.",
                         metavar="REGEX")
+    # NOTE: When using this option in code, you probably want to use the value
+    #       of options.verify_certificate rather than options.certificate
+    #       (see logic in validate_config where the verify_certificate
+    #        attribute is added)
+    parser.add_argument("--certificate",
+                        dest="certificate",
+                        type=str,
+                        default='True',
+                        help="The SSL/TLS certificate used by the MyTardis "
+                             "server. Required to estabilish the identity of "
+                             "the server when using HTTPS and a self-signed "
+                             "certificate."
+                             "Valid values are a path to a certificate (.pem) "
+                             "or INSECURE (all-caps). "
+                             "If set to INSECURE, self-signed certificates are "
+                             "blindly accepted. The identity of the server "
+                             "cannot be guaranteed, increasing the likelyhood "
+                             "of MITM attacks.",
+                        metavar="CERTIFICATE")
 
     if add_extra_options_fn:
         add_extra_options_fn(parser)
@@ -796,6 +870,17 @@ def validate_config(parser, options):
         parser.error("--storage-base-path (storage_base_path) must be"
                      "specified when using 'shared' storage mode.")
 
+    # We want to force certificate verification if this value is unset.
+    # We set options.verify_certificate (a bool OR str) based on the
+    # value of options.certificate.
+    # An empty value in the YAML config gets serialized to the string 'None'
+    options.verify_certificate = options.certificate
+    if options.certificate == 'None' or \
+       options.certificate.strip() == '':
+        options.verify_certificate = True
+    if options.certificate == 'INSECURE':
+        options.verify_certificate = False
+
 
 def get_exclude_patterns_as_regex_list(exclude_patterns=None):
     """
@@ -877,7 +962,8 @@ def run():
         password,
         storage_mode=options.storage_mode,
         storage_box_location=options.storage_base_path,
-        storage_box_name=options.storage_box_name)
+        storage_box_name=options.storage_box_name,
+        verify_certificate=options.verify_certificate)
 
     mytardis_uploader.upload_directory(
         file_path,

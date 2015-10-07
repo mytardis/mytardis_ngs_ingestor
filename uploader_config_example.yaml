@@ -12,8 +12,9 @@ storage_mode: upload
 # files that need to be served immediately (eg small HTML report files)
 # will be uploaded. An S3-style object store is a often a good option.
 # These files should never be migrated to tape.
-live_storage_box_name: live
-# live_storage_box_name: object_store
+live_storage_box_name: object_store
+# live_storage_box_name: live
+
 
 # The path to the directory with data to
 # be uploaded/registerd with MyTardis
@@ -30,8 +31,8 @@ bcl2fastq_output_path: "{run_path}/{run_id}.bcl2fastq"
 # A list of groups (by name) that will be given ownership of ingested
 # experiments. Typically this contains the facility manager group.
 experiment_owner_groups:
-    - mhtp-facility-managers
-    - somegreatgroup
+  - mhtp-facility-managers
+  - somegreatgroup
 
 # A list of Python regular expressions matching files to exclude
 # matches against the absolute path. 'Hidden' files beginning
@@ -39,14 +40,14 @@ experiment_owner_groups:
 # Don't use quotes, and expressions are comma delimited without
 # regard to escaping so you can't use commas :/
 exclude:
-    - '/FastQC\.done$'
-    - '/FastQC\.inprogress$'
-    - '/LIST$'
-    - '/Temp$'
-    - '/Temp/.*'
-    - 'SampleSheet.csv'
-    - '/Basecall_Stats_\w+$'
-    - '/Basecall_Stats_\w+/.*'
+  - '/FastQC\.done$'
+  - '/FastQC\.inprogress$'
+  - '/LIST$'
+  - '/Temp$'
+  - '/Temp/.*'
+  - 'SampleSheet.csv'
+  - '/Basecall_Stats_\w+$'
+  - '/Basecall_Stats_\w+/.*'
 
 username: powerfuladmin
 
@@ -54,10 +55,25 @@ username: powerfuladmin
 password: ub3rsecre7z!
 
 # The address of the MyTardis server, including :port
-url: http://mytardis-server.edu.au:8000
+url: http://localhost:8000
+# url: http://mytardis-server.edu.au:8000
+# url: https://secure.mytardis-server.edu.au
+
+# The path to the certificate of the server when using SSL/TLS, to
+# allow it's identity to be verified. You should set this if your MyTardis
+# server are uses a self-signed certificate, rather than one signed by a
+# certificate authority.
+# If you are using a self-signed certificate and the 'certificate' setting
+# isn't set, you may set this value to INSECURE (all-caps) to acknowledge that
+# you are happy to connect to a server of unverified identity (with the
+# possibility of MITM attacks). Using INSECURE is strongly discouraged.
+# certificate: /etc/ssl/certs/ssl-cert-snakeoil.pem
+# certificate: INSECURE
+# An empty or missing value default to always verify
+# certificate:
 
 # Should we run FastQC on reads before uploading
-# if expected output directory doens't exist ?
+# if expected output directory doesn't exist ?
 run_fastqc: True
 
 # The number of threads to use for some paralell processes

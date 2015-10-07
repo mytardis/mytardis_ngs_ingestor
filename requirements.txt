@@ -2,6 +2,9 @@ appsettings
 backoff
 colorlog
 fs
+ndg-httpsclient
+pyasn1
+pyopenssl
 python-dateutil
 pyyaml # apt: libyaml-dev python-dev
 requests>=2.7.0

@@ -1321,7 +1321,8 @@ def ingest_run(run_path=None):
         options.password,
         storage_mode=options.storage_mode,
         storage_box_location=options.storage_base_path,
-        storage_box_name=options.storage_box_name
+        storage_box_name=options.storage_box_name,
+        verify_certificate=options.verify_certificate
     )
 
     # Create an Experiment representing the overall sequencing run
