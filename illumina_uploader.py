@@ -755,6 +755,7 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, options):
             # storage_box_name='live',
             # storage_box_name='object_store',
             storage_box_name=options.live_storage_box_name,
+            verify_certificate=options.verify_certificate,
         )
 
         fastqc_data_tables = parse_fastqc_data_txt(fastqc_zip_path)
@@ -787,6 +788,9 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, options):
                 os.rename(report_file, inline_report_abspath)
 
             live_box_uploader.upload_file(inline_report_abspath, dataset_url)
+            logger.info("Added Datafile (FastQC report): %s (%s)",
+                        inline_report_abspath,
+                        dataset_url)
 
 
 def get_fastqc_summary_for_project(fastqc_out_dir):
