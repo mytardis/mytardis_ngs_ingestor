@@ -9,4 +9,5 @@ python-dateutil
 pyyaml # apt: libyaml-dev python-dev
 requests>=2.7.0
 requests-toolbelt>=0.4.0
+urllib3
 xmltodict

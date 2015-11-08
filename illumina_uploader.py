@@ -909,6 +909,7 @@ def get_demultiplexer_info(demultiplexed_output_path):
             return {'version': version,
                     'commandline_options': cmdline}
 
+    return {}
     """
     # get the verison assuming the local version of bcl2fastq was used
     out = subprocess.check_output("bcl2fastq --version", shell=True)
