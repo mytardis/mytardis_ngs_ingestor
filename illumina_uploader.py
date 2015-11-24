@@ -1351,8 +1351,9 @@ def ingest_run(run_path=None):
     run_expt.parameters.demultiplexing_commandline_options = \
         demultiplexer_info.get('commandline_options', '')
     if not run_expt.description:
-        run_expt.description = "Automatically ingested by %s on %s" % \
-                               (uploader.user_agent,
+        run_expt.description = "%s run %s, ingested on %s" % \
+                               (run_expt.parameters.instrument_model,
+                                run_id,
                                 datetime.now().isoformat(' '))
 
     try:
