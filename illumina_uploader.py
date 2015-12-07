@@ -403,21 +403,55 @@ def parameter_set_to_dict(param_set):
     return d
 
 
-# def merge_dicts(a, b):
-#     merged = a.copy()
-#     merged.update(b)
-#     return merged
+def query_experiment_parameterset(self,
+                                  uploader,
+                                  schema_namespace=None,
+                                  parameter_name=None,
+                                  value=None):
+    query_params = {}
+    if isinstance(schema_namespace, basestring):
+        query_params[u'name__schema__namespace'] = schema_namespace
+    if isinstance(parameter_name, basestring):
+        query_params[u'name__name'] = parameter_name
+    if isinstance(value, (float, int)):
+        query_params[u'numeric_value'] = value
+    if isinstance(value, (basestring)):
+        query_params[u'string_value'] = value
+    if isinstance(value, datetime.datetime):
+        query_params[u'datetime_value'] = value.isoformat()
 
-# http://stackoverflow.com/a/26853961
-def merge_dicts(*dict_args):
+    response = uploader.do_get_request('experimentparameter', query_params)
+    return response.json()
+
+
+def get_experiments_from_server_by_run_id(uploader, run_id,
+                                          schema_namespace):
     """
-    Given any number of dicts, shallow copy and merge into a new dict,
-    precedence goes to key value pairs in latter dicts.
+    Query the server for all Experiments (run and project) with a matching
+    run_id Parameter. Returns a list of integer object IDs.
+
+    :param uploader: An uploader object instance
+    :type uploader: MyTardisUploader
+    :param run_id: The unique run ID (eg 150225_SNL177_0111_AHFNLKADXX)
+    :type run_id: basestring
+    :param schema_namespace: The namespace of the MyTardis schema (a URL)
+    :type schema_namespace: basestring
+    :return: Object IDs of all matching experiments.
+    :rtype: list(int)
     """
-    result = {}
-    for dictionary in dict_args:
-        result.update(dictionary)
-    return result
+
+    # using the custom API in the sequencing_facility app
+    response = uploader.do_get_request('sequencing_facility_experiment',
+                                       {'schema_namespace': schema_namespace,
+                                        'parameter_name': 'run_id',
+                                        # 'parameter_type': 'string',
+                                        'parameter_value': run_id})
+    if response.ok:
+        data = response.json()
+        if 'objects' in data:
+            return [o.get('id', None) for o in data['objects']]
+    else:
+        raise response.raise_for_status()
 
 
 def create_experiment_on_server(experiment, uploader):
@@ -1336,6 +1370,20 @@ def ingest_run(run_path=None):
     run_expt = create_run_experiment_object(run_path)
     run_id = run_expt.parameters.run_id
 
+    matching_runs = get_experiments_from_server_by_run_id(
+        uploader, run_id,
+        'http://www.tardis.edu.au/schemas/ngs/run/illumina')
+    matching_projects = get_experiments_from_server_by_run_id(
+        uploader, run_id,
+        'http://www.tardis.edu.au/schemas/ngs/project')
+
+    if matching_runs or matching_projects:
+        matching = [unicode(id) for id in matching_runs]
+        matching += [unicode(id) for id in matching_projects]
+        logger.error("Duplicate runs/projects already exist on server: %s (%s)",
+                     run_id, ', '.join(matching))
+        raise Exception()
+
     # The directory where bcl2fastq puts its output,
     # in Project_* directories
     bcl2fastq_output_dir = get_bcl2fastq_output_dir(options,
@@ -1554,12 +1602,14 @@ def _cleanup_tmp():
             logger.info("Removed temp directory: %s", tmpdir)
 
 if __name__ == "__main__":
+    MyTardisUploader.user_agent_name = os.path.basename(sys.argv[0])
     try:
         ingest_run()
     except Exception, e:
         if e != SystemExit:
             import traceback
-            traceback.print_exc(file=sys.stdout)
+            # traceback.print_exc(file=sys.stdout)
+            logger.debug((traceback.format_exc()))
         _cleanup_tmp()
         sys.exit(1)
 
