@@ -33,7 +33,22 @@ except ImportError:
 DEFAULT_STORAGE_MODE = 'upload'
 
 
+# http://stackoverflow.com/a/26853961
+def merge_dicts(*dict_args):
+    """
+    Given any number of dicts, shallow copy and merge into a new dict,
+    precedence goes to key value pairs in latter dicts.
+    """
+    result = {}
+    for dictionary in dict_args:
+        result.update(dictionary)
+    return result
+
+
 class MyTardisUploader:
+    user_agent_name = __name__
+    user_agent_url = "https://github.com/pansapiens/mytardis_ngs_ingestor"
+
     def __init__(self,
                  mytardis_url,
                  username,
@@ -45,17 +60,15 @@ class MyTardisUploader:
                  ):
 
         self.mytardis_url = mytardis_url
-        self.v1_api_url = mytardis_url + "/api/v1/%s"
+        self.v1_api_url = mytardis_url + "/api/v1/%s/"  # trailing slash matters
         self.username = username
         self.password = password
         self.storage_mode = storage_mode
         self.storage_box_location = storage_box_location
         self.storage_box_name = storage_box_name
-        self.user_agent_url = "https://github.com/pansapiens/mytardis-uploader"
-        self.user_agent_name = "MyTardisUploader"
-        self.user_agent = "%s/%s (%s)" % (self.user_agent_name,
+        self.user_agent = "%s/%s (%s)" % (MyTardisUploader.user_agent_name,
                                           __version__,
-                                          self.user_agent_url)
+                                          MyTardisUploader.user_agent_url)
         # True, False, or the path to the certificate (.pem)
         self.verify_certificate = verify_certificate
 
@@ -302,21 +315,66 @@ class MyTardisUploader:
         e.message = "%s %s" % (response.status_code, response.reason)
         raise e
 
+    # @backoff.on_exception(backoff.expo,
+    #                       requests.exceptions.RequestException,
+    #                       max_tries=8)
+    # def do_get_request(self, action, query_params, extra_headers={}):
+    #     url = self.v1_api_url % action
+    #     headers = self._json_request_headers()
+    #     headers = merge_dicts(headers, extra_headers)
+    #
+    #     try:
+    #         response = requests.get(url,
+    #                                 params=query_params,
+    #                                 headers=headers,
+    #                                 auth=HTTPBasicAuth(self.username,
+    #                                                    self.password),
+    #                                 verify=self.verify_certificate,
+    #                                 )
+    #
+    #         # 502 Bad Gateway triggers retries, since the proxy web
+    #         # server (eg Nginx or Apache) in front of MyTardis could be
+    #         # temporarily restarting
+    #         if response.status_code == 502:
+    #             self._raise_502(response)
+    #
+    #     except requests.exceptions.RequestException, e:
+    #         logger.error("Request failed : %s : %s", e.message, url)
+    #         raise e
+    #
+    #     return response
+
+    def do_get_request(self, action, params, extra_headers=None):
+        return self._do_request('GET', action,
+                                params=params,
+                                extra_headers=extra_headers)
+
+    def do_post_request(self, action, data, extra_headers=None):
+        return self._do_request('POST', action,
+                                data=data,
+                                extra_headers=extra_headers)
+
     @backoff.on_exception(backoff.expo,
                           requests.exceptions.RequestException,
                           max_tries=8)
-    def _do_post_request(self, data, urlend):
-        url = self.v1_api_url % (urlend.rstrip('/') + '/')
+    def _do_request(self, method, action,
+                    data=None, params=None,
+                    extra_headers=None):
+        url = self.v1_api_url % action
         headers = self._json_request_headers()
+        if extra_headers is not None:
+            headers = merge_dicts(headers, extra_headers)
 
         try:
-            response = requests.post(url,
-                                     data=data,
-                                     headers=headers,
-                                     auth=HTTPBasicAuth(self.username,
-                                                        self.password),
-                                     verify=self.verify_certificate,
-                                     )
+            response = requests.request(method,
+                                        url,
+                                        data=data,
+                                        params=params,
+                                        headers=headers,
+                                        auth=HTTPBasicAuth(self.username,
+                                                           self.password),
+                                        verify=self.verify_certificate,
+                                        )
             # 502 Bad Gateway triggers retries, since the proxy web
             # server (eg Nginx or Apache) in front of MyTardis could be
             # temporarily restarting
@@ -352,12 +410,7 @@ class MyTardisUploader:
                 md5.update(chunk)
         return md5.hexdigest()
 
-    @backoff.on_exception(backoff.expo,
-                          requests.exceptions.RequestException,
-                          max_tries=8)
-    def _send_datafile(self, data, urlend, filename=None):
-        url = self.v1_api_url % urlend
-
+    def _send_datafile(self, data, filename=None):
         # we need to use requests_toolbelt here to prepare the multipart
         # encoded form data since vanilla requests can't stream files
         # when POSTing forms of this type and will run out of RAM
@@ -371,54 +424,17 @@ class MyTardisUploader:
             headers = self._json_request_headers()
             headers['Content-Type'] = form.content_type
 
-            try:
-                response = requests.post(url,
-                                         data=form,
-                                         headers=headers,
-                                         auth=HTTPBasicAuth(self.username,
-                                                            self.password),
-                                         verify=self.verify_certificate,
-                                         )
-
-                if response.status_code == 502:
-                    self._raise_502(response)
-
-            except requests.exceptions.RequestException, e:
-                logger.error("Request failed : %s : %s", e.message, url)
-                raise e
-
+            response = self.do_post_request('dataset_file',
+                                            form,
+                                            extra_headers=headers)
             return response
 
-    @backoff.on_exception(backoff.expo,
-                          requests.exceptions.RequestException,
-                          max_tries=8)
-    def _register_datafile_staging(self, data, urlend):
+    def _register_datafile_staging(self, data):
         raise NotImplementedError("Registering datafiles in a staging location"
                                   "is not currently implemented.")
 
-    @backoff.on_exception(backoff.expo,
-                          requests.exceptions.RequestException,
-                          max_tries=8)
-    def _register_datafile_shared_storage(self, data, urlend):
-        url = self.v1_api_url % urlend
-        headers = self._json_request_headers()
-
-        try:
-            response = requests.post(url,
-                                     data=data,
-                                     headers=headers,
-                                     auth=HTTPBasicAuth(self.username,
-                                                        self.password),
-                                     verify=self.verify_certificate,
-                                     )
-
-            if response.status_code == 502:
-                self._raise_502(response)
-
-        except requests.exceptions.RequestException, e:
-            logger.error("Request failed : %s : %s", e.message, url)
-            raise e
-
+    def _register_datafile_shared_storage(self, data):
+        response = self.do_post_request('dataset_file', data)
         return response
 
     def _get_path_from_url(self, url_string):
@@ -456,7 +472,7 @@ class MyTardisUploader:
 
         # logger.debug("Experiment JSON: %s", expt_json)
 
-        data = self._do_post_request(expt_json, 'experiment')
+        data = self.do_post_request('experiment', expt_json)
 
         if not data.ok or 'Location' not in data.headers:
             logger.error("Creating experiment failed: %s (%s) - %s",
@@ -468,29 +484,13 @@ class MyTardisUploader:
         return data.headers.get('Location', None)
 
     def query_instrument(self, name):
-        url = self.v1_api_url % 'instrument'
         query_params = {u'name': name}
-        headers = self._json_request_headers()
-        response = requests.get(url,
-                                params=query_params,
-                                headers=headers,
-                                auth=HTTPBasicAuth(self.username,
-                                                   self.password),
-                                verify=self.verify_certificate,
-                                )
+        response = self.do_get_request('instrument', query_params)
         return response.json()
 
     def query_group(self, name):
-        url = self.v1_api_url % 'group'
         query_params = {u'name': name}
-        headers = self._json_request_headers()
-        response = requests.get(url,
-                                params=query_params,
-                                headers=headers,
-                                auth=HTTPBasicAuth(self.username,
-                                                   self.password),
-                                verify=self.verify_certificate,
-                                )
+        response = self.do_get_request('group', query_params)
         return response.json()
 
     def create_dataset(self, dataset, instrument=None):
@@ -511,7 +511,7 @@ class MyTardisUploader:
             dataset['instrument'] = instrument_resource_uri
 
         dataset_json = MyTardisUploader.dict_to_json(dataset)
-        data = self._do_post_request(dataset_json, 'dataset')
+        data = self.do_post_request('dataset', dataset_json)
 
         if not data.ok or 'Location' not in data.headers:
             logger.error("Creating dataset failed: %s", data.text)
@@ -552,19 +552,16 @@ class MyTardisUploader:
 
         if self.storage_mode == 'shared':
             data = self._register_datafile_shared_storage(
-                self.dict_to_json(file_dict),
-                'dataset_file/'
+                self.dict_to_json(file_dict)
             )
         elif self.storage_mode == 'staging':
             data = self._register_datafile_staging(
-                self.dict_to_json(file_dict),
-                'dataset_file/'
+                self.dict_to_json(file_dict)
             )
         elif self.storage_mode == 'upload':
             # file_dict.pop(u'replicas', None)
             data = self._send_datafile(
                 self.dict_to_json(file_dict),
-                'dataset_file/',
                 filename=file_path
             )
         else:
@@ -618,7 +615,7 @@ class MyTardisUploader:
             u'expiryDate': None
         }
 
-        response = self._do_post_request(self.dict_to_json(data), 'objectacl')
+        response = self.do_post_request('objectacl', self.dict_to_json(data))
         return response
 
 
