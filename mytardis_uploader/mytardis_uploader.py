@@ -19,6 +19,7 @@ import backoff
 from time import strftime
 import datetime
 import csv
+from urlparse import urljoin
 
 import urllib3
 logging.captureWarnings(True)
@@ -47,7 +48,7 @@ def merge_dicts(*dict_args):
 
 class MyTardisUploader:
     user_agent_name = __name__
-    user_agent_url = "https://github.com/pansapiens/mytardis_ngs_ingestor"
+    user_agent_url = 'https://github.com/pansapiens/mytardis_ngs_ingestor'
 
     def __init__(self,
                  mytardis_url,
@@ -60,13 +61,14 @@ class MyTardisUploader:
                  ):
 
         self.mytardis_url = mytardis_url
-        self.v1_api_url = mytardis_url + "/api/v1/%s/"  # trailing slash matters
+        # trailing slash matters
+        self.v1_api_url = urljoin(mytardis_url, '/api/v1/%s/')
         self.username = username
         self.password = password
         self.storage_mode = storage_mode
         self.storage_box_location = storage_box_location
         self.storage_box_name = storage_box_name
-        self.user_agent = "%s/%s (%s)" % (MyTardisUploader.user_agent_name,
+        self.user_agent = '%s/%s (%s)' % (MyTardisUploader.user_agent_name,
                                           __version__,
                                           MyTardisUploader.user_agent_url)
         # True, False, or the path to the certificate (.pem)
@@ -359,8 +361,14 @@ class MyTardisUploader:
                           max_tries=8)
     def _do_request(self, method, action,
                     data=None, params=None,
-                    extra_headers=None):
-        url = self.v1_api_url % action
+                    extra_headers=None,
+                    api_url_template=None):
+
+        if api_url_template is None:
+            api_url_template = self.v1_api_url
+
+        url = api_url_template % action
+
         headers = self._json_request_headers()
         if extra_headers is not None:
             headers = merge_dicts(headers, extra_headers)
@@ -493,6 +501,19 @@ class MyTardisUploader:
         response = self.do_get_request('group', query_params)
         return response.json()
 
+    def query_user(self, name):
+        query_params = {u'username': name}
+        response = self.do_get_request('user', query_params)
+        return response.json()
+
+    def query_objectacl(self, object_id, content_type='experiment'):
+        query_params = {u'object_id': object_id,
+                        u'content_type': content_type}
+
+        response = self.do_get_request('objectacl',
+                                       query_params)
+        return response.json()
+
     def create_dataset(self, dataset, instrument=None):
         """
         Execute an HTTP request to create a Dataset on the server.
@@ -586,26 +607,40 @@ class MyTardisUploader:
         resource_id = int(urlparse(uri).path.rstrip('/').split('/')[-1:][0])
         return resource_id
 
-    def share_experiment_with_group(self, experiment, group_name):
+    def _share_experiment(self,
+                          content_object,
+                          plugin_id,
+                          entity_id,
+                          content_type=u'experiment'):
         """
-        Executes an HTTP request to share an experiment with a group,
-        via updating the ObjectACL.
+        Executes an HTTP request to share an MyTardis object with a user or
+        group, via updating the ObjectACL.
 
-        :param experiment:  The url path to the experiment to update.
-        :param group_name: Name of the group we with share with.
-        :type experiment: str
-        :type group_name: str
+        :param content_object: The integer ID or URL path to the Experiment,
+                               Dataset or DataFile to update.
+        :param plugin_id: django_user or django_group
+        :param content_type: Django ContentType for the target object, usually
+                             'experiment', 'dataset' or 'datafile'
+        :type content_object: union(str, int)
+        :type plugin_id: str
+        :type content_type: basestring
         :return: A requests Response object
         :rtype: Response
         """
-        group_id = self.query_group(group_name)['objects'][0]['id']
-        experiment_id = self._resource_uri_to_id(experiment)
+        if isinstance(content_object, basestring):
+            object_id = self._resource_uri_to_id(content_object)
+        elif isinstance(content_object, int):
+            object_id = content_object
+        else:
+            raise TypeError("'content_object' must be a URL string or int ID")
+
         data = {
-            u'pluginId': u'django_group',
-            u'entityId': unicode(group_id),
-            u'content_object': unicode(experiment),
-            u'content_type': u'experiment',
-            u'object_id': unicode(experiment_id),
+            u'pluginId': plugin_id,
+            u'entityId': unicode(entity_id),
+            # TODO: should content_object even be specified ? Try without it.
+            # u'content_object': unicode(object_id),
+            u'content_type': unicode(content_type),
+            u'object_id': unicode(object_id),
             u'aclOwnershipType': 1,
             u'isOwner': True,
             u'canRead': True,
@@ -618,6 +653,44 @@ class MyTardisUploader:
         response = self.do_post_request('objectacl', self.dict_to_json(data))
         return response
 
+    def share_experiment_with_group(self, experiment, group_name):
+        """
+        Executes an HTTP request to share an experiment with a group,
+        via updating the ObjectACL.
+
+        :param experiment: The integer ID or URL path to the Experiment.
+        :param group_name: Name of the group we with share with.
+        :type experiment: union(str, int)
+        :type group_name: str
+        :return: A requests Response object
+        :rtype: Response
+        """
+
+        group_id = self.query_group(group_name)['objects'][0]['id']
+        return self._share_experiment(experiment,
+                                      'django_group',
+                                      group_id)
+
+    def share_experiment_with_user(self, experiment, username):
+        """
+        Executes an HTTP request to share an experiment with a user,
+        via updating the ObjectACL.
+
+        :param experiment: The integer ID or URL path to the Experiment
+        :param username: The username of the User to share with.
+        :type experiment: union(str, int)
+        :type username: str
+        :return: A requests Response object
+        :rtype: Response
+        """
+
+        user_id = self.query_user(username)['objects'][0]['id']
+        return self._share_experiment(experiment,
+                                      'django_user',
+                                      user_id)
+
+    def remove_object_acl(self, object_id):
+        self.do_get_request('objectacl', {})
 
 def setup_logging(loglevel=logging.DEBUG):
     logger.setLevel(loglevel)
