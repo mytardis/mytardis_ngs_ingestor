@@ -82,3 +82,13 @@ threads: 4
 
 # The path to the FastQC executable
 fastqc_bin: /usr/bin/fastqc
+
+# Specifies whether the ingestor should automatically move any existing run
+# on the server to 'trash' if it matches the unique run ID of the current run
+# This is useful when a run was demultiplexed incorrectly
+# (eg errors in SampleSheet.csv) and needs to be ingested again, without
+# cluttering the web interface with multiple versions of the same run
+replace_duplicate_runs: False
+# Username and group name for the 'trash'
+trash_user: __trashman__
+trash_group: __trashcan__

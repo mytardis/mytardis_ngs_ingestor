@@ -454,6 +454,73 @@ def get_experiments_from_server_by_run_id(uploader, run_id,
         raise response.raise_for_status()
 
 
+# TODO: Once MyTardis develop supports it, we can use the
+#       uploader.query_objectacl method instead of this
+def query_objectacl(uploader, object_id, content_type='experiment'):
+    query_params = {u'object_id': object_id,
+                    u'content_type': content_type}
+
+    response = uploader.do_get_request('sequencing_facility_objectacl',
+                                       query_params)
+    return response.json()
+
+
+def trash_experiments_server(uploader,
+                             experiment_ids,
+                             trash_user='__trashman__',
+                             trash_group='__trashcan__'):
+    """
+
+    :param uploader: Uploader object instance.
+    :type uploader: MyTardisUploader
+    :param experiment_ids: A list of experiement IDs
+    :type experiment_ids: list(int)
+    :param trash_user: Username of the trash user.
+    :type trash_user: str
+    :param trash_group: Group name of the 'trash can' group.
+    :type trash_group: str
+    :return:
+    :rtype:
+    """
+
+    # Find the the user and group IDs for trashman/trashcan
+    trashuser_id = uploader.query_user(trash_user)['objects'][0]['id']
+    trashgroup_id = uploader.query_group(trash_group)['objects'][0]['id']
+    for expt in experiment_ids:
+        existing_acls = query_objectacl(uploader, expt).get('objects')
+
+        has_trashuser, has_trashgroup = (False, False)
+        acls_to_remove = []
+        for acl in existing_acls:
+            acl_id = acl.get('id')
+            entity_id = acl.get('entityId')
+            if acl.get('pluginId') == 'django_user' and \
+                            entity_id == trashuser_id:
+                has_trashuser = True
+                continue
+            if acl.get('pluginId') == 'django_group' and \
+                            entity_id == trashgroup_id:
+                has_trashgroup = True
+                continue
+
+            acls_to_remove.append(acl_id)
+
+        # Add ObjectACLs to experiment for trashman/trashcan
+        if not has_trashgroup:
+            uploader.share_experiment_with_group(expt, trash_group)
+        if not has_trashuser:
+            uploader.share_experiment_with_user(expt, trash_user)
+
+        # Remove all ObjectACLs (except trashman/trashcan ownership) from
+        # experiment
+        for acl in acls_to_remove:
+            url_template = uploader.mytardis_url + '/api/v1/%s/' + str(acl) + '/'
+            uploader._do_request('DELETE', 'sequencing_facility_objectacl',
+                                 api_url_template=url_template)
+
+        logger.info('Moved experiment %s to trash' % expt)
+
+
 def create_experiment_on_server(experiment, uploader):
     """
 
@@ -1342,6 +1409,21 @@ def ingest_run(run_path=None):
                                default='live',
                                type=str,
                                metavar='LIVE_STORAGE_BOX_NAME')
+        argparser.add_argument('--replace-duplicate-runs',
+                               dest='replace_duplicate_runs',
+                               type=bool,
+                               default=False,
+                               metavar='REPLACE_DUPLICATE_RUNS')
+        argparser.add_argument('--trash-user',
+                               dest='trash_user',
+                               default='__trashman__',
+                               type=str,
+                               metavar='TRASH_USER')
+        argparser.add_argument('--trash-group',
+                               dest='trash_group',
+                               default='__trashcan__',
+                               type=str,
+                               metavar='TRASH_GROUP')
 
     parser, options = get_config(add_extra_options_fn=extra_config_options)
 
@@ -1370,19 +1452,27 @@ def ingest_run(run_path=None):
     run_expt = create_run_experiment_object(run_path)
     run_id = run_expt.parameters.run_id
 
-    matching_runs = get_experiments_from_server_by_run_id(
+    duplicate_runs = get_experiments_from_server_by_run_id(
         uploader, run_id,
         'http://www.tardis.edu.au/schemas/ngs/run/illumina')
-    matching_projects = get_experiments_from_server_by_run_id(
+    duplicate_projects = get_experiments_from_server_by_run_id(
         uploader, run_id,
         'http://www.tardis.edu.au/schemas/ngs/project')
 
-    if matching_runs or matching_projects:
-        matching = [unicode(id) for id in matching_runs]
-        matching += [unicode(id) for id in matching_projects]
-        logger.error("Duplicate runs/projects already exist on server: %s (%s)",
+    if duplicate_runs or duplicate_projects:
+        matching = [unicode(i) for i in duplicate_runs]
+        matching += [unicode(i) for i in duplicate_projects]
+        logger.warn("Duplicate runs/projects already exist on server: %s (%s)",
                      run_id, ', '.join(matching))
-        raise Exception()
+        if options.replace_duplicate_runs:
+            trash_experiments_server(uploader,
+                                     matching,
+                                     trash_user=options.trash_user,
+                                     trash_group=options.trash_group)
+        else:
+            logger.error("Please manually remove existing run before "
+                         "ingesting: %s (%s)", run_id, ', '.join(matching))
+            raise Exception()
 
     # The directory where bcl2fastq puts its output,
     # in Project_* directories
