@@ -130,7 +130,7 @@ def create_project_experiment_object(
     project_params.from_dict(run_expt.parameters.to_dict(),
                              existing_only=False)
     if run_expt_link is not None:
-        project_params.run_experiment = api_url_to_view_url(run_expt_link)
+        project_params.run_experiment = run_expt_link
     proj_expt.parameter_sets.append(project_params)
 
     return proj_expt
@@ -178,28 +178,6 @@ def create_fastqc_dataset_object(run_id,
         fqc_dataset.parameter_sets.append(fastqc_summary_params)
 
     return fqc_dataset
-
-
-def api_url_to_view_url(apiurl):
-    """
-    Takes a MyTardis API URL of the form /v1/api/experiment/998 or
-    and /v1/api/dataset/999, and returns the corresponding view URL,
-    like /experiment/view/998 or /dataset/999.
-
-    This is non-ideal and a bit of a hack, but there doesn't seem to
-    be any easy way to achieve this with the existing MyTardis REST API
-    (or without importing MyTardis server classes here to help).
-
-    :type apiurl: str
-    :rtype: str
-    """
-    pk = apiurl.strip('/').split('/')[-1:][0]
-    if 'experiment' in apiurl:
-        return '/experiment/view/%s' % pk
-    if 'dataset' in apiurl:
-        return '/dataset/%s' % pk
-
-    raise ValueError('Not a valid MyTardis API URL: %s' % apiurl)
 
 
 def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
@@ -568,10 +546,9 @@ def create_fastq_dataset_on_server(
     dataset_params.ingestor_useragent = uploader.user_agent
 
     if run_expt_link is not None:
-        dataset_params.run_experiment = api_url_to_view_url(run_expt_link)
+        dataset_params.run_experiment = run_expt_link
     if project_expt_link is not None:
-        dataset_params.project_experiment = \
-            api_url_to_view_url(project_expt_link)
+        dataset_params.project_experiment = project_expt_link
     fastq_dataset.parameter_sets.append(dataset_params)
 
     # This second (hidden) parameter_set, provides a summary of
@@ -1623,8 +1600,7 @@ def ingest_run(run_path=None):
                 fqc_dataset_url = urlparse(fqc_dataset_url).path
                 # Add the LINK parameter from the FASTQ dataset to it's
                 # associated FastQC dataset
-                proj_expt.parameters.fastqc_dataset = \
-                    api_url_to_view_url(fqc_dataset_url)
+                proj_expt.parameters.fastqc_dataset = fqc_dataset_url
 
             except Exception, e:
                 logger.error("Failed to create FastQC Dataset for Project: %s",
