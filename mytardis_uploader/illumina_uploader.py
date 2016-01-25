@@ -419,11 +419,12 @@ def get_experiments_from_server_by_run_id(uploader, run_id,
     """
 
     # using the custom API in the sequencing_facility app
-    response = uploader.do_get_request('sequencing_facility_experiment',
-                                       {'schema_namespace': schema_namespace,
-                                        'parameter_name': 'run_id',
-                                        # 'parameter_type': 'string',
-                                        'parameter_value': run_id})
+    response = uploader.do_get_request(
+            '%s_experiment' % uploader.tardis_app_name,
+            {'schema_namespace': schema_namespace,
+             'parameter_name': 'run_id',
+             # 'parameter_type': 'string',
+             'parameter_value': run_id})
     if response.ok:
         data = response.json()
         if 'objects' in data:
@@ -438,8 +439,9 @@ def query_objectacl(uploader, object_id, content_type='experiment'):
     query_params = {u'object_id': object_id,
                     u'content_type': content_type}
 
-    response = uploader.do_get_request('sequencing_facility_objectacl',
-                                       query_params)
+    response = uploader.do_get_request(
+            '%s_objectacl' % uploader.tardis_app_name,
+            query_params)
     return response.json()
 
 
@@ -462,8 +464,19 @@ def trash_experiments_server(uploader,
     """
 
     # Find the the user and group IDs for trashman/trashcan
-    trashuser_id = uploader.query_user(trash_user)['objects'][0]['id']
-    trashgroup_id = uploader.query_group(trash_group)['objects'][0]['id']
+    try:
+        trashuser_id = uploader.query_user(trash_user)['objects'][0]['id']
+    except IndexError as ex:
+        logger.info('Cannot find ID for trash user: %s (Does it exist ? Are '
+                    'ingestor user permissions correct ?)' % trash_user)
+        raise ex
+    try:
+        trashgroup_id = uploader.query_group(trash_group)['objects'][0]['id']
+    except IndexError as ex:
+        logger.info('Cannot find ID for trash group: %s (Does it exist ? Are '
+                    'ingestor user permissions correct ?)' % trash_group)
+        raise ex
+
     for expt in experiment_ids:
         existing_acls = query_objectacl(uploader, expt).get('objects')
 
@@ -492,9 +505,11 @@ def trash_experiments_server(uploader,
         # Remove all ObjectACLs (except trashman/trashcan ownership) from
         # experiment
         for acl in acls_to_remove:
-            url_template = uploader.mytardis_url + '/api/v1/%s/' + str(acl) + '/'
-            uploader._do_request('DELETE', 'sequencing_facility_objectacl',
-                                 api_url_template=url_template)
+            url_template = \
+                uploader.mytardis_url + '/api/v1/%s/' + str(acl) + '/'
+            uploader._do_request(
+                    'DELETE', '%s_objectacl' % uploader.tardis_app_name,
+                    api_url_template=url_template)
 
         logger.info('Moved experiment %s to trash' % expt)
 
@@ -929,7 +944,8 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
                        u'index': fqfile_details['index'],
                        u'lane': fqfile_details['lane'],
                        u'read': fqfile_details['read'],
-                       u'illumina_sample_sheet': { },  # TODO: just the SampleSheet line for this sample
+                       # TODO: include the SampleSheet line for this sample
+                       u'illumina_sample_sheet': { },
                        }
         project_summary[u'samples'].append(sample_data)
         project_summary[u'fastqc_version'] = \
@@ -1423,6 +1439,11 @@ def ingest_run(run_path=None):
         verify_certificate=options.verify_certificate
     )
 
+    # this custom attribute on the uploader is the name of the
+    # sequencing_facility MyTardis app, used to contruct the URLs for
+    # some app-specific REST API calls
+    uploader.tardis_app_name = 'sequencing-facility'
+
     # Create an Experiment representing the overall sequencing run
     if not run_path:
         run_path = options.path
@@ -1579,7 +1600,8 @@ def ingest_run(run_path=None):
                 # URL to the FASTQ dataset.
                 # We need to be able to update the FastQC dataset parameters
                 # in a second API call after we've added the FASTQ dataset.
-                fq_dataset_url = "%s__%s" % (run_id, proj_id)
+                # fq_dataset_url = "%s__%s" % (run_id, proj_id)
+                fq_dataset_url = project_url # placeholder
 
                 # Then discard parts, repopulate some parameters
                 fqc_dataset = create_fastqc_dataset_object(
