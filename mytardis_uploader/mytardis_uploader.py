@@ -88,6 +88,9 @@ class MyTardisUploader:
         :type d: dict
         :rtype: str
         """
+        if not isinstance(d, dict):
+            raise TypeError("Must be a dictionary")
+
         date_handler = lambda obj: (
             obj.isoformat(' ')
             if isinstance(obj, datetime.date)
@@ -549,6 +552,9 @@ class MyTardisUploader:
             parameter_sets_list = []
 
         filename = os.path.basename(file_path)
+
+        if not replica_url and self.storage_mode == 'shared':
+            replica_url = file_path
 
         replica_list = [{u'url': replica_url,
                          u'location': self.storage_box_name,
