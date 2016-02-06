@@ -926,3 +926,37 @@ class FastqcOutputBase(MyTardisParameterSet):
         self._hidden__schema = False  # type: bool
         self._namespace__schema = "http://www.tardis.edu.au/schemas/ngs/file/fastqc"  # type: unicode
         self._immutable__schema = True  # type: bool
+
+
+class IlluminaRunConfigBase(MyTardisParameterSet):
+    """
+
+
+    :type run_id: unicode
+    """
+
+    def __init__(self):
+        super(IlluminaRunConfigBase, self).__init__()
+        # the run ID
+        self.run_id = None  # type: unicode
+
+
+        # Dictionaries to allow reconstitution of the schema for each parameter
+
+        # fastqc_version fixture
+        self._run_id__attr_schema = {u'pk': None, u'model':
+        u'tardis_portal.parametername', u'fields': {u'name':
+        u'run_id', u'data_type': 2, u'immutable': True,
+        u'is_searchable': True, u'choices': u'', u'comparison_type': 1,
+        u'full_name': u'Run ID', u'units': u'', u'order':
+        9999, u'schema':
+        [u'http://www.tardis.edu.au/schemas/ngs/run/illumina/config']}}  # type: dict
+
+        self._subtype__schema = "illumina-run-config"  # type: unicode
+        self._model__schema = "tardis_portal.schema"  # type: unicode
+        self._name__schema = "Illumia run config and log files"  # type: unicode
+        self._pk__schema = None  # type: NoneType
+        self._type__schema = 2  # type: int
+        self._hidden__schema = False  # type: bool
+        self._namespace__schema = "http://www.tardis.edu.au/schemas/ngs/run/illumina/config"  # type: unicode
+        self._immutable__schema = True  # type: bool

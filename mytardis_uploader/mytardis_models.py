@@ -141,12 +141,14 @@ class MyTardisParameterSet(object):
                 }
 
     def to_schema(self):
-        schema = {'pk': None, 'model': '', 'fields': {}}
+        schema = {'pk': None, 'model': 'tardis_portal.schema', 'fields': {}}
         for k, v in self.__dict__.items():
             if k.startswith('_') and k.endswith('__schema'):
                 if k in ['__pk_schema', '__model_schema']:
                     schema[k[2:]] = v
                 else:
+                    # TODO: k[1:] needs __schema suffix removed
+                    # TODO: model and pk are ending up in fields ?
                     schema['fields'][k[1:]] = v
 
         return [schema]
