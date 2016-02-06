@@ -554,7 +554,7 @@ class MyTardisUploader:
         filename = os.path.basename(file_path)
 
         if not replica_url and self.storage_mode == 'shared':
-            replica_url = file_path
+            replica_url = os.path.relpath(file_path, self.storage_box_location)
 
         replica_list = [{u'url': replica_url,
                          u'location': self.storage_box_name,
