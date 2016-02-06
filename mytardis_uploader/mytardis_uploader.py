@@ -643,8 +643,6 @@ class MyTardisUploader:
         data = {
             u'pluginId': plugin_id,
             u'entityId': unicode(entity_id),
-            # TODO: should content_object even be specified ? Try without it.
-            # u'content_object': unicode(object_id),
             u'content_type': unicode(content_type),
             u'object_id': unicode(object_id),
             u'aclOwnershipType': 1,
