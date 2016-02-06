@@ -1,3 +1,5 @@
+import re
+
 
 class MyTardisModelBase(object):
     def __init__(self):
@@ -91,16 +93,6 @@ class MyTardisModelBase(object):
         return parameter_sets
 
 
-# TODO: Make this the parent class of parameter sets
-# (eg IlluminaSequencingRunBase) and add a parameter_sets = []
-# as an attribute to MyTardisModel. This way we can easily keep a
-# separation between parameter sets and attributes on the model itself
-# (eg 'title'). MyTardisModel (and subclasses such as Experiment) should
-# be able to generate the full dictionary required for an API call,
-# eg {'title': 'bla', 'description': 'foo',
-#       'parameter_sets': [{'schema':'http://x',
-#                           'parameters': [{'name':'x', 'value': 'y'},]
-#
 class MyTardisParameterSet(object):
     def __init__(self):
         self._namespace__schema = None  # type: unicode
@@ -144,12 +136,14 @@ class MyTardisParameterSet(object):
         schema = {'pk': None, 'model': 'tardis_portal.schema', 'fields': {}}
         for k, v in self.__dict__.items():
             if k.startswith('_') and k.endswith('__schema'):
-                if k in ['__pk_schema', '__model_schema']:
-                    schema[k[2:]] = v
+                # remove leading _ and __schema suffix
+                kname = re.sub(re.escape('__schema')+'$', '', k[1:])
+                # model and pk go into the top level, all the rest are
+                # part of the nest 'fields' dictionary
+                if kname in ['pk', 'model']:
+                    schema[kname] = v
                 else:
-                    # TODO: k[1:] needs __schema suffix removed
-                    # TODO: model and pk are ending up in fields ?
-                    schema['fields'][k[1:]] = v
+                    schema['fields'][kname] = v
 
         return [schema]
 
