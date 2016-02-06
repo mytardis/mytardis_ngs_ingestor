@@ -626,7 +626,7 @@ def create_run_config_dataset_on_server(run_expt, run_expt_url, uploader):
     run_id = run_expt.parameters.run_id
     config_dataset = Dataset()
     config_dataset.experiments = [run_expt_url]
-    config_dataset.description = '%s configuration and logs' % run_id
+    config_dataset.description = 'Configuration and logs for %s' % run_id
     config_params = IlluminaRunConfig()
     config_params.run_id = run_id
     config_dataset.parameters = config_params
