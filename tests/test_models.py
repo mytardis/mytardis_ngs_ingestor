@@ -73,6 +73,7 @@ class IlluminaParserTestCase(unittest.TestCase):
 
     def test__to_parameter_schema(self):
         param_schema_dict = self.parameterset_model.to_parameter_schema()
+        self.maxDiff = None
         self.assertDictEqual(param_schema_dict[0],
                           {u'pk': None,
                            u'model': u'tardis_portal.parametername',

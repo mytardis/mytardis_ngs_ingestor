@@ -134,7 +134,8 @@ class MyTardisParameterSet(object):
 
     def to_schema(self):
         schema = {'pk': None, 'model': 'tardis_portal.schema', 'fields': {}}
-        for k, v in self.__dict__.items():
+        attributes = sorted(self.__dict__.items())
+        for k, v in attributes:
             if k.startswith('_') and k.endswith('__schema'):
                 # remove leading _ and __schema suffix
                 kname = re.sub(re.escape('__schema')+'$', '', k[1:])
@@ -149,10 +150,12 @@ class MyTardisParameterSet(object):
 
     def to_parameter_schema(self):
         param_schemas = []
-        for k, v in self.__dict__.items():
+        attributes = sorted(self.__dict__.items())
+        for k, v in attributes:
             if k.startswith('_') and k.endswith('__attr_schema'):
                 param_schemas.append(v)
 
+        param_schemas.sort()
         return param_schemas
 
 
