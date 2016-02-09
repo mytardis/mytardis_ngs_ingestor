@@ -73,20 +73,31 @@ class IlluminaParserTestCase(unittest.TestCase):
 
     def test__to_parameter_schema(self):
         param_schema_dict = self.parameterset_model.to_parameter_schema()
-        self.assertEqual(param_schema_dict, [
-            {u'pk': None, u'model': u'tardis_portal.parametername',
-             u'fields': {u'full_name': u'A float field', u'comparison_type': 1,
-                         u'schema': [u'http://www.tardis.edu.au/schema/test'],
-                         u'name': u'a_float_field', u'data_type': 1,
-                         u'units': u'', u'order': 9999, u'immutable': True,
-                         u'is_searchable': True, u'choices': u''}},
-            {u'pk': None, u'model': u'tardis_portal.parametername',
-             u'fields': {u'full_name': u'A string fieldID',
-                         u'comparison_type': 1,
-                         u'schema': [u'http://www.tardis.edu.au/schema/test'],
-                         u'name': u'some_string_field', u'data_type': 2,
-                         u'units': u'', u'order': 9999, u'immutable': True,
-                         u'is_searchable': True, u'choices': u''}}])
+        self.assertEqual(param_schema_dict,
+                         [{u'pk': None,
+                           u'model': u'tardis_portal.parametername',
+                           u'fields': {u'full_name': u'A float field',
+                                       u'comparison_type': 1,
+                                       u'schema': [
+                                       u'http://www.tardis.edu.au/schema/test'],
+                                       u'name': u'a_float_field',
+                                       u'data_type': 1,
+                                       u'units': u'', u'order': 9999,
+                                       u'immutable': True,
+                                       u'is_searchable': True,
+                                       u'choices': u''}},
+                          {u'pk': None,
+                           u'model': u'tardis_portal.parametername',
+                           u'fields': {u'full_name': u'A string field',
+                                       u'comparison_type': 1,
+                                       u'schema': [
+                                       u'http://www.tardis.edu.au/schema/test'],
+                                       u'name': u'some_string_field',
+                                       u'data_type': 2,
+                                       u'units': u'', u'order': 9999,
+                                       u'immutable': True,
+                                       u'is_searchable': True,
+                                       u'choices': u''}}])
 
 
 if __name__ == '__main__':

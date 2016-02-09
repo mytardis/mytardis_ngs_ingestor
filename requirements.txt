@@ -6,6 +6,7 @@ ndg-httpsclient
 pyasn1
 pyopenssl
 python-dateutil
+pytest
 pyyaml # apt: libyaml-dev python-dev
 requests>=2.7.0
 requests-toolbelt>=0.4.0
