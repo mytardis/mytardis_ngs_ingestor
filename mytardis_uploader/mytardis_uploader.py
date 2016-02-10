@@ -509,9 +509,15 @@ class MyTardisUploader:
         response = self.do_get_request('user', query_params)
         return response.json()
 
-    def query_objectacl(self, object_id, content_type='experiment'):
+    def query_objectacl(self, object_id,
+                        content_type='experiment',
+                        acl_ownership_type=u'Owner-owned'):
+
+        acl_ownership_type = self._get_ownership_int(acl_ownership_type)
+
         query_params = {u'object_id': object_id,
-                        u'content_type': content_type}
+                        u'content_type': content_type,
+                        u'aclOwnershipType': acl_ownership_type}
 
         response = self.do_get_request('objectacl',
                                        query_params)
@@ -613,11 +619,23 @@ class MyTardisUploader:
         resource_id = int(urlparse(uri).path.rstrip('/').split('/')[-1:][0])
         return resource_id
 
+    def _get_ownership_int(self, ownership_type):
+        ownership_type_mappings = {
+            u'Owner-owned': 1,
+            u'System-owned': 2,
+        }
+        v = ownership_type_mappings.get(ownership_type, None)
+        if v is None:
+            raise ValueError("Valid values of acl_ownership_type are %s" %
+                             ' or '.join(ownership_type_mappings.keys()))
+        return v
+
     def _share_experiment(self,
                           content_object,
                           plugin_id,
                           entity_id,
-                          content_type=u'experiment'):
+                          content_type=u'experiment',
+                          acl_ownership_type=u'Owner-owned'):
         """
         Executes an HTTP request to share an MyTardis object with a user or
         group, via updating the ObjectACL.
@@ -640,12 +658,14 @@ class MyTardisUploader:
         else:
             raise TypeError("'content_object' must be a URL string or int ID")
 
+        acl_ownership_type = self._get_ownership_int(acl_ownership_type)
+
         data = {
             u'pluginId': plugin_id,
             u'entityId': unicode(entity_id),
             u'content_type': unicode(content_type),
             u'object_id': unicode(object_id),
-            u'aclOwnershipType': 1,
+            u'aclOwnershipType': acl_ownership_type,
             u'isOwner': True,
             u'canRead': True,
             u'canWrite': True,
@@ -657,7 +677,8 @@ class MyTardisUploader:
         response = self.do_post_request('objectacl', self.dict_to_json(data))
         return response
 
-    def share_experiment_with_group(self, experiment, group_name):
+    def share_experiment_with_group(self, experiment, group_name,
+                                    *args, **kwargs):
         """
         Executes an HTTP request to share an experiment with a group,
         via updating the ObjectACL.
@@ -673,9 +694,11 @@ class MyTardisUploader:
         group_id = self.query_group(group_name)['objects'][0]['id']
         return self._share_experiment(experiment,
                                       'django_group',
-                                      group_id)
+                                      group_id,
+                                      *args,
+                                      **kwargs)
 
-    def share_experiment_with_user(self, experiment, username):
+    def share_experiment_with_user(self, experiment, username, *args, **kwargs):
         """
         Executes an HTTP request to share an experiment with a user,
         via updating the ObjectACL.
@@ -691,7 +714,9 @@ class MyTardisUploader:
         user_id = self.query_user(username)['objects'][0]['id']
         return self._share_experiment(experiment,
                                       'django_user',
-                                      user_id)
+                                      user_id,
+                                      *args,
+                                      **kwargs)
 
     def remove_object_acl(self, object_id):
         self.do_get_request('objectacl', {})

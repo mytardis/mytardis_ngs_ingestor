@@ -472,9 +472,14 @@ def get_experiments_from_server_by_run_id(uploader, run_id,
 
 # TODO: Once MyTardis develop supports it, we can use the
 #       uploader.query_objectacl method instead of this
-def query_objectacl(uploader, object_id, content_type='experiment'):
+def query_objectacl(uploader, object_id, content_type='experiment',
+                    acl_ownership_type=u'Owner-owned'):
+
+    acl_ownership_type = uploader._get_ownership_int(acl_ownership_type)
+
     query_params = {u'object_id': object_id,
-                    u'content_type': content_type}
+                    u'content_type': content_type,
+                    u'aclOwnershipType': acl_ownership_type}
 
     response = uploader.do_get_request(
             '%s_objectacl' % uploader.tardis_app_name,
