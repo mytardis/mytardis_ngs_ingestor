@@ -66,7 +66,7 @@ class IlluminaSequencingRunBase(MyTardisParameterSet):
         self._run_id__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'run_id',
         u'data_type': 2, u'immutable': True, u'is_searchable': True,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique '
         u'ID', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}}  # type: dict
         
@@ -90,7 +90,7 @@ class IlluminaSequencingRunBase(MyTardisParameterSet):
         self._instrument_id__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'instrument_id',
         u'data_type': 2, u'immutable': True, u'is_searchable': True,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument '
         u'ID', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}}  # type: dict
         
@@ -115,7 +115,7 @@ class IlluminaSequencingRunBase(MyTardisParameterSet):
         self._chemistry__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'chemistry',
         u'data_type': 2, u'immutable': True, u'is_searchable': False,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Terminator'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Terminator '
         u'chemistry', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}}  # type: dict
         
@@ -123,7 +123,7 @@ class IlluminaSequencingRunBase(MyTardisParameterSet):
         self._operator_name__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'operator_name',
         u'data_type': 2, u'immutable': True, u'is_searchable': False,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument '
         u'operator', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}}  # type: dict
         
@@ -131,7 +131,7 @@ class IlluminaSequencingRunBase(MyTardisParameterSet):
         self._rta_version__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'rta_version',
         u'data_type': 2, u'immutable': True, u'is_searchable': False,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Illumina RTA'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Illumina RTA '
         u'version', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/run/illumina']}}  # type: dict
 
@@ -186,6 +186,7 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
 
 
     :type run_id: unicode
+    :type project_id: unicode
     :type run_experiment: unicode
     :type run_number: float
     :type flowcell_id: unicode
@@ -204,7 +205,10 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
         super(DemultiplexedSamplesBase, self).__init__()
         # Run Unique ID
         self.run_id = None  # type: unicode
-        
+
+        # Project ID
+        self.project_id = None  # type: unicode
+
         # Run Experiment link
         self.run_experiment = None  # type: unicode
         
@@ -247,10 +251,30 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
         self._run_id__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'run_id',
         u'data_type': 2, u'immutable': True, u'is_searchable': True,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique '
         u'ID', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project']}}  # type: dict
-        
+
+        # project_id fixture
+        self._project_id__attr_schema = {
+            u'pk': None,
+            u'model': u'tardis_portal.parametername',
+            u'fields': {
+                u'name': u'project_id',
+                u'data_type': 2,
+                u'is_searchable': True,
+                u'choices': u'',
+                u'comparison_type': 1,
+                u'full_name': u'Project ID',
+                u'units': u'',
+                u'order': 9999,
+                u'immutable': True,
+                u'schema': [
+                    u'http://www.tardis.edu.au/schemas/ngs/project'
+                ]
+            }
+        }  # type: dict
+
         # run_experiment fixture
         self._run_experiment__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name':
@@ -279,7 +303,7 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
         self._instrument_id__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'instrument_id',
         u'data_type': 2, u'immutable': True, u'is_searchable': True,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument '
         u'ID', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project']}}  # type: dict
         
@@ -295,7 +319,7 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
         self._read_cycles__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'read_cycles',
         u'data_type': 2, u'immutable': True, u'is_searchable': False,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Number of'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Number of '
         u'cycles in each read [index reads in (brackets)]', u'units': u'',
         u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project']}}  # type: dict
@@ -312,7 +336,7 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
         self._operator_name__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'operator_name',
         u'data_type': 2, u'immutable': True, u'is_searchable': False,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument '
         u'operator', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project']}}  # type: dict
         
@@ -320,7 +344,7 @@ class DemultiplexedSamplesBase(MyTardisParameterSet):
         self._rta_version__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'rta_version',
         u'data_type': 2, u'immutable': True, u'is_searchable': False,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Illumina RTA'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Illumina RTA '
         u'version', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project']}}  # type: dict
 
@@ -433,7 +457,7 @@ class NucleotideRawReadsDatasetBase(MyTardisParameterSet):
         self._run_id__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'run_id',
         u'data_type': 2, u'immutable': True, u'is_searchable': True,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique '
         u'ID', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project/raw_reads']}}  # type: dict
         
@@ -484,7 +508,7 @@ class NucleotideRawReadsDatasetBase(MyTardisParameterSet):
         self._instrument_id__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'instrument_id',
         u'data_type': 2, u'immutable': True, u'is_searchable': True,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument '
         u'ID', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project/raw_reads']}}  # type: dict
         
@@ -518,7 +542,7 @@ class NucleotideRawReadsDatasetBase(MyTardisParameterSet):
         self._operator_name__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'operator_name',
         u'data_type': 2, u'immutable': True, u'is_searchable': False,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument '
         u'operator', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project/raw_reads']}}  # type: dict
         
@@ -526,7 +550,7 @@ class NucleotideRawReadsDatasetBase(MyTardisParameterSet):
         self._rta_version__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'rta_version',
         u'data_type': 2, u'immutable': True, u'is_searchable': False,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Illumina RTA'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Illumina RTA '
         u'version', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project/raw_reads']}}  # type: dict
 
@@ -571,7 +595,7 @@ class FastqcReportsBase(MyTardisParameterSet):
         self._run_id__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'run_id',
         u'data_type': 2, u'immutable': True, u'is_searchable': True,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique '
         u'ID', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/project/fastqc']}}  # type: dict
         
@@ -730,7 +754,7 @@ class FastqRawReadsBase(MyTardisParameterSet):
         self._run_id__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'run_id',
         u'data_type': 2, u'immutable': True, u'is_searchable': True,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique '
         u'ID', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/file/fastq']}}  # type: dict
         
@@ -803,7 +827,7 @@ class FastqRawReadsBase(MyTardisParameterSet):
         self._operator_name__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'operator_name',
         u'data_type': 2, u'immutable': True, u'is_searchable': False,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Instrument '
         u'Operator', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/file/fastq']}}  # type: dict
         
@@ -889,7 +913,7 @@ class FastqcOutputBase(MyTardisParameterSet):
         self._run_id__attr_schema = {u'pk': None, u'model':
         u'tardis_portal.parametername', u'fields': {u'name': u'run_id',
         u'data_type': 2, u'immutable': True, u'is_searchable': True,
-        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique'
+        u'choices': u'', u'comparison_type': 1, u'full_name': u'Run Unique '
         u'ID', u'units': u'', u'order': 9999, u'schema':
         [u'http://www.tardis.edu.au/schemas/ngs/file/fastqc']}}  # type: dict
         

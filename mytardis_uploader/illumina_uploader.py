@@ -136,6 +136,7 @@ def create_project_experiment_object(
     project_params = DemultiplexedSamples()
     project_params.from_dict(run_expt.parameters.to_dict(),
                              existing_only=False)
+    project_params.project_id = proj_id
     if run_expt_link is not None:
         project_params.run_experiment = run_expt_link
     proj_expt.parameter_sets.append(project_params)
