@@ -1,4 +1,4 @@
-#!/use/bin/python
+#!/usr/bin/python
 # Takes a MyTardis fixture defining Schemas and ParameterNames
 # (as JSON) and generates a set of Python base classes
 # as a data model for use by REST API clients.
@@ -58,7 +58,7 @@ def sanitize_attr_name(name):
 
 
 def wrap_python_code(code):
-    lines = wrap(code)
+    lines = wrap(code, drop_whitespace=False)
     quoted = []
     open_quote_next_line = False
     for l in lines:
