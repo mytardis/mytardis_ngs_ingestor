@@ -5,16 +5,8 @@
 # Usage:
 # $ models_to_json_fixtures.py >sequencing_facility_fixtures.json
 
-import json
-import models
-from mytardis_models import MyTardisParameterSet
+import illumina_uploader
 
 if __name__ == "__main__":
-    fixtures = []
-    for name, klass in models.__dict__.items():
-        if (not name.startswith('__') and
-                issubclass(klass, MyTardisParameterSet)):
-            fixtures += klass().to_schema()
-            fixtures += klass().to_parameter_schema()
+    print illumina_uploader.dump_schema_fixtures_as_json()
 
-    print json.dumps(fixtures, indent=2)
