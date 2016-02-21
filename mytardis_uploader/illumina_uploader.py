@@ -9,6 +9,7 @@ from datetime import datetime
 import subprocess
 from tempfile import mkdtemp
 import atexit
+from urlparse import urljoin
 
 import os
 from os.path import join, splitext, exists, isdir, isfile
@@ -16,6 +17,9 @@ from dateutil import parser as dateparser
 import xmltodict
 import json
 
+from semantic_version import Version
+
+import mytardis_uploader
 from mytardis_uploader import MyTardisUploader
 from mytardis_uploader import setup_logging, get_config, validate_config
 # from mytardis_uploader import get_exclude_patterns_as_regex_list
@@ -1432,6 +1436,26 @@ def create_tmp_dir(*args, **kwargs):
     return tmpdir
 
 
+def get_mytardis_seqfac_app_version(uploader):
+    """
+    Make a REST call to /apps/sequencing-facility/version to
+    determine the version of the sequencing-facility app being
+    used by MyTardis.
+
+    :param uploader: The uploader instance
+    :type uploader: :py:class:`mytardis_uploader.MyTardisUploader`
+    :return: The version string of the remote app
+    :rtype: str
+    """
+    url_template = urljoin(uploader.mytardis_url,
+                           '/apps/' + uploader.tardis_app_name + '/%s')
+    response = uploader._do_request('GET', 'version',
+                                    api_url_template=url_template)
+    d = response.json()
+    version = d.get('version', None)
+    return version
+
+
 def dump_schema_fixtures_as_json():
     fixtures = []
     for name, klass in models.__dict__.items():
@@ -1658,6 +1682,15 @@ def ingest_run(run_path=None):
     # sequencing_facility MyTardis app, used to contruct the URLs for
     # some app-specific REST API calls
     uploader.tardis_app_name = 'sequencing-facility'
+
+    ingestor_version = Version(mytardis_uploader.__version__)
+    logger.info("Verifying MyTardis server app '%s' matches the ingestor "
+                "version (%s)." % (uploader.tardis_app_name, ingestor_version))
+    seqfac_app_version = Version(get_mytardis_seqfac_app_version(uploader))
+    if seqfac_app_version != ingestor_version:
+        logger.error("Ingestor (%s) / server (%s) version mismatch." %
+                     (seqfac_app_version, mytardis_uploader.__version__))
+        raise Exception("Version mismatch.")
 
     # Create an Experiment representing the overall sequencing run
     if not run_path:
@@ -1955,6 +1988,7 @@ if __name__ == "__main__":
             # traceback.print_exc(file=sys.stdout)
             logger.debug((traceback.format_exc()))
         _cleanup_tmp()
+        logger.error("Ingestion failed.")
         sys.exit(1)
 
     # since atexit doesn't seem to work
