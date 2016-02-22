@@ -558,9 +558,11 @@ class MyTardisUploader:
             parameter_sets_list = []
 
         filename = os.path.basename(file_path)
-
+        file_path = os.path.normpath(file_path)
         if not replica_url and self.storage_mode == 'shared':
-            replica_url = os.path.relpath(file_path, self.storage_box_location)
+            replica_url = os.path.relpath(file_path,
+                                          self.storage_box_location)
+            # replica_url = file_path.lstrip(self.storage_box_location)
 
         replica_list = [{u'url': replica_url,
                          u'location': self.storage_box_name,
@@ -785,13 +787,16 @@ def add_config_args(parser, add_extra_options_fn=None):
     parser.add_argument("-f", "--path",
                         dest="path",
                         type=str,
-                        help="The PATH of the experiment to be uploaded",
+                        help="The absolute PATH of the experiment to be "
+                             "uploaded (eg /zfs/storage/awesome_expt_001)",
                         metavar="PATH")
     parser.add_argument("--storage-base-path",
                         dest="storage_base_path",
                         type=str,
                         help="The STORAGE_BASE_PATH of all experiments,"
-                             "when using 'shared' storage mode.",
+                             "when using 'shared' storage mode. This should be"
+                             "an absolute path, and a prefix of the path"
+                             "provided with --path (eg /zfs/storage/)",
                         metavar="STORAGE_BASE_PATH")
     parser.add_argument("--storage-box-name",
                         dest="storage_box_name",
@@ -951,13 +956,16 @@ def validate_config(parser, options):
     :return:
     """
     if not options.path:
-        parser.error('File path not given')
+        parser.error('File path not given (--path)')
+
+    if not os.path.isabs(options.path):
+        parser.error('Path must be an absolute path (--path)')
 
     if not options.url:
-        parser.error('URL to MyTardis instance not given')
+        parser.error('URL to MyTardis instance not given (--url)')
 
     if not options.username:
-        parser.error('MyTardis username not given')
+        parser.error('MyTardis username not given (--username)')
 
     valid_storage_modes = ['upload', 'staging', 'shared']
     if options.storage_mode and \
@@ -968,6 +976,10 @@ def validate_config(parser, options):
     if options.storage_mode == 'shared' and not options.storage_base_path:
         parser.error("--storage-base-path (storage_base_path) must be"
                      "specified when using 'shared' storage mode.")
+
+    if options.storage_mode == 'shared' and \
+            not os.path.isabs(options.storage_base_path):
+        parser.error('--storage-base-path must be an absolute path')
 
     # We want to force certificate verification if this value is unset.
     # We set options.verify_certificate (a bool OR str) based on the
