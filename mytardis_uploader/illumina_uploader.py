@@ -92,11 +92,11 @@ def create_run_experiment_object(run_path):
 
     # the MyTardis ParameterSet
     run = IlluminaSequencingRun()
+    run.from_dict(runinfo_parameters)
     run.instrument_model = instrument_model
     run.instrument_id = instrument_id
     # run.run_path = run_path
     run.run_id = get_run_id_from_path(run_path)
-    run.from_dict(runinfo_parameters)
     run.rta_version = rta_version
     run.chemistry = chemistry
     run.operator_name = samplesheet[0].get('Operator', '')
@@ -506,73 +506,28 @@ def query_objectacl(uploader, object_id, content_type='experiment',
     return response.json()
 
 
-def trash_experiments_server(uploader,
-                             experiment_ids,
-                             trash_user='__trashman__',
-                             trash_group='__trashcan__'):
+def trash_experiments_server(uploader, experiment_ids):
     """
 
     :param uploader: Uploader object instance.
     :type uploader: MyTardisUploader
     :param experiment_ids: A list of experiement IDs
     :type experiment_ids: list(int)
-    :param trash_user: Username of the trash user.
-    :type trash_user: str
-    :param trash_group: Group name of the 'trash can' group.
-    :type trash_group: str
     :return:
     :rtype:
     """
 
-    # Find the the user and group IDs for trashman/trashcan
-    try:
-        trashuser_id = uploader.query_user(trash_user)['objects'][0]['id']
-    except IndexError as ex:
-        logger.info('Cannot find ID for trash user: %s (Does it exist ? Are '
-                    'ingestor user permissions correct ?)' % trash_user)
-        raise ex
-    try:
-        trashgroup_id = uploader.query_group(trash_group)['objects'][0]['id']
-    except IndexError as ex:
-        logger.info('Cannot find ID for trash group: %s (Does it exist ? Are '
-                    'ingestor user permissions correct ?)' % trash_group)
-        raise ex
-
     for expt in experiment_ids:
-        existing_acls = query_objectacl(uploader, expt).get('objects')
+        url_template = urljoin(uploader.mytardis_url,
+                               '/apps/' + uploader.tardis_app_name + '/api/%s')
 
-        has_trashuser, has_trashgroup = (False, False)
-        acls_to_remove = []
-        for acl in existing_acls:
-            acl_id = acl.get('id')
-            entity_id = acl.get('entityId')
-            if acl.get('pluginId') == 'django_user' and \
-                            entity_id == trashuser_id:
-                has_trashuser = True
-                continue
-            if acl.get('pluginId') == 'django_group' and \
-                            entity_id == trashgroup_id:
-                has_trashgroup = True
-                continue
-
-            acls_to_remove.append(acl_id)
-
-        # Add ObjectACLs to experiment for trashman/trashcan
-        if not has_trashgroup:
-            uploader.share_experiment_with_group(expt, trash_group)
-        if not has_trashuser:
-            uploader.share_experiment_with_user(expt, trash_user)
-
-        # Remove all ObjectACLs (except trashman/trashcan ownership) from
-        # experiment
-        for acl in acls_to_remove:
-            url_template = \
-                uploader.mytardis_url + '/api/v1/%s/' + str(acl) + '/'
-            uploader._do_request(
-                    'DELETE', '%s_objectacl' % uploader.tardis_app_name,
-                    api_url_template=url_template)
-
-        logger.info('Moved experiment %s to trash' % expt)
+        response = uploader._do_request('GET', 'trash_experiment/%s' % expt,
+                                        api_url_template=url_template)
+        if response.ok:
+            logger.info('Moved experiment %s to trash' % expt)
+        else:
+            logger.info('Error trying to move experiment %s to trash' % expt)
+            raise response.raise_for_status()
 
 
 def create_experiment_on_server(experiment, uploader):
@@ -1448,7 +1403,7 @@ def get_mytardis_seqfac_app_version(uploader):
     :rtype: str
     """
     url_template = urljoin(uploader.mytardis_url,
-                           '/apps/' + uploader.tardis_app_name + '/%s')
+                           '/apps/' + uploader.tardis_app_name + '/api/%s')
     response = uploader._do_request('GET', 'version',
                                     api_url_template=url_template)
     d = response.json()
@@ -1696,6 +1651,7 @@ def ingest_run(run_path=None):
     if not run_path:
         run_path = options.path
     run_expt = create_run_experiment_object(run_path)
+    # run_id = get_run_id_from_path(run_path)
     run_id = run_expt.parameters.run_id
 
     duplicate_runs = get_experiments_from_server_by_run_id(
@@ -1709,12 +1665,9 @@ def ingest_run(run_path=None):
         matching = [unicode(i) for i in duplicate_runs]
         matching += [unicode(i) for i in duplicate_projects]
         logger.warn("Duplicate runs/projects already exist on server: %s (%s)",
-                     run_id, ', '.join(matching))
+                    run_id, ', '.join(matching))
         if options.replace_duplicate_runs:
-            trash_experiments_server(uploader,
-                                     matching,
-                                     trash_user=options.trash_user,
-                                     trash_group=options.trash_group)
+            trash_experiments_server(uploader, matching)
         else:
             logger.error("Please manually remove existing run before "
                          "ingesting: %s (%s)", run_id, ', '.join(matching))
