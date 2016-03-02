@@ -1610,7 +1610,8 @@ def ingest_run(run_path=None):
     uploader = MyTardisUploader(
         options.url,
         options.username,
-        options.password,
+        password=options.password,
+        api_key=options.api_key,
         storage_mode=options.storage_mode,
         storage_box_location=options.storage_base_path,
         storage_box_name=options.storage_box_name,
@@ -1624,7 +1625,8 @@ def ingest_run(run_path=None):
     writable_storage_uploader = MyTardisUploader(
         options.url,
         options.username,
-        options.password,
+        password=options.password,
+        api_key=options.api_key,
         storage_mode='upload',
         # storage_box_location='/data/cached',
         # storage_box_name='live',

@@ -51,8 +51,13 @@ exclude:
 
 username: powerfuladmin
 
-# Don't make this config file world readable !
-password: ub3rsecre7z!
+# The API key (tastypie) for this username, provided by the MyTardis server.
+# Keep it secret, but use this in preference to a password.
+api_key: ub3rsecre7zsuperSecre7zkeepadaSecre7z
+
+# The login password for the username - avoid using this in production, use
+# api_key instead. Don't make this config file world readable !
+# password: ub3rsecre7z!
 
 # The address of the MyTardis server, including :port
 url: http://localhost:8000

@@ -14,7 +14,7 @@ import sys
 import mimetypes
 import json
 import requests
-from requests.auth import HTTPBasicAuth
+from requests.auth import AuthBase, HTTPBasicAuth
 import backoff
 from time import strftime
 import datetime
@@ -46,6 +46,21 @@ def merge_dicts(*dict_args):
     return result
 
 
+class TastyPieAuth(AuthBase):
+    """
+    Attaches HTTP headers for Tastypie API key Authentication to the given
+    Request object.
+    """
+    def __init__(self, username, api_key):
+        self.username = username
+        self.api_key = api_key
+
+    def __call__(self, r):
+        r.headers['Authorization'] = 'ApiKey %s:%s' % (self.username,
+                                                       self.api_key)
+        return r
+
+
 class MyTardisUploader:
     user_agent_name = __name__
     user_agent_url = 'https://github.com/pansapiens/mytardis_ngs_ingestor'
@@ -53,7 +68,8 @@ class MyTardisUploader:
     def __init__(self,
                  mytardis_url,
                  username,
-                 password,
+                 password=None,
+                 api_key=None,
                  storage_mode=DEFAULT_STORAGE_MODE,
                  storage_box_location='',
                  storage_box_name='default',
@@ -65,6 +81,7 @@ class MyTardisUploader:
         self.v1_api_url = urljoin(mytardis_url, '/api/v1/%s/')
         self.username = username
         self.password = password
+        self.api_key = api_key
         self.storage_mode = storage_mode
         self.storage_box_location = storage_box_location
         self.storage_box_name = storage_box_name
@@ -73,6 +90,13 @@ class MyTardisUploader:
                                           MyTardisUploader.user_agent_url)
         # True, False, or the path to the certificate (.pem)
         self.verify_certificate = verify_certificate
+
+        if self.api_key is not None:
+            self.auth = TastyPieAuth(self.username, self.api_key)
+        elif self.password is not None:
+            self.auth = HTTPBasicAuth(self.username, self.password)
+        else:
+            self.auth = None
 
     def _json_request_headers(self):
         return {'Accept': 'application/json',
@@ -332,8 +356,7 @@ class MyTardisUploader:
     #         response = requests.get(url,
     #                                 params=query_params,
     #                                 headers=headers,
-    #                                 auth=HTTPBasicAuth(self.username,
-    #                                                    self.password),
+    #                                 auth=self.auth,
     #                                 verify=self.verify_certificate,
     #                                 )
     #
@@ -377,22 +400,12 @@ class MyTardisUploader:
             headers = merge_dicts(headers, extra_headers)
 
         try:
-            # TODO: in here, make auth use a tastypie style
-            #       {'Authorization': 'ApiKey username:key'} header
-            #       instead of BasicAuth.
-            #       https://django-tastypie.readthedocs.org/en/latest/authentication.html
-            #       Do this by subclassing AuthBase from requests.auth
-            #       to a TastyPieAuth class that gets used if
-            #       MyTardisUploader.api_key is not None
-            #       Also add --api-key to commandline options
-            #      (and uploader_config_example.yaml)
             response = requests.request(method,
                                         url,
                                         data=data,
                                         params=params,
                                         headers=headers,
-                                        auth=HTTPBasicAuth(self.username,
-                                                           self.password),
+                                        auth=self.auth,
                                         verify=self.verify_certificate,
                                         )
             # 502 Bad Gateway triggers retries, since the proxy web
@@ -828,8 +841,15 @@ def add_config_args(parser, add_extra_options_fn=None):
                         dest="password",
                         type=str,
                         help="You should probably never use this option from "
-                             "the command line. Be sensible.",
+                             "the command line. Use --api-key instead (and "
+                             "ideally only ever from a read-only config file).",
                         metavar="PASSWORD")
+    parser.add_argument('--api-key',
+                        dest='api_key',
+                        type=str,
+                        help="A MyTardis (tastypie) REST API key, provided by "
+                             "the server.",
+                        metavar='API_KEY')
     parser.add_argument("-t", "--title",
                         dest="title",
                         type=str,
@@ -1066,7 +1086,7 @@ def run():
         get_exclude_patterns_as_regex_list(options.exclude)
 
     password = options.password
-    if not password:
+    if not password and not options.api_key:
         password = getpass.getpass()
 
     file_path = options.path
@@ -1080,7 +1100,8 @@ def run():
     mytardis_uploader = MyTardisUploader(
         options.url,
         options.username,
-        password,
+        password=password,
+        api_key=options.api_key,
         storage_mode=options.storage_mode,
         storage_box_location=options.storage_base_path,
         storage_box_name=options.storage_box_name,
