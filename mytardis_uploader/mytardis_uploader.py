@@ -377,6 +377,15 @@ class MyTardisUploader:
             headers = merge_dicts(headers, extra_headers)
 
         try:
+            # TODO: in here, make auth use a tastypie style
+            #       {'Authorization': 'ApiKey username:key'} header
+            #       instead of BasicAuth.
+            #       https://django-tastypie.readthedocs.org/en/latest/authentication.html
+            #       Do this by subclassing AuthBase from requests.auth
+            #       to a TastyPieAuth class that gets used if
+            #       MyTardisUploader.api_key is not None
+            #       Also add --api-key to commandline options
+            #      (and uploader_config_example.yaml)
             response = requests.request(method,
                                         url,
                                         data=data,
@@ -404,8 +413,8 @@ class MyTardisUploader:
         string. Streams the file in chunks of 'blocksize' to prevent running
         out of memory when working with large files.
 
-        :param file_path: string
-        :param blocksize: int
+        :type file_path: string
+        :type blocksize: int
         :return: string
         """
         if not blocksize:
@@ -777,7 +786,7 @@ def add_config_args(parser, add_extra_options_fn=None):
     """
     Takes an argparse.ArgumentParser-like object and adds commandline
     parameters to detect and capture values from.
-    :param parser: ArgumentParser
+    :type parser: ArgumentParser
     :return:
     """
     parser.add_argument('--config',
@@ -910,7 +919,8 @@ def get_config(default_config_filename='uploader_config.yaml',
     SettingsParser to override any config file options with commandline
     options specified.
 
-    :param default_config_filename: str
+    :type default_config_filename: str
+    :type add_extra_options_fn: types.FunctionType
     :return:
     :rtype: (argparse.ArgumentParser, object)
     """
@@ -951,8 +961,8 @@ def validate_config(parser, options):
     there is an issue (invalid value or required value missing).
 
     :rtype : object
-    :param options: object
-    :param parser: argparse.ArgumentParser
+    :type options: object
+    :type parser: argparse.ArgumentParser
     :return:
     """
     if not options.path:
@@ -998,7 +1008,7 @@ def get_exclude_patterns_as_regex_list(exclude_patterns=None):
     Takes a list of strings are returns a list of compiled regexes.
     Strips enclosing quotes if present.
 
-    :param options: list[str]
+    :type exclude_patterns: list[str]
     :return:
     :rtype: list[re.__Regex]
     """
