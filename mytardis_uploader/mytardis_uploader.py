@@ -1089,6 +1089,10 @@ def run():
     if not password and not options.api_key:
         password = getpass.getpass()
 
+    if password:
+        logger.warning("Using 'password' rather than 'api_key' - this is less "
+                       "secure and not encouraged.")
+
     file_path = options.path
     if file_path is '.':
         file_path = os.getcwd()
