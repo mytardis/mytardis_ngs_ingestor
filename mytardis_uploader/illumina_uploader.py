@@ -1406,7 +1406,12 @@ def get_mytardis_seqfac_app_version(uploader):
                            '/apps/' + uploader.tardis_app_name + '/api/%s')
     response = uploader._do_request('GET', 'version',
                                     api_url_template=url_template)
-    d = response.json()
+    try:
+        d = response.json()
+    except ValueError as ex:  # JSONDecodeError inherits from ValueError
+        logger.error("Invalid response when querying server version.")
+        raise ex
+
     version = d.get('version', None)
     return version
 
