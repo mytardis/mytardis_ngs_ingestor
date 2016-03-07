@@ -1,5 +1,7 @@
 import os
 import unittest
+from semantic_version import Version as SemanticVersion
+import mytardis_uploader
 from mytardis_uploader.illumina_uploader import \
     parse_samplesheet, \
     filter_samplesheet_by_project, \
@@ -80,6 +82,21 @@ class IlluminaParserTestCase(unittest.TestCase):
             'H9PJLADXZ,1,14-06208-ZAX-15,Hg19,GCACTA,,N,,TW,GusFring\n',
             'H9PJLADXZ,1,14-06200-Input,Hg19,TTGGCA,,N,,TW,GusFring\n',
             '#_IEMVERSION_3_TruSeq LT,,,,,,,,,'])
+
+
+class VersionTest(unittest.TestCase):
+
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
+
+    def test_semver(self):
+        # parse the version number to ensure it's valid (invalid version number
+        # formats will raise a ValueError)
+        ingestor_version = SemanticVersion(mytardis_uploader.__version__)
+        self.assertEqual(str(ingestor_version), mytardis_uploader.__version__)
 
 
 if __name__ == '__main__':

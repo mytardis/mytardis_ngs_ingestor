@@ -17,7 +17,8 @@ from dateutil import parser as dateparser
 import xmltodict
 import json
 
-from semantic_version import Version
+from semantic_version import Version as SemanticVersion
+from distutils.version import LooseVersion
 
 import mytardis_uploader
 from mytardis_uploader import MyTardisUploader
@@ -521,7 +522,7 @@ def trash_experiments_server(uploader, experiment_ids):
         url_template = urljoin(uploader.mytardis_url,
                                '/apps/' + uploader.tardis_app_name + '/api/%s')
 
-        response = uploader._do_request('GET', 'trash_experiment/%s' % expt,
+        response = uploader._do_request('PUT', 'trash_experiment/%s' % expt,
                                         api_url_template=url_template)
         if response.ok:
             logger.info('Moved experiment %s to trash' % expt)
@@ -904,10 +905,9 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, uploader):
             sample_id = get_sample_id_from_fastqc_zip_filename(fastqc_zip_path)
             report_dir = join(tmp_path, sample_id + "_fastqc")
             report_file = join(report_dir, 'fastqc_report.html')
-            from distutils.version import LooseVersion as SoftwareVersion
             inline_report_filename = generate_fastqc_report_filename(sample_id)
             inline_report_abspath = join(report_dir, inline_report_filename)
-            if SoftwareVersion(fqc_version) < SoftwareVersion('0.11.3'):
+            if LooseVersion(fqc_version) < LooseVersion('0.11.3'):
                 # convert fastqc_report.html to version with inline images
                 from standalone_html import make_html_images_inline
                 make_html_images_inline(report_file, inline_report_abspath)
@@ -1640,10 +1640,11 @@ def ingest_run(run_path=None):
     # some app-specific REST API calls
     uploader.tardis_app_name = 'sequencing-facility'
 
-    ingestor_version = Version(mytardis_uploader.__version__)
+    ingestor_version = SemanticVersion(mytardis_uploader.__version__)
     logger.info("Verifying MyTardis server app '%s' matches the ingestor "
                 "version (%s)." % (uploader.tardis_app_name, ingestor_version))
-    seqfac_app_version = Version(get_mytardis_seqfac_app_version(uploader))
+    seqfac_app_version = SemanticVersion(
+        get_mytardis_seqfac_app_version(uploader))
     if seqfac_app_version != ingestor_version:
         logger.error("Ingestor (%s) / server (%s) version mismatch." %
                      (seqfac_app_version, mytardis_uploader.__version__))
