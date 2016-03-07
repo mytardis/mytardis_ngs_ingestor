@@ -1573,16 +1573,6 @@ def ingest_run(run_path=None):
                                type=bool,
                                default=False,
                                metavar='REPLACE_DUPLICATE_RUNS')
-        argparser.add_argument('--trash-user',
-                               dest='trash_user',
-                               default='__trashman__',
-                               type=str,
-                               metavar='TRASH_USER')
-        argparser.add_argument('--trash-group',
-                               dest='trash_group',
-                               default='__trashcan__',
-                               type=str,
-                               metavar='TRASH_GROUP')
         argparser.add_argument('--ignore-zero-sized-bcl-check',
                                dest='ignore_zero_sized_bcl_check',
                                type=bool,

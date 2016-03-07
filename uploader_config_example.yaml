@@ -94,6 +94,3 @@ fastqc_bin: /usr/bin/fastqc
 # (eg errors in SampleSheet.csv) and needs to be ingested again, without
 # cluttering the web interface with multiple versions of the same run
 replace_duplicate_runs: False
-# Username and group name for the 'trash'
-trash_user: __trashman__
-trash_group: __trashcan__
