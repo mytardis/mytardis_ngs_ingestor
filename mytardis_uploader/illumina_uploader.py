@@ -1005,12 +1005,12 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
         if ai < bi:
             return -1
         if ai == bi:
-            if ai['read'] < bi['read']:
+            if aa['read'] < bb['read']:
                 return 1
-            if ai['read'] > bi['read']:
+            if aa['read'] > bb['read']:
                 return -1
-            if ai['read'] == bi['read']:
-                return -1 if ai['set_number'] < bi['set_number'] else 1
+            if aa['read'] == bb['read']:
+                return -1 if aa['set_number'] < bb['set_number'] else 1
 
         return 0
 
