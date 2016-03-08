@@ -1392,8 +1392,9 @@ def _extract_fastqc_basic_stats(fastqc_data, sample_id):
         v = row[1]
         if 'Total Sequences' in k:
             stats['number_of_reads'] = int(v)
-        if 'Sequences flagged as poor quality' in k:
-            stats['number_of_poor_quality_reads'] = int(v)
+        # No longer used since apparently this is always zero ?
+        # if 'Sequences flagged as poor quality' in k:
+        #     stats['number_of_poor_quality_reads'] = int(v)
         if 'Sequence length' in k:
             stats['read_length'] = int(v)
         if '%GC' in k:
