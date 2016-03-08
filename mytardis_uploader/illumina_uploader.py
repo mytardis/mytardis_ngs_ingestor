@@ -663,7 +663,7 @@ def register_project_fastq_datafiles(run_id,
 
                 # the read number isn't encoded in SampleSheet.csv, so we
                 # extract it from the FASTQ filename instead
-                read = parse_fastq_filename(fastq_path).get('read', None)
+                read = parse_sample_info_from_filename(fastq_path).get('read', None)
 
                 parameters = {'run_id': run_id,
                               'sample_id': sample_id,
@@ -739,7 +739,7 @@ def register_project_fastq_datafiles(run_id,
                             dataset_url)
 
 
-def parse_fastq_filename(filepath):
+def parse_sample_info_from_filename(filepath, suffix='.fastq.gz'):
     """
     Takes a string like:
     /some/path/15-05065_ACCTCA_L001_R1_001.fastq.gz
@@ -752,9 +752,12 @@ def parse_fastq_filename(filepath):
     'sample_name': u'15-05065'}
 
     :type filepath: str
+    :param suffix: The suffix or extension to ignore (eg '.fastq.gz' or
+                   '_fastqc.zip')
+    :type suffix: str
     :rtype: dict
     """
-    noext = os.path.basename(filepath).split('.fastq.gz')[0]
+    noext = os.path.basename(filepath).split(suffix)[0]
     sample_name, index, lane, read, set_number = noext.rsplit('_', 4)
     return dict(sample_name=sample_name,
                 index=index,
@@ -793,7 +796,7 @@ def get_sample_name_from_fastq_filename(filepath):
     :return: Short sample name
     :rtype: str
     """
-    parts = parse_fastq_filename(filepath)
+    parts = parse_sample_info_from_filename(filepath)
     return parts['sample_name']
 
 
@@ -920,13 +923,14 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, uploader):
                         dataset_url)
 
 
-def get_fastqc_summary_for_project(fastqc_out_dir):
+def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
     """
 
     Returns a nested data structure representing FastQC results
     for all samples in a project. Includes QC PASS/WARN/FAIL tests,
     original FASTQ filename and some basic statistics (eg number of reads,
-    GC content).
+    GC content). Sorts based on the ordering found in samplesheet
+    (SampleSheet.csv).
 
     eg:
 
@@ -949,15 +953,74 @@ def get_fastqc_summary_for_project(fastqc_out_dir):
     "fastqc_version" : "0.11.2",
     }
 
+    :param fastqc_out_dir: Path of the output directory containing
+                           *_fastqc.zip files.
     :type fastqc_out_dir: str
+    :param samplesheet: A list of samplesheet lines as dicts, as output by
+                        parse_samplesheet.
+    :type samplesheet: list[dict]
     :rtype project_summary: dict
     """
     project_summary = {u'samples': [], u'fastqc_version': None}
     fqc_detailed_data = {}
-    for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
+
+    def find_sample_index(a):
+        """
+        Returns the index of a matching sample from SampleSheet.csv, given
+        a dictionary of the type returned by parse_sample_info_from_filename.
+
+        :param a: A dictionary representing a Sample ID.
+        :type a: dict
+        :return: The index of this sample in the SampleSheet.csv, or None if
+                 not found
+        :rtype: int | None
+        """
+        for i, s in enumerate(samplesheet):
+            if s['SampleID'] == a['sample_name'] and \
+                            s['Index'] == a['index'] and \
+                            int(s['Lane']) == a['lane']:
+                return i
+
+        return None
+
+    def sort_fqc_sample_cmp(a, b):
+        """
+        Sorting comparison (cmp) function to order FastQC output filenames
+        to the equivalent ordering in SampleSheet.csv
+
+        :param a: The path to a FastQC output zip file.
+        :param b: The path to a FastQC output zip file.
+        :type a: str
+        :type b: str
+        :rtype order: int
+        """
+        aa = parse_sample_info_from_filename(a, '_fastqc.zip')
+        bb = parse_sample_info_from_filename(b, '_fastqc.zip')
+        ai = find_sample_index(aa)
+        bi = find_sample_index(bb)
+        if ai is None or bi is None:
+            return 0
+        if ai > bi:
+            return 1
+        if ai < bi:
+            return -1
+        if ai == bi:
+            if ai['read'] < bi['read']:
+                return 1
+            if ai['read'] > bi['read']:
+                return -1
+            if ai['read'] == bi['read']:
+                return -1 if ai['set_number'] < bi['set_number'] else 1
+
+        return 0
+
+    fastqc_zips = list(get_fastqc_zip_files(fastqc_out_dir))
+    fastqc_zips.sort(cmp=sort_fqc_sample_cmp)
+
+    for fastqc_zip_path in fastqc_zips:
         qc_pass_fail_table_raw = parse_fastqc_summary_txt(fastqc_zip_path)
         fastq_filename = qc_pass_fail_table_raw[0][2]
-        fqfile_details = parse_fastq_filename(fastq_filename)
+        fqfile_details = parse_sample_info_from_filename(fastq_filename)
         sample_id = get_sample_id_from_fastq_filename(fastq_filename)
         fqc_report_filename = generate_fastqc_report_filename(sample_id)
 
@@ -1770,7 +1833,8 @@ def ingest_run(run_path=None):
 
         fqc_summary = {}
         if exists(fastqc_out_dir):
-            fqc_summary = get_fastqc_summary_for_project(fastqc_out_dir)
+            fqc_summary = get_fastqc_summary_for_project(fastqc_out_dir,
+                                                         samplesheet)
 
         # Create an Experiment for each real Project in the run
         # (except Undetermined_indices Datasets which will only be associated
