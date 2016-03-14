@@ -210,17 +210,67 @@ def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
     return suffixed_parameters
 
 
-def parse_samplesheet(file_path):
+def parse_samplesheet(file_path, standardize_keys=True):
+
+    # Old plain CSV format, IEM v3:
     # FCID,Lane,SampleID,SampleRef,Index,Description,Control,Recipe,
     # Operator,SampleProject
     #
     # last line: #_IEMVERSION_3_TruSeq LT,,,,,,,,,
+
+    # Newer INI-style CSV format, IEM v4:
+    # [Header],,,,,,,,
+    # IEMFileVersion,4,,,,,,,
+    # .. >snip< ..
+    # Assay,TruSeq LT,,,,,,,
+    # [Reads],,,,,,,,
+    # .. >snip< ..
+    # [Settings],,,,,,,,
+    # .. >snip< ..
+    # [Data],,,,,,,,
+    # Lane,Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,Sample_Project,Description
+    # .. >snip< ..
+    #
+
+    lines = []
     with open(file_path, "rU") as f:
-        reader = csv.DictReader(f)
+        lines = f.readlines()
+
+    chemistry = None
+
+    # IEM v4 INI-style CSV
+    if '[Header]' in lines[0]:
+        section = None
+        for i, l in enumerate(lines):
+            if l[0] == '[':
+                section = l[1:].split(']')[0]
+            if section == 'Header' and l.startswith('Assay,'):
+                chemistry = l.split(',')[1]
+            if section == 'Data':
+                data_index = i
+                break
+
+        reader = csv.DictReader(lines[data_index+1:])
+
+        if standardize_keys:
+            samples = []
+            # remove any underscores to make names consistent between
+            # old and new style samplesheets (eg Sample_ID -> SampleID)
+            for r in [row for row in reader]:
+                r = {k.replace('_', ''): r[k] for k in r.keys()}
+                samples.append(r)
+        else:
+            samples = [row for row in reader]
+
+        return samples, chemistry
+    else:  # Plain CSV (IEM v3 ?)
+        reader = csv.DictReader(lines)
         samples = [row for row in reader]
-        chemistry = samples[-1:][0]['FCID'].split('_')[-1:][0]
+        lastlinebit = samples[-1:][0].get('FCID', None)
+        if lastlinebit is not None:
+            chemistry = lastlinebit.split('_')[-1]
         del samples[-1:]
-    return samples, chemistry
+        return samples, chemistry
 
 
 def filter_samplesheet_by_project(file_path, proj_id,
@@ -812,6 +862,26 @@ def generate_fastqc_report_filename(sample_id):
     return sample_id + "_fastqc.html"
 
 
+# TODO: Rather than constructing project directories this way
+#       we should do generic detection to get a list of project
+#       dirs via looking for
+#       # v1.84
+#       {project_id}/Sample_{sample_id}/{sample_id}_{index}_L00{lane}_R{read}_001.fastq.gz or
+#       # v2.x
+#       {project_id}/{sample_id}/{sample_name}_S{sample_id_num}_L00{lane}_R{read}_001.fastq.gz
+#       (where sample_id_num is the index+1 where that sample_id is first seen in the
+#        sample sheet)
+#
+#       eg, if we were to do a recursive search for all *.fastq.gz relative paths
+#           take the first part of the path ({project_id}) and make a Set to
+#           remove duplicates
+def proj_id_to_proj_dir(proj_id, demultiplexer_version='bcl2fastq 1.84'):
+    if LooseVersion(demultiplexer_version.split()[1]) < LooseVersion('2'):
+        return 'Project_%s' % proj_id
+    else:
+        return proj_id
+
+
 def register_project_fastqc_datafiles(run_id,
                                       proj_id,
                                       fastqc_out_dir,
@@ -1086,8 +1156,12 @@ def get_demultiplexer_info(demultiplexed_output_path):
     :return: Name and version number of program used for demultiplexing reads.
     :rtype: dict
     """
-    # Parse DemultiplexConfig.xml for bcl2fastq version
-    # NOTE: parsing Makefile would be another option
+
+    version_info = {}
+
+    # Parse DemultiplexConfig.xml to extract the bcl2fastq version
+    # This works for bcl2fastq v1.84, but bcl2fastq2 v2.x doesn't seem
+    # to generate this file
     demulti_config_path = join(demultiplexed_output_path,
                                "DemultiplexConfig.xml")
     if exists(demulti_config_path):
@@ -1097,19 +1171,27 @@ def get_demultiplexer_info(demultiplexed_output_path):
             version = ' '.join(version.split('-'))
             cmdline = xml['DemultiplexConfig']['Software']['@CmdAndArgs']
             cmdline = cmdline.split(' ', 1)[1]
-            return {'version': version,
-                    'commandline_options': cmdline}
+            version_info = {'version': version,
+                            'commandline_options': cmdline}
+    else:
+        # if we can't find DemultiplexConfig.xml, assume the locally installed
+        # bcl2fastq2 (v2.x) version was used
+        out = subprocess.check_output("bcl2fastq --version", shell=True)
+        if len(out) >= 2 and 'bcl2fastq' in out[1]:
+            version = out[1].strip()
+            version_info = {'version': version,
+                            'commandline_options': None}
 
-    return {}
+    return version_info
     """
-    # get the verison assuming the local version of bcl2fastq was used
-    out = subprocess.check_output("bcl2fastq --version", shell=True)
-    if len(out) >= 2 and 'bcl2fastq' in out[1]:
-        version = out[1].strip()
-        return {'version': version,
-                'commandline_options': None}
-
     # get the version of locally installed tagdust
+
+    # since we don't have a really good way of guessing how the demultiplexing
+    # was done (beyond detecting DemultiplexConfig.xml for bcl2fastq 1.84),
+    # we should probably require the processing pipeline to output some
+    # an optional metadata file containing the version and commandline used
+    # (and possibly other stuff)
+
     out = subprocess.check_output("tagdust --version", shell=True)
     if len(out) >= 1 and 'Tagdust' in out[1]:
         version = out[1].strip()
@@ -1139,8 +1221,11 @@ def get_sample_directories(project_path):
     """
     for item in os.listdir(project_path):
         sample_path = join(project_path, item)
-        if isdir(sample_path) and ('Sample_' in item):
-            yield sample_path, item.split('Sample_')[1]
+        fqfiles = os.listdir(sample_path)
+        # detect any directory containing FASTQ files
+        if isdir(sample_path) and any(['.fastq.gz' in f for f in fqfiles]):
+            # we strip Sample_ (if it's there) to get the SampleName
+            yield sample_path, item.lstrip('Sample_')
 
 
 def get_fastq_read_files(sample_path):
@@ -1563,8 +1648,13 @@ def pre_ingest_checks(options):
         samplesheet,
         include_no_index_name='Undetermined_indices')
 
+    demultiplexer_info = get_demultiplexer_info(bcl2fastq_output_dir)
+
     for p in projects:
-        p_path = join(bcl2fastq_output_dir, 'Project_%s' % p)
+        p_path = join(bcl2fastq_output_dir,
+                      proj_id_to_proj_dir(
+                          p,
+                          demultiplexer_version=demultiplexer_info['version']))
         if p == 'Undetermined_indices':
             p_path = join(bcl2fastq_output_dir, 'Undetermined_indices')
 
@@ -1811,7 +1901,10 @@ def ingest_run(run_path=None):
         proj_expt.parameters.demultiplexing_commandline_options = \
             run_expt.parameters.demultiplexing_commandline_options
 
-        proj_path = join(bcl2fastq_output_dir, 'Project_' + proj_id)
+        proj_path = join(bcl2fastq_output_dir,
+                         proj_id_to_proj_dir(
+                             proj_id,
+                             demultiplexer_version=demultiplexer_info['version']))
 
         if proj_id == 'Undetermined_indices':
             proj_path = join(bcl2fastq_output_dir, proj_id)
