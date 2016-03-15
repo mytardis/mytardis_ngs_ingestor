@@ -865,7 +865,7 @@ def generate_fastqc_report_filename(sample_id):
 # TODO: Rather than constructing project directories this way
 #       we should do generic detection to get a list of project
 #       dirs via looking for
-#       # v1.84
+#       # v1.8.4
 #       {project_id}/Sample_{sample_id}/{sample_id}_{index}_L00{lane}_R{read}_001.fastq.gz or
 #       # v2.x
 #       {project_id}/{sample_id}/{sample_name}_S{sample_id_num}_L00{lane}_R{read}_001.fastq.gz
@@ -875,7 +875,7 @@ def generate_fastqc_report_filename(sample_id):
 #       eg, if we were to do a recursive search for all *.fastq.gz relative paths
 #           take the first part of the path ({project_id}) and make a Set to
 #           remove duplicates
-def proj_id_to_proj_dir(proj_id, demultiplexer_version='bcl2fastq 1.84'):
+def proj_id_to_proj_dir(proj_id, demultiplexer_version='bcl2fastq 1.8.4'):
     if LooseVersion(demultiplexer_version.split()[1]) < LooseVersion('2'):
         return 'Project_%s' % proj_id
     else:
@@ -1139,6 +1139,17 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
 #             yield proj_path
 
 
+
+# TODO: Better demultiplexer version & commandline detection
+# since we don't have a really reliable way of guessing how the demultiplexing
+# was done (beyond detecting DemultiplexConfig.xml for bcl2fastq 1.8.4),
+# we should probably require the processing pipeline to output some
+# an optional metadata file containing the version and commandline used
+# (and possibly other stuff)
+# Alternative - allow config / commandline to specify pattern/path to
+# bcl2fastq (or other demultiplexer) stdout log - extract version and
+# commandline from there. This should work for bcl2fastq 2.17 but not
+# 1.8.4
 def get_demultiplexer_info(demultiplexed_output_path):
     """
     Determine which demultiplexing program (eg bcl2fastq) and commandline
@@ -1160,7 +1171,7 @@ def get_demultiplexer_info(demultiplexed_output_path):
     version_info = {}
 
     # Parse DemultiplexConfig.xml to extract the bcl2fastq version
-    # This works for bcl2fastq v1.84, but bcl2fastq2 v2.x doesn't seem
+    # This works for bcl2fastq v1.8.4, but bcl2fastq2 v2.x doesn't seem
     # to generate this file
     demulti_config_path = join(demultiplexed_output_path,
                                "DemultiplexConfig.xml")
@@ -1185,12 +1196,6 @@ def get_demultiplexer_info(demultiplexed_output_path):
     return version_info
     """
     # get the version of locally installed tagdust
-
-    # since we don't have a really good way of guessing how the demultiplexing
-    # was done (beyond detecting DemultiplexConfig.xml for bcl2fastq 1.84),
-    # we should probably require the processing pipeline to output some
-    # an optional metadata file containing the version and commandline used
-    # (and possibly other stuff)
 
     out = subprocess.check_output("tagdust --version", shell=True)
     if len(out) >= 1 and 'Tagdust' in out[1]:
@@ -1221,9 +1226,12 @@ def get_sample_directories(project_path):
     """
     for item in os.listdir(project_path):
         sample_path = join(project_path, item)
+        if not isdir(sample_path):
+            continue
+
         fqfiles = os.listdir(sample_path)
         # detect any directory containing FASTQ files
-        if isdir(sample_path) and any(['.fastq.gz' in f for f in fqfiles]):
+        if any(['.fastq.gz' in f for f in fqfiles]):
             # we strip Sample_ (if it's there) to get the SampleName
             yield sample_path, item.lstrip('Sample_')
 
