@@ -277,6 +277,7 @@ def filter_samplesheet_by_project(file_path, proj_id,
                                   project_column_label='SampleProject'):
     """
     Windows \r\n
+
     :param file_path:
     :type file_path:
     :param proj_id:
@@ -293,13 +294,24 @@ def filter_samplesheet_by_project(file_path, proj_id,
     outlines = []
     with open(file_path, "rU") as f:
         header = f.readline().strip()
+
+        # skip any INI-style headers down to the CSV sample list in the [Data]
+        if '[Header]' in header:
+            while not '[Data]' in header:
+                header = f.readline()
+            header = f.readline().strip()
+
         s = header.split(',')
-        project_column_index = s.index(project_column_label)
+        # old samplesheet formats have no underscores in column labels,
+        # newer (IEMv4) ones do. by removing underscores here, we can find
+        # 'SampleProject' and 'Sample_Project', whichever exists
+        s_no_underscores = [c.replace('_', '') for c in s]
+        project_column_index = s_no_underscores.index(project_column_label)
         outlines.append(header+'\r\n')
         for l in f:
             s = l.strip().split(',')
             if s[project_column_index] == proj_id or l[0] == '#':
-                outlines.append(l)
+                outlines.append(l.strip()+'\r\n')
     return outlines
 
 
@@ -318,6 +330,7 @@ def get_project_ids_from_samplesheet(samplesheet,
 
     # Get unique project names
     projects = list(set([s['SampleProject'] for s in samplesheet]))
+
     # Treat the 'Undetermined_indices' directory as a (special) project
     if include_no_index_name is not None:
         projects.append(include_no_index_name)
@@ -789,6 +802,22 @@ def register_project_fastq_datafiles(run_id,
                             dataset_url)
 
 
+# TODO: bcl2fastq 2.x generates filenames like
+# {sample_name}_{sample_number}_L00{lane}_R{read}_001.fastq.gz
+# (eg WTInputF2_S25_L005_R1_001.fastq.gz)
+# Unlike v1.8.4, these DO NOT CONTAIN THE INDEX SEQUENCE.
+# As a result, we need to lookup the corresponding index from the
+# SampleSheet.csv
+# We could actually make patterns like the one above a config option
+# (or a regex with a named group like '(?P<sample_name>.*)_etcetc' )
+# https://docs.python.org/2/howto/regex.html#non-capturing-and-named-groups
+#
+# (All these problems of differences between v2.x and v1.8.4 and CSV vs.
+#  IEMv4 SampleSheets are begging for a SampleSheet data container
+#  object to abstract out differences in sample sheets, and an IlluminaRun
+#  object with a list of DemultiplexedProject objects to abstract out
+#  differences in directory structure)
+#
 def parse_sample_info_from_filename(filepath, suffix='.fastq.gz'):
     """
     Takes a string like:
@@ -1187,7 +1216,9 @@ def get_demultiplexer_info(demultiplexed_output_path):
     else:
         # if we can't find DemultiplexConfig.xml, assume the locally installed
         # bcl2fastq2 (v2.x) version was used
-        out = subprocess.check_output("bcl2fastq --version", shell=True)
+        out = subprocess.check_output("bcl2fastq --version",
+                                      stderr=subprocess.STDOUT,
+                                      shell=True).splitlines()
         if len(out) >= 2 and 'bcl2fastq' in out[1]:
             version = out[1].strip()
             version_info = {'version': version,
@@ -1231,7 +1262,7 @@ def get_sample_directories(project_path):
 
         fqfiles = os.listdir(sample_path)
         # detect any directory containing FASTQ files
-        if any(['.fastq.gz' in f for f in fqfiles]):
+        if any([f.endswith('.fastq.gz') for f in fqfiles]):
             # we strip Sample_ (if it's there) to get the SampleName
             yield sample_path, item.lstrip('Sample_')
 
@@ -1265,9 +1296,8 @@ def get_fastq_read_files(sample_path):
         #                                read_number,
         #                                set_number)
 
-        # we just return things with the .gz extension
-        if os.path.splitext(item)[-1:][0] == '.gz' and \
-           isfile(fastq_path):
+        # we just return things with the .fastq.gz extension
+        if item.endswith('.fastq.gz') and isfile(fastq_path):
             yield fastq_path
 
 
@@ -1296,6 +1326,11 @@ def run_fastqc(fastq_paths,
                fastqc_bin=None,
                threads=2,
                extra_options=''):
+
+    if not fastq_paths:
+        logger.warning('FastQC - called with no FASTQ file paths provided, '
+                       'skipping.')
+        return None
 
     tmp_dir = None
     if not output_directory:
@@ -1489,7 +1524,9 @@ def _extract_fastqc_basic_stats(fastqc_data, sample_id):
         # if 'Sequences flagged as poor quality' in k:
         #     stats['number_of_poor_quality_reads'] = int(v)
         if 'Sequence length' in k:
-            stats['read_length'] = int(v)
+            # this can be a single number (eg 51) or a range (eg 35-51)
+            # we take the upper value in the range
+            stats['read_length'] = int(v.split('-')[-1])
         if '%GC' in k:
             stats['percent_gc'] = float(v)
 
@@ -1573,6 +1610,10 @@ def get_mytardis_seqfac_app_version(uploader):
     return version
 
 
+def is_server_version_compatible(ingestor_version, server_version):
+    return SemanticVersion(server_version) == SemanticVersion(ingestor_version)
+
+
 def dump_schema_fixtures_as_json():
     fixtures = []
     for name, klass in models.__dict__.items():
@@ -1652,19 +1693,26 @@ def pre_ingest_checks(options):
         logger.error("Aborting - unable to parse SampleSheet.csv file.")
         return False
 
+    demultiplexer_info = get_demultiplexer_info(bcl2fastq_output_dir)
+    demultiplexer_version = demultiplexer_info.get('version', '')
+
+    undetermined_in_directory = \
+        LooseVersion(demultiplexer_version.split()[1]) < LooseVersion('2')
+
     projects = get_project_ids_from_samplesheet(
         samplesheet,
         include_no_index_name='Undetermined_indices')
-
-    demultiplexer_info = get_demultiplexer_info(bcl2fastq_output_dir)
 
     for p in projects:
         p_path = join(bcl2fastq_output_dir,
                       proj_id_to_proj_dir(
                           p,
-                          demultiplexer_version=demultiplexer_info['version']))
+                          demultiplexer_version=demultiplexer_version))
         if p == 'Undetermined_indices':
-            p_path = join(bcl2fastq_output_dir, 'Undetermined_indices')
+            if undetermined_in_directory:
+                p_path = join(bcl2fastq_output_dir, 'Undetermined_indices')
+            else:
+                p_path = bcl2fastq_output_dir
 
         if not exists(p_path):
             logger.error("Aborting - project directory '%s' is missing.",
@@ -1797,14 +1845,14 @@ def ingest_run(run_path=None):
     # some app-specific REST API calls
     uploader.tardis_app_name = 'sequencing-facility'
 
-    ingestor_version = SemanticVersion(mytardis_uploader.__version__)
+    ingestor_version = mytardis_uploader.__version__
+    seqfac_app_version = get_mytardis_seqfac_app_version(uploader)
     logger.info("Verifying MyTardis server app '%s' matches the ingestor "
-                "version (%s)." % (uploader.tardis_app_name, ingestor_version))
-    seqfac_app_version = SemanticVersion(
-        get_mytardis_seqfac_app_version(uploader))
-    if seqfac_app_version != ingestor_version:
+                "version (%s)." % (uploader.tardis_app_name,
+                                   ingestor_version))
+    if not is_server_version_compatible(ingestor_version, seqfac_app_version):
         logger.error("Ingestor (%s) / server (%s) version mismatch." %
-                     (seqfac_app_version, mytardis_uploader.__version__))
+                     (seqfac_app_version, ingestor_version))
         raise Exception("Version mismatch.")
 
     # Create an Experiment representing the overall sequencing run
@@ -1843,8 +1891,8 @@ def ingest_run(run_path=None):
     run_expt.description = options.description
     run_expt.parameters.ingestor_useragent = uploader.user_agent
     demultiplexer_info = get_demultiplexer_info(bcl2fastq_output_dir)
-    run_expt.parameters.demultiplexing_program = \
-        demultiplexer_info.get('version', '')
+    demultiplexer_version = demultiplexer_info.get('version', '')
+    run_expt.parameters.demultiplexing_program = demultiplexer_version
     run_expt.parameters.demultiplexing_commandline_options = \
         demultiplexer_info.get('commandline_options', '')
     if not run_expt.description:
@@ -1893,6 +1941,9 @@ def ingest_run(run_path=None):
         logger.error("Exception: %s: %s", type(e).__name__, e)
         raise e
 
+    undetermined_in_directory = \
+        LooseVersion(demultiplexer_version.split()[1]) < LooseVersion('2')
+
     projects = get_project_ids_from_samplesheet(
         samplesheet,
         include_no_index_name='Undetermined_indices')
@@ -1912,10 +1963,13 @@ def ingest_run(run_path=None):
         proj_path = join(bcl2fastq_output_dir,
                          proj_id_to_proj_dir(
                              proj_id,
-                             demultiplexer_version=demultiplexer_info['version']))
+                             demultiplexer_version=demultiplexer_version))
 
         if proj_id == 'Undetermined_indices':
-            proj_path = join(bcl2fastq_output_dir, proj_id)
+            if undetermined_in_directory:
+                proj_path = join(bcl2fastq_output_dir, proj_id)
+            else:
+                proj_path = bcl2fastq_output_dir
 
         fastqc_out_dir = get_fastqc_output_directory(proj_path)
 
@@ -1934,7 +1988,7 @@ def ingest_run(run_path=None):
             )
 
         fqc_summary = {}
-        if exists(fastqc_out_dir):
+        if fastqc_out_dir is not None and exists(fastqc_out_dir):
             fqc_summary = get_fastqc_summary_for_project(fastqc_out_dir,
                                                          samplesheet)
 
@@ -1974,7 +2028,7 @@ def ingest_run(run_path=None):
 
         ############################################
         # Create the FastQC Dataset for the project
-        if exists(fastqc_out_dir):
+        if fastqc_out_dir is not None and exists(fastqc_out_dir):
             try:
                 # TODO: fq_dataset_url should actually be a URL .. but ..
                 # we have a chicken-egg problem here - we want the URL
