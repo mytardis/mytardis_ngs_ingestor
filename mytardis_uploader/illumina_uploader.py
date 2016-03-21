@@ -195,6 +195,10 @@ def create_fastqc_dataset_object(run_id,
     return fqc_dataset
 
 
+def create_fastqc_dataset_on_server(fastqc_dataset, uploader):
+    return uploader.create_dataset(fastqc_dataset.package())
+
+
 def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
     """
     Adds a suffix ('__suffix') to the keys of a dictionary of MyTardis
@@ -802,9 +806,12 @@ def register_project_fastq_datafiles(run_id,
                             dataset_url)
 
 
-# TODO: bcl2fastq 2.x generates filenames like
+# TODO: bcl2fastq 2.x generates filenames like:
 # {sample_name}_{sample_number}_L00{lane}_R{read}_001.fastq.gz
 # (eg WTInputF2_S25_L005_R1_001.fastq.gz)
+# bcl2fastq 1.8.4 generates filenames like:
+# {sample_name}_{index}_L00{lane}_R{read}_001.fastq.gz
+#
 # Unlike v1.8.4, these DO NOT CONTAIN THE INDEX SEQUENCE.
 # As a result, we need to lookup the corresponding index from the
 # SampleSheet.csv
@@ -2038,7 +2045,7 @@ def ingest_run(run_path=None):
                 # We need to be able to update the FastQC dataset parameters
                 # in a second API call after we've added the FASTQ dataset.
                 # fq_dataset_url = "%s__%s" % (run_id, proj_id)
-                fq_dataset_url = project_url # placeholder
+                fq_dataset_url = project_url  # placeholder
 
                 # Then discard parts, repopulate some parameters
                 fqc_dataset = create_fastqc_dataset_object(
@@ -2051,9 +2058,7 @@ def ingest_run(run_path=None):
 
                 fqc_dataset.parameters.ingestor_useragent = uploader.user_agent
 
-                # TODO: encapsulate this in a create_fastqc_dataset function
-                #       for consistency ?
-                fqc_dataset_url = uploader.create_dataset(fqc_dataset.package())
+                fqc_dataset_url = create_fastqc_dataset_on_server(fqc_dataset)
 
                 # Take just the path, eg: /api/v1/dataset/363
                 fqc_dataset_url = urlparse(fqc_dataset_url).path
