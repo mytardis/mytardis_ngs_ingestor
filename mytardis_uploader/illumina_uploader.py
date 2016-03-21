@@ -3,6 +3,7 @@ __author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
 
 import sys
 import shutil
+import re
 from urlparse import urlparse
 import csv
 from datetime import datetime
@@ -319,12 +320,12 @@ def filter_samplesheet_by_project(file_path, proj_id,
     return outlines
 
 
-def samplesheet_to_dict_by_id(samplesheet_rows):
+def samplesheet_to_dict(samplesheet_rows, key='SampleID'):
     by_sample_id = {}
     for sample in samplesheet_rows:
-        sample_id = sample['SampleID']
+        sample_id = sample[key]
         by_sample_id[sample_id] = sample.copy()
-        del by_sample_id[sample_id]['SampleID']
+        del by_sample_id[sample_id][key]
 
     return by_sample_id
 
@@ -692,7 +693,7 @@ def register_project_fastq_datafiles(run_id,
                                      fastqc_data=None,
                                      fast_mode=False):
 
-    sample_dict = samplesheet_to_dict_by_id(samplesheet)
+    sample_dict = samplesheet_to_dict(samplesheet)
 
     # Upload datafiles for the FASTQ reads in the project, for each Sample
     for sample_path, sample_name in get_sample_directories(proj_path):
@@ -806,17 +807,10 @@ def register_project_fastq_datafiles(run_id,
                             dataset_url)
 
 
-# TODO: bcl2fastq 2.x generates filenames like:
-# {sample_name}_{sample_number}_L00{lane}_R{read}_001.fastq.gz
-# (eg WTInputF2_S25_L005_R1_001.fastq.gz)
-# bcl2fastq 1.8.4 generates filenames like:
-# {sample_name}_{index}_L00{lane}_R{read}_001.fastq.gz
-#
-# Unlike v1.8.4, these DO NOT CONTAIN THE INDEX SEQUENCE.
-# As a result, we need to lookup the corresponding index from the
-# SampleSheet.csv
-# We could actually make patterns like the one above a config option
-# (or a regex with a named group like '(?P<sample_name>.*)_etcetc' )
+# TODO: We could actually make patterns like these one a config option
+# (either raw Python regex with named groups, or write a translator to
+#  simplify the syntax so we can write {sample_id}_bla_{index} in the config
+#  and have it converted to a regex with named groups internally)
 # https://docs.python.org/2/howto/regex.html#non-capturing-and-named-groups
 #
 # (All these problems of differences between v2.x and v1.8.4 and CSV vs.
@@ -824,32 +818,44 @@ def register_project_fastq_datafiles(run_id,
 #  object to abstract out differences in sample sheets, and an IlluminaRun
 #  object with a list of DemultiplexedProject objects to abstract out
 #  differences in directory structure)
-#
 def parse_sample_info_from_filename(filepath, suffix='.fastq.gz'):
-    """
-    Takes a string like:
-    /some/path/15-05065_ACCTCA_L001_R1_001.fastq.gz
+    filename = os.path.basename(filepath)
 
-    Returns a dictionary like:
-    {'read': 1,
-    'index': u'ACCTCA',
-    'set_number': 1,
-    'lane': 1,
-    'sample_name': u'15-05065'}
+    def change_dict_types(d, keys, map_fn):
+        for k in keys:
+            d[k] = map_fn(d[k])
+        return d
 
-    :type filepath: str
-    :param suffix: The suffix or extension to ignore (eg '.fastq.gz' or
-                   '_fastqc.zip')
-    :type suffix: str
-    :rtype: dict
-    """
-    noext = os.path.basename(filepath).split(suffix)[0]
-    sample_name, index, lane, read, set_number = noext.rsplit('_', 4)
-    return dict(sample_name=sample_name,
-                index=index,
-                lane=int(lane[1:]),
-                read=int(read[1:]),
-                set_number=int(set_number))
+    # bcl2fastq 1.8.4 style filenames:
+    # {sample_name}_{index}_L00{lane}_R{read}_001.fastq.gz
+    m = re.match(r'(?P<sample_name>.*)_'
+                 r'(?P<index>[ATGC]{6,12})_'
+                 r'L0{0,3}(?P<lane>\d+)_'
+                 r'R(?P<read>\d)_'
+                 r'(?P<set_number>\d+)'
+                 r'%s' % suffix, filename)
+
+    if m is not None:
+        d = m.groupdict()
+        d = change_dict_types(d, ['lane', 'read', 'set_number'], int)
+        return d
+
+    # bcl2fastq 2.x style filenames:
+    # {sample_name}_{sample_number}_L00{lane}_R{read}_001.fastq.gz
+    m = re.match(r'(?P<sample_name>.*)_'
+                 r'S(?P<sample_number>\d+)_'
+                 r'L0{0,3}(?P<lane>\d+)_'
+                 r'R(?P<read>\d)_'
+                 r'(?P<set_number>\d+)'
+                 r'%s' % suffix, filename)
+
+    if m is not None:
+        d = m.groupdict()
+        d = change_dict_types(d, ['sample_number',
+                                  'lane', 'read', 'set_number'], int)
+        return d
+
+    return None
 
 
 def get_sample_id_from_fastq_filename(filepath):
@@ -1138,18 +1144,35 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
         # project_summary.append((sample_id, qc_pass_fail_table))
         fqc_detailed_data[sample_id] = parse_fastqc_data_txt(fastqc_zip_path)
         basic_stats = _extract_fastqc_basic_stats(fqc_detailed_data, sample_id)
+        sample_name = fqfile_details.get('sample_name', None)
+        lane = fqfile_details.get('lane', None)
+        index = fqfile_details.get('index', None)
+
+        # TODO: this could fail if there are two samples of the same name
+        #       that share a lane (odd corner case). we should consider
+        #       instead using fastq_filename to read the first header of
+        #       the actual FASTQ file and extract the index from there
+        # get the index for cases where it isn't in the filename
+        if index is None:
+            for s in samplesheet:
+                if s['SampleName'] == sample_name and \
+                   s['Lane'] == str(lane):
+                    index = s.get('index', None) or \
+                                           s.get('Index', None)
+
         sample_data = {u'sample_id': sample_id,
-                       u'sample_name': fqfile_details['sample_name'],
+                       u'sample_name': sample_name,
                        u'qc_checks': qc_pass_fail_table,
                        u'basic_stats': basic_stats,
                        u'filename': fastq_filename,
                        u'fastqc_report_filename': fqc_report_filename,
-                       u'index': fqfile_details['index'],
-                       u'lane': fqfile_details['lane'],
-                       u'read': fqfile_details['read'],
+                       u'index': index,
+                       u'lane': lane,
+                       u'read': fqfile_details.get('read', None),
                        # TODO: include the SampleSheet line for this sample
                        u'illumina_sample_sheet': { },
                        }
+
         project_summary[u'samples'].append(sample_data)
         project_summary[u'fastqc_version'] = \
             fqc_detailed_data[sample_id]['fastqc_version']
@@ -2058,7 +2081,8 @@ def ingest_run(run_path=None):
 
                 fqc_dataset.parameters.ingestor_useragent = uploader.user_agent
 
-                fqc_dataset_url = create_fastqc_dataset_on_server(fqc_dataset)
+                fqc_dataset_url = create_fastqc_dataset_on_server(fqc_dataset,
+                                                                  uploader)
 
                 # Take just the path, eg: /api/v1/dataset/363
                 fqc_dataset_url = urlparse(fqc_dataset_url).path
