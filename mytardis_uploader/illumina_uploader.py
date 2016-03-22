@@ -929,11 +929,11 @@ def generate_fastqc_report_filename(sample_id):
 #       eg, if we were to do a recursive search for all *.fastq.gz relative paths
 #           take the first part of the path ({project_id}) and make a Set to
 #           remove duplicates
-def proj_id_to_proj_dir(proj_id, demultiplexer_version='bcl2fastq 1.8.4'):
-    if LooseVersion(demultiplexer_version.split()[1]) < LooseVersion('2'):
-        return 'Project_%s' % proj_id
-    else:
+def proj_id_to_proj_dir(proj_id, demultiplexer_version_num='1.8.4'):
+    if LooseVersion(demultiplexer_version_num) >= LooseVersion('2'):
         return proj_id
+    else:
+        return 'Project_%s' % proj_id
 
 
 def register_project_fastqc_datafiles(run_id,
@@ -1101,7 +1101,8 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
         """
         for i, s in enumerate(samplesheet):
             if s['SampleID'] == a['sample_name'] and \
-                            s['Index'] == a['index'] and \
+                    (s.get('Index', None) == a['index'] or
+                             s.get('index', None) == a['index']) and \
                             int(s['Lane']) == a['lane']:
                 return i
 
@@ -1210,7 +1211,6 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
 #             yield proj_path
 
 
-
 # TODO: Better demultiplexer version & commandline detection
 # since we don't have a really reliable way of guessing how the demultiplexing
 # was done (beyond detecting DemultiplexConfig.xml for bcl2fastq 1.8.4),
@@ -1239,7 +1239,9 @@ def get_demultiplexer_info(demultiplexed_output_path):
     :rtype: dict
     """
 
-    version_info = {}
+    version_info = {'version': '',
+                    'version_number': '',
+                    'commandline_options': ''}
 
     # Parse DemultiplexConfig.xml to extract the bcl2fastq version
     # This works for bcl2fastq v1.8.4, but bcl2fastq2 v2.x doesn't seem
@@ -1254,17 +1256,23 @@ def get_demultiplexer_info(demultiplexed_output_path):
             cmdline = xml['DemultiplexConfig']['Software']['@CmdAndArgs']
             cmdline = cmdline.split(' ', 1)[1]
             version_info = {'version': version,
+                            'version_number': version.split()[1].lstrip('v'),
                             'commandline_options': cmdline}
     else:
         # if we can't find DemultiplexConfig.xml, assume the locally installed
         # bcl2fastq2 (v2.x) version was used
-        out = subprocess.check_output("bcl2fastq --version",
-                                      stderr=subprocess.STDOUT,
-                                      shell=True).splitlines()
-        if len(out) >= 2 and 'bcl2fastq' in out[1]:
-            version = out[1].strip()
-            version_info = {'version': version,
-                            'commandline_options': None}
+        try:
+            out = subprocess.check_output("bcl2fastq --version",
+                                          stderr=subprocess.STDOUT,
+                                          shell=True).splitlines()
+            if len(out) >= 2 and 'bcl2fastq' in out[1]:
+                version = out[1].strip()
+                version_info = {
+                    'version': version,
+                    'version_number': version.split()[1].lstrip('v'),
+                    'commandline_options': None}
+        except subprocess.CalledProcessError:
+            pass
 
     return version_info
     """
@@ -1737,8 +1745,12 @@ def pre_ingest_checks(options):
 
     demultiplexer_info = get_demultiplexer_info(bcl2fastq_output_dir)
     demultiplexer_version = demultiplexer_info.get('version', '')
-    demultiplexer_version_num = demultiplexer_version.split()[1].lstrip('v')
 
+    if not demultiplexer_version:
+        logger.error("Can't determine demultiplexer version - aborting")
+        raise Exception()
+
+    demultiplexer_version_num = demultiplexer_info.get('version_number', '')
     undetermined_in_directory = \
         LooseVersion(demultiplexer_version_num) < LooseVersion('2')
 
@@ -1750,7 +1762,7 @@ def pre_ingest_checks(options):
         p_path = join(bcl2fastq_output_dir,
                       proj_id_to_proj_dir(
                           p,
-                          demultiplexer_version=demultiplexer_version))
+                          demultiplexer_version_num=demultiplexer_version_num))
         if p == 'Undetermined_indices':
             if undetermined_in_directory:
                 p_path = join(bcl2fastq_output_dir, 'Undetermined_indices')
@@ -1986,7 +1998,11 @@ def ingest_run(run_path=None):
         logger.error("Exception: %s: %s", type(e).__name__, e)
         raise e
 
-    demultiplexer_version_num = demultiplexer_version.split()[1].lstrip('v')
+    if not demultiplexer_info.get('version', None):
+        logger.error("Can't determine demultiplexer version - aborting")
+        raise Exception()
+
+    demultiplexer_version_num = demultiplexer_info.get('version_number', '')
     undetermined_in_directory = \
         LooseVersion(demultiplexer_version_num) < LooseVersion('2')
 
@@ -2009,7 +2025,7 @@ def ingest_run(run_path=None):
         proj_path = join(bcl2fastq_output_dir,
                          proj_id_to_proj_dir(
                              proj_id,
-                             demultiplexer_version=demultiplexer_version))
+                             demultiplexer_version_num=demultiplexer_version_num))
 
         if proj_id == 'Undetermined_indices':
             if undetermined_in_directory:
