@@ -691,12 +691,19 @@ def register_project_fastq_datafiles(run_id,
                                      dataset_url,
                                      uploader,
                                      fastqc_data=None,
+                                     no_sample_directories=False,
                                      fast_mode=False):
 
     sample_dict = samplesheet_to_dict(samplesheet)
 
-    # Upload datafiles for the FASTQ reads in the project, for each Sample
-    for sample_path, sample_name in get_sample_directories(proj_path):
+    if no_sample_directories:  # eg, Undetermined_indices
+        sample_path_and_name = [(proj_path, None)]
+    else:
+        sample_path_and_name = get_sample_directories(proj_path)
+
+    # Upload datafiles for the FASTQ reads in the project,
+    # for each Sample_ directory
+    for sample_path, sample_name in sample_path_and_name:
         for fastq_path in get_fastq_read_files(sample_path):
 
                 sample_id = get_sample_id_from_fastq_filename(fastq_path)
@@ -711,6 +718,13 @@ def register_project_fastq_datafiles(run_id,
                 # TODO: ensure we can also deal with unbarcoded runs,
                 #       where Index is "NoIndex" and sample_names are
                 #       lane1, lane2 etc.
+
+                # the read number isn't encoded in SampleSheet.csv, so we
+                # extract it from the FASTQ filename instead
+                info_from_fn = parse_sample_info_from_filename(fastq_path)
+                read = info_from_fn.get('read', None)
+                if sample_name is None:
+                    sample_name = info_from_fn.get('sample_name', None)
 
                 sampleinfo = sample_dict.get(sample_name, {})
 
@@ -729,10 +743,6 @@ def register_project_fastq_datafiles(run_id,
                 # a special field for it
                 # fcid = sampleinfo.get('FCID')
 
-                # the read number isn't encoded in SampleSheet.csv, so we
-                # extract it from the FASTQ filename instead
-                read = parse_sample_info_from_filename(fastq_path).get('read', None)
-
                 parameters = {'run_id': run_id,
                               'sample_id': sample_id,
                               'sample_name': sample_name,
@@ -748,9 +758,11 @@ def register_project_fastq_datafiles(run_id,
                               }
 
                 fqc_completed_list = []
-                if fastqc_data is not None:
+                if fastqc_data:
                     fqc_completed_list = [s['filename']
-                                          for s in fastqc_data['samples']]
+                                          for s in fastqc_data.get('samples',
+                                                                   [])
+                                          ]
 
                 filename = os.path.basename(fastq_path)
                 if filename in fqc_completed_list:
@@ -784,7 +796,7 @@ def register_project_fastq_datafiles(run_id,
                         fastq_path)
 
                 if fast_mode:
-                    md5_checksum = ''  # '__undetermined__'
+                    md5_checksum = '__undetermined__'
                 else:
                     md5_checksum = None  # will be calculated
 
@@ -1725,9 +1737,10 @@ def pre_ingest_checks(options):
 
     demultiplexer_info = get_demultiplexer_info(bcl2fastq_output_dir)
     demultiplexer_version = demultiplexer_info.get('version', '')
+    demultiplexer_version_num = demultiplexer_version.split()[1].lstrip('v')
 
     undetermined_in_directory = \
-        LooseVersion(demultiplexer_version.split()[1]) < LooseVersion('2')
+        LooseVersion(demultiplexer_version_num) < LooseVersion('2')
 
     projects = get_project_ids_from_samplesheet(
         samplesheet,
@@ -1850,7 +1863,8 @@ def ingest_run(run_path=None):
         storage_mode=options.storage_mode,
         storage_box_location=options.storage_base_path,
         storage_box_name=options.storage_box_name,
-        verify_certificate=options.verify_certificate
+        verify_certificate=options.verify_certificate,
+        fast_mode=options.fast,
     )
 
     # This uploader instance is associated with a MyTardis storage box
@@ -1868,6 +1882,7 @@ def ingest_run(run_path=None):
         # storage_box_name='object_store',
         storage_box_name=options.live_storage_box_name,
         verify_certificate=options.verify_certificate,
+        fast_mode=options.fast,
     )
 
     # this custom attribute on the uploader is the name of the
@@ -1971,8 +1986,9 @@ def ingest_run(run_path=None):
         logger.error("Exception: %s: %s", type(e).__name__, e)
         raise e
 
+    demultiplexer_version_num = demultiplexer_version.split()[1].lstrip('v')
     undetermined_in_directory = \
-        LooseVersion(demultiplexer_version.split()[1]) < LooseVersion('2')
+        LooseVersion(demultiplexer_version_num) < LooseVersion('2')
 
     projects = get_project_ids_from_samplesheet(
         samplesheet,
@@ -2159,13 +2175,15 @@ def ingest_run(run_path=None):
                         fq_dataset_url,
                         proj_id)
 
-        register_project_fastq_datafiles(run_id,
-                                         proj_path,
-                                         samplesheet,
-                                         fq_dataset_url,
-                                         uploader,
-                                         fastqc_data=fqc_summary,
-                                         fast_mode=options.fast)
+        register_project_fastq_datafiles(
+            run_id,
+            proj_path,
+            samplesheet,
+            fq_dataset_url,
+            uploader,
+            fastqc_data=fqc_summary,
+            no_sample_directories=not undetermined_in_directory,
+            fast_mode=options.fast)
 
     logger.info("Ingestion of run %s complete !", run_id)
 
