@@ -1099,6 +1099,14 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
                  not found
         :rtype: int | None
         """
+
+        # for bcl2fastq2 output files, we have an _S*_ sample number we can use
+        sample_number = a.get('sample_number', None)
+        if sample_number is not None:
+            return int(sample_number - 1)
+
+        # otherwise, fall back to finding the sample in the samplesheet
+        # to get it's index
         for i, s in enumerate(samplesheet):
             if s['SampleID'] == a['sample_name'] and \
                     (s.get('Index', None) == a['index'] or
@@ -1130,12 +1138,17 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
         if ai < bi:
             return -1
         if ai == bi:
-            if aa['read'] < bb['read']:
+            if aa['lane'] < bb['lane']:
                 return 1
-            if aa['read'] > bb['read']:
+            if aa['lane'] > bb['lane']:
                 return -1
-            if aa['read'] == bb['read']:
-                return -1 if aa['set_number'] < bb['set_number'] else 1
+            if aa['lane'] == bb['lane']:
+                if aa['read'] < bb['read']:
+                    return 1
+                if aa['read'] > bb['read']:
+                    return -1
+                if aa['read'] == bb['read']:
+                    return -1 if aa['set_number'] < bb['set_number'] else 1
 
         return 0
 
