@@ -74,6 +74,7 @@ class MyTardisUploader:
                  storage_box_location='',
                  storage_box_name='default',
                  verify_certificate=True,
+                 fast_mode=False,
                  ):
 
         self.mytardis_url = mytardis_url
@@ -90,6 +91,7 @@ class MyTardisUploader:
                                           MyTardisUploader.user_agent_url)
         # True, False, or the path to the certificate (.pem)
         self.verify_certificate = verify_certificate
+        self.fast_mode = fast_mode
 
         if self.api_key is not None:
             self.auth = TastyPieAuth(self.username, self.api_key)
@@ -253,9 +255,7 @@ class MyTardisUploader:
             logger.info("Dry run complete.")
             return "http://example.com/test/success"
 
-    def _get_parametersets_from_csv(self, entity_type,
-                                    file_path,
-                                    filename):
+    def _get_parametersets_from_csv(self, entity_type, file_path, filename):
 
         """
         entity_type can be 'datafile' or 'dataset'.
@@ -324,12 +324,7 @@ class MyTardisUploader:
 
         return parameter_sets
 
-    # TODO _get_datafile_parametersets_from_json
-
-    def _get_dataset_parametersets_from_json(self, file_path, dataset_name):
-        filename = '%s/metadata/%s_metadata.json' % (os.path.abspath(file_path),
-                                                     dataset_name)
-
+    def _get_parametersets_from_json(self, filename):
         try:
             with open(filename) as f:
                 parametersets = json.loads(f.read())
@@ -338,6 +333,24 @@ class MyTardisUploader:
             pass
 
         return []
+
+    def _get_dataset_parametersets_from_json(self, file_path, dataset_name):
+        filename = '%s/metadata/%s_metadata.json' % (os.path.abspath(file_path),
+                                                     dataset_name)
+
+        return self._get_parametersets_from_json(filename)
+
+    def _get_datafile_parametersets_from_json(self,
+                                              file_path,
+                                              dataset_name,
+                                              file_name):
+        filename = '%s/metadata/%s_%s_metadata.json' % (
+            os.path.abspath(file_path),
+            dataset_name,
+            file_name
+        )
+
+        return self._get_parametersets_from_json(filename)
 
     def _raise_502(self, response):
         e = requests.exceptions.RequestException(response=response)
@@ -594,8 +607,10 @@ class MyTardisUploader:
         # Hack to work around MyTardis not accepting
         # files of zero bytes
         # file_size = (file_size if file_size > 0 else -1)
-        if not md5_checksum:
+        if md5_checksum is None and not self.fast_mode:
             md5_checksum = self._md5_file_calc(file_path)
+        else:
+            md5_checksum = '__undetermined__'
 
         file_dict = {
             u'dataset': dataset_url_path,
@@ -1109,7 +1124,9 @@ def run():
         storage_mode=options.storage_mode,
         storage_box_location=options.storage_base_path,
         storage_box_name=options.storage_box_name,
-        verify_certificate=options.verify_certificate)
+        verify_certificate=options.verify_certificate,
+        fast_mode=options.fast
+    )
 
     mytardis_uploader.upload_directory(
         file_path,
@@ -1118,10 +1135,6 @@ def run():
         institute=institute,
         test_run=test_run,
         exclude_patterns=exclude_patterns)
-
-    # raw_data_expt = create_experiment
-    # upload_directory_as_child_experiments(raw_data_expt)
-    #   create_project_fastq_expt
 
 if __name__ == "__main__":
     run()
