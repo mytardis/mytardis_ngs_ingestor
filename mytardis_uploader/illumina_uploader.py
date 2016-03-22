@@ -1262,7 +1262,7 @@ def get_demultiplexer_info(demultiplexed_output_path):
         # if we can't find DemultiplexConfig.xml, assume the locally installed
         # bcl2fastq2 (v2.x) version was used
         try:
-            out = subprocess.check_output("bcl2fastq --version",
+            out = subprocess.check_output("/usr/local/bin/bcl2fastq --version",
                                           stderr=subprocess.STDOUT,
                                           shell=True).splitlines()
             if len(out) >= 2 and 'bcl2fastq' in out[1]:
