@@ -841,7 +841,8 @@ def parse_sample_info_from_filename(filepath, suffix='.fastq.gz'):
     # bcl2fastq 1.8.4 style filenames:
     # {sample_name}_{index}_L00{lane}_R{read}_001.fastq.gz
     m = re.match(r'(?P<sample_name>.*)_'
-                 r'(?P<index>[ATGC]{6,12})_'
+                 # r'(?P<index>[ATGC]{6,12})-?(?P<index2>[ATGC]{6,12})?_'
+                 r'(?P<index>[ATGC-]{6,33})_'
                  r'L0{0,3}(?P<lane>\d+)_'
                  r'R(?P<read>\d)_'
                  r'(?P<set_number>\d+)'
