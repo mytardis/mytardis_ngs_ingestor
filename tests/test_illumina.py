@@ -1,23 +1,31 @@
 import os
 import unittest
+from datetime import datetime
 from semantic_version import Version as SemanticVersion
 import mytardis_uploader
 from mytardis_uploader.illumina_uploader import \
     parse_samplesheet, \
     filter_samplesheet_by_project, \
-    filter_samplesheet_by_project
+    filter_samplesheet_by_project, \
+    rta_complete_parser
 
 
 class IlluminaParserTestCase(unittest.TestCase):
     def setUp(self):
+        self.run1_dir = os.path.join(
+            os.path.dirname(__file__),
+            'test_data/runs/130907_SNL177_0001_AH9PJLADXZ')
+
+        self.run2_dir = os.path.join(
+            os.path.dirname(__file__),
+            'test_data/runs/140907_SNL177_0002_AC9246ACXX')
+
         self.samplesheet_csv_path = os.path.join(os.path.dirname(__file__),
-                                                 os.path.join(
-                                'test_data/runs/130907_SNL177_0001_AH9PJLADXZ',
-                                'SampleSheet.csv'))
+                                                 self.run1_dir,
+                                                 'SampleSheet.csv')
         self.samplesheet_v4_path = os.path.join(os.path.dirname(__file__),
-                                                os.path.join(
-                                'test_data/runs/140907_SNL177_0002_AC9246ACXX',
-                                'SampleSheet.csv'))
+                                                self.run2_dir,
+                                                'SampleSheet.csv')
 
     def tearDown(self):
         pass
@@ -182,6 +190,20 @@ class IlluminaParserTestCase(unittest.TestCase):
 
         for expected_line, project_line in zip(expected, project_lines):
             self.assertEqual(project_line, expected_line)
+
+    # TODO: These times and RTA versions aren't atually consistent
+    #       with the other times of the mock runs. Make them
+    #       consistent.
+    def test_rta_complete_parser(self):
+        # 1.x = '9/7/2013,18:12:53.149,Illumina RTA 1.18.64'
+        date, version = rta_complete_parser(self.run1_dir)
+        self.assertEqual(date, datetime(2013, 9, 7, 18, 12, 53, 149000))
+        self.assertEqual(version, 'Illumina RTA 1.18.64')
+
+        # 2.x = 'RTA 2.7.3 completed on 9/7/2014 3:31:22 AM'
+        date, version = rta_complete_parser(self.run2_dir)
+        self.assertEqual(date, datetime(2014, 9, 7, 3, 31, 22))
+        self.assertEqual(version, 'RTA 2.7.3')
 
 
 class VersionTest(unittest.TestCase):
