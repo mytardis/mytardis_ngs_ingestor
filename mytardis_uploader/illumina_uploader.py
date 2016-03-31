@@ -1828,7 +1828,7 @@ def pre_ingest_checks(options):
 
         if fail_logs.strip():
             logger.warn("WARNING - logs in Data/RTALogs contain failure "
-                        "messages.", p_path)
+                        "messages: %s", p_path)
             # return False
     else:
         logger.warn("WARNING - RTALogs or Data/RTALogs directory not found.")
