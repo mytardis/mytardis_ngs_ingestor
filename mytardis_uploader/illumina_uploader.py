@@ -1816,16 +1816,22 @@ def pre_ingest_checks(options):
 
     # Check for keyword '[fF]ail' in <run_path>/Data/RTALogs/*, indicative
     # of a failed transfer
-    fail_logs = get_command_stdout(
-        'grep [fF]ail %s/*' % join(run_path, 'Data/RTALogs'))
+    rtalogs_path = None
+    if exists(join(run_path, 'Data/RTALogs')):
+        rtalogs_path = join(run_path, 'Data/RTALogs')
+    elif exists(join(run_path, 'RTALogs')):
+        rtalogs_path = join(run_path, 'RTALogs')
 
-    if fail_logs.strip():
-        logger.warn("WARNING - logs in Data/RTALogs contain failure messages."
-                    "There may have been issues transfering the "
-                    "basecalling data (Data/Intensities/BaseCalls/*/*.bcl) from"
-                    "the instrument.",
-                     p_path)
-        return False
+    if rtalogs_path:
+        fail_logs = get_command_stdout(
+            'grep [fF]ail %s/*' % join(run_path, 'Data/RTALogs'))
+
+        if fail_logs.strip():
+            logger.warn("WARNING - logs in Data/RTALogs contain failure "
+                        "messages.", p_path)
+            # return False
+    else:
+        logger.warn("WARNING - RTALogs or Data/RTALogs directory not found.")
 
     return True
 
