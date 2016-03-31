@@ -1824,7 +1824,7 @@ def pre_ingest_checks(options):
 
     if rtalogs_path:
         fail_logs = get_command_stdout(
-            'grep [fF]ail %s/*' % join(run_path, 'Data/RTALogs'))
+            'grep [fF]ail %s/*' % rtalogs_path)
 
         if fail_logs.strip():
             logger.warn("WARNING - logs in Data/RTALogs contain failure "
