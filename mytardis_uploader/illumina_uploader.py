@@ -250,7 +250,7 @@ def parse_samplesheet(file_path, standardize_keys=True):
             if l[0] == '[':
                 section = l[1:].split(']')[0]
             if section == 'Header' and l.startswith('Assay,'):
-                chemistry = l.split(',')[1]
+                chemistry = l.split(',')[1].strip()
             if section == 'Data':
                 data_index = i
                 break
@@ -273,7 +273,7 @@ def parse_samplesheet(file_path, standardize_keys=True):
         samples = [row for row in reader]
         lastlinebit = samples[-1:][0].get('FCID', None)
         if lastlinebit is not None:
-            chemistry = lastlinebit.split('_')[-1]
+            chemistry = lastlinebit.split('_')[-1].strip()
         del samples[-1:]
         return samples, chemistry
 
@@ -1801,12 +1801,15 @@ def pre_ingest_checks(options):
             # sys.exit(1)
 
     # Check for zero sized .bcl files, indicative of a failed RTA transfer
-    if options.ignore_zero_sized_bcl_check:
-        zero_size_files = None
-    else:
+    zero_size_files = ''
+    if not options.ignore_zero_sized_bcl_check:
         bcl_path = join(run_path, 'Data/Intensities/BaseCalls')
-        zero_size_files = get_command_stdout(
-            'find %s -size 0 -print | grep ".bcl$"' % bcl_path)
+        if exists(bcl_path):
+            zero_size_files = get_command_stdout(
+                'find %s -size 0 -print | grep ".bcl(.gz)?"' % bcl_path)
+        else:
+            logger.warning('No Data/Intensities/BaseCalls directory found. '
+                           'Skipping zero-sized bcl sanity check.')
 
     if zero_size_files.strip():
         logger.error("Aborting - some BCL files in %s are zero size."

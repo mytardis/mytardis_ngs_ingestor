@@ -571,9 +571,14 @@ class MyTardisUploader:
         :rtype: str
         """
         if instrument is not None:
-            instrument_resource_uri = \
-                self.query_instrument(instrument)['objects'][0]['resource_uri']
-            dataset['instrument'] = instrument_resource_uri
+            instruments_returned = self.query_instrument(instrument)['objects']
+            if instruments_returned:
+                instrument_resource_uri = instruments_returned[0]['resource_uri']
+                dataset['instrument'] = instrument_resource_uri
+            else:
+                logger.warning('Querying instrument definition %s failed - is '
+                               'the Instrument record defined on the server ?'
+                               % instrument)
 
         dataset_json = MyTardisUploader.dict_to_json(dataset)
         data = self.do_post_request('dataset', dataset_json)
