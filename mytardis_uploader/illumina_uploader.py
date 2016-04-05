@@ -1776,8 +1776,8 @@ def pre_ingest_checks(options):
         raise Exception()
 
     demultiplexer_version_num = demultiplexer_info.get('version_number', '')
-    undetermined_in_directory = \
-        LooseVersion(demultiplexer_version_num) < LooseVersion('2')
+    undetermined_in_root_folder = \
+        LooseVersion(demultiplexer_version_num) >= LooseVersion('2')
 
     projects = get_project_ids_from_samplesheet(
         samplesheet,
@@ -1789,10 +1789,11 @@ def pre_ingest_checks(options):
                           p,
                           demultiplexer_version_num=demultiplexer_version_num))
         if p == 'Undetermined_indices':
-            if undetermined_in_directory:
-                p_path = join(bcl2fastq_output_dir, 'Undetermined_indices')
-            else:
+            if undetermined_in_root_folder:
                 p_path = bcl2fastq_output_dir
+            else:
+                p_path = join(bcl2fastq_output_dir, 'Undetermined_indices')
+
 
         if not exists(p_path):
             logger.error("Aborting - project directory '%s' is missing.",
@@ -2037,8 +2038,8 @@ def ingest_run(run_path=None):
         raise Exception()
 
     demultiplexer_version_num = demultiplexer_info.get('version_number', '')
-    undetermined_in_directory = \
-        LooseVersion(demultiplexer_version_num) < LooseVersion('2')
+    undetermined_in_root_folder = \
+        LooseVersion(demultiplexer_version_num) >= LooseVersion('2')
 
     projects = get_project_ids_from_samplesheet(
         samplesheet,
@@ -2062,10 +2063,11 @@ def ingest_run(run_path=None):
                              demultiplexer_version_num=demultiplexer_version_num))
 
         if proj_id == 'Undetermined_indices':
-            if undetermined_in_directory:
-                proj_path = join(bcl2fastq_output_dir, proj_id)
-            else:
+            if undetermined_in_root_folder:
                 proj_path = bcl2fastq_output_dir
+            else:
+                proj_path = join(bcl2fastq_output_dir, proj_id)
+
 
         fastqc_out_dir = get_fastqc_output_directory(proj_path)
 
@@ -2225,6 +2227,11 @@ def ingest_run(run_path=None):
                         fq_dataset_url,
                         proj_id)
 
+        if proj_id == 'Undetermined_indices':
+            no_sample_directories = undetermined_in_root_folder
+        else:
+            no_sample_directories = False
+
         register_project_fastq_datafiles(
             run_id,
             proj_path,
@@ -2232,7 +2239,7 @@ def ingest_run(run_path=None):
             fq_dataset_url,
             uploader,
             fastqc_data=fqc_summary,
-            no_sample_directories=not undetermined_in_directory,
+            no_sample_directories=no_sample_directories,
             fast_mode=options.fast)
 
     logger.info("Ingestion of run %s complete !", run_id)
