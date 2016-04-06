@@ -1,0 +1,29 @@
+<DemultiplexConfig>
+  <Software Version="bcl2fastq-1.8.3" CmdAndArgs="/usr/local/bin/bcl2fastq/bin/configureBclToFastq.pl --fastq-cluster-count 300000000 --input-dir ./Data/Intensities/BaseCalls --output-dir ././130907_SNL177_0001_AH9PJLADXZ.bcl2fastq --sample-sheet ./SampleSheet.csv --no-eamss" Name="configureBclToFastq.pl">
+    <Software Version="1.17.20.0" Name="RTA">
+      <Software Version="1.17.20.0" Name="RTA">
+        <Software Version="2.0.5" Platform="HiSeq" Name="HiSeq Control Software" />
+      </Software>
+    </Software>
+  </Software>
+  <FlowcellInfo ID="H9PJLADXZ" Operator="TW" Recipe="" Desc="">
+    <Lane Number="1">
+      <Sample ProjectId="GusFring" Control="N" Index="AACCAG" SampleId="14-06205-OCT4-5" Desc="" Ref="Hg19" />
+      <Sample ProjectId="GusFring" Control="N" Index="AGTGAG" SampleId="14-06207-SOX-5" Desc="" Ref="Hg19" />
+      <Sample ProjectId="GusFring" Control="N" Index="GCACTA" SampleId="14-06208-SOX-15" Desc="" Ref="Hg19" />
+      <Sample ProjectId="GusFring" Control="N" Index="TGGTGA" SampleId="14-06206-OCT4-15" Desc="" Ref="Hg19" />
+      <Sample ProjectId="GusFring" Control="N" Index="TTGGCA" SampleId="14-06200-Input" Desc="" Ref="Hg19" />
+      <Sample ProjectId="Undetermined_indices" Control="N" Index="Undetermined" SampleId="lane1" Desc="Clusters with unmatched barcodes for lane 1" Ref="unknown" />
+    </Lane>
+    <Lane Number="2">
+      <Sample ProjectId="Walter_White" Control="N" Index="AAGAGG" SampleId="14-05658-SW41" Desc="" Ref="Hg19" />
+      <Sample ProjectId="Walter_White" Control="N" Index="ACCTCA" SampleId="14-05655-SW38" Desc="" Ref="Hg19" />
+      <Sample ProjectId="Walter_White" Control="N" Index="AGCATG" SampleId="14-05660-SW43" Desc="" Ref="Hg19" />
+      <Sample ProjectId="Walter_White" Control="N" Index="CGTAGA" SampleId="14-06203-SW45" Desc="" Ref="Hg19" />
+      <Sample ProjectId="Walter_White" Control="N" Index="GAGTCA" SampleId="14-05661-SW44" Desc="" Ref="Hg19" />
+      <Sample ProjectId="Walter_White" Control="N" Index="GGAGAA" SampleId="14-05659-SW42" Desc="" Ref="Hg19" />
+      <Sample ProjectId="Walter_White" Control="N" Index="TCAGAG" SampleId="14-06204-SW46" Desc="" Ref="Hg19" />
+      <Sample ProjectId="Undetermined_indices" Control="N" Index="Undetermined" SampleId="lane2" Desc="Clusters with unmatched barcodes for lane 2" Ref="unknown" />
+    </Lane>
+  </FlowcellInfo>
+</DemultiplexConfig>
