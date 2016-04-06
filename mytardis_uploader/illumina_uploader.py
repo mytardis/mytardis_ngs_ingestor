@@ -879,6 +879,19 @@ def parse_sample_info_from_filename(filepath, suffix='.fastq.gz'):
                                   'lane', 'read', 'set_number'], int)
         return d
 
+    # Undetermined indices files like this:
+    # lane1_Undetermined_L001_R1_001.fastq.gz
+    m = re.match(r'(?P<sample_name>.*_Undetermined)_'
+                 r'L0{0,3}(?P<lane>\d+)_'
+                 r'R(?P<read>\d)_'
+                 r'(?P<set_number>\d+)'
+                 r'%s' % suffix, filename)
+
+    if m is not None:
+        d = m.groupdict()
+        d = change_dict_types(d, ['lane', 'read', 'set_number'], int)
+        return d
+
     return None
 
 
@@ -942,7 +955,8 @@ def generate_fastqc_report_filename(sample_id):
 #           take the first part of the path ({project_id}) and make a Set to
 #           remove duplicates
 def proj_id_to_proj_dir(proj_id, demultiplexer_version_num='1.8.4'):
-    if LooseVersion(demultiplexer_version_num) >= LooseVersion('2'):
+    if demultiplexer_version_num and \
+       LooseVersion(demultiplexer_version_num) >= LooseVersion('2'):
         return proj_id
     else:
         return 'Project_%s' % proj_id
@@ -1113,6 +1127,8 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
         """
 
         # for bcl2fastq2 output files, we have an _S*_ sample number we can use
+        if a is None:
+            return None
         sample_number = a.get('sample_number', None)
         if sample_number is not None:
             return int(sample_number - 1)
@@ -1190,13 +1206,12 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
         #       that share a lane (odd corner case). we should consider
         #       instead using fastq_filename to read the first header of
         #       the actual FASTQ file and extract the index from there
-        # get the index for cases where it isn't in the filename
+        #       get the index for cases where it isn't in the filename
         if index is None:
             for s in samplesheet:
-                if s['SampleName'] == sample_name and \
-                   s['Lane'] == str(lane):
-                    index = s.get('index', None) or \
-                                           s.get('Index', None)
+                if s.get('SampleName', None) == sample_name and \
+                   s.get('Lane', None) == str(lane):
+                    index = s.get('index', None) or s.get('Index', None)
 
         sample_data = {u'sample_id': sample_id,
                        u'sample_name': sample_name,
@@ -1768,16 +1783,21 @@ def pre_ingest_checks(options):
         logger.error("Aborting - unable to parse SampleSheet.csv file.")
         return False
 
+    if not exists(join(bcl2fastq_output_dir, 'DemultiplexConfig.xml')):
+        logger.warning("'DemultiplexConfig.xml' not found.")
+
     demultiplexer_info = get_demultiplexer_info(bcl2fastq_output_dir)
     demultiplexer_version = demultiplexer_info.get('version', '')
 
     if not demultiplexer_version:
-        logger.error("Can't determine demultiplexer version - aborting")
-        raise Exception()
+        logger.warning("Can't determine demultiplexer version")
+        # return False
 
     demultiplexer_version_num = demultiplexer_info.get('version_number', '')
-    undetermined_in_root_folder = \
-        LooseVersion(demultiplexer_version_num) >= LooseVersion('2')
+    undetermined_in_root_folder = False
+    if demultiplexer_version_num:
+        undetermined_in_root_folder = \
+            LooseVersion(demultiplexer_version_num) >= LooseVersion('2')
 
     projects = get_project_ids_from_samplesheet(
         samplesheet,
@@ -1793,7 +1813,6 @@ def pre_ingest_checks(options):
                 p_path = bcl2fastq_output_dir
             else:
                 p_path = join(bcl2fastq_output_dir, 'Undetermined_indices')
-
 
         if not exists(p_path):
             logger.error("Aborting - project directory '%s' is missing.",
@@ -2038,8 +2057,10 @@ def ingest_run(run_path=None):
         raise Exception()
 
     demultiplexer_version_num = demultiplexer_info.get('version_number', '')
-    undetermined_in_root_folder = \
-        LooseVersion(demultiplexer_version_num) >= LooseVersion('2')
+    undetermined_in_root_folder = False
+    if demultiplexer_version_num:
+        undetermined_in_root_folder = \
+            LooseVersion(demultiplexer_version_num) >= LooseVersion('2')
 
     projects = get_project_ids_from_samplesheet(
         samplesheet,
