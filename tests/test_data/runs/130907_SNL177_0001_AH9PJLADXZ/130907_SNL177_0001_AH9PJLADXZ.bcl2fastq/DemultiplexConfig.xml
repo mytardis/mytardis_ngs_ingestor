@@ -9,8 +9,8 @@
   <FlowcellInfo ID="H9PJLADXZ" Operator="TW" Recipe="" Desc="">
     <Lane Number="1">
       <Sample ProjectId="GusFring" Control="N" Index="AACCAG" SampleId="14-06205-OCT4-5" Desc="" Ref="Hg19" />
-      <Sample ProjectId="GusFring" Control="N" Index="AGTGAG" SampleId="14-06207-SOX-5" Desc="" Ref="Hg19" />
-      <Sample ProjectId="GusFring" Control="N" Index="GCACTA" SampleId="14-06208-SOX-15" Desc="" Ref="Hg19" />
+      <Sample ProjectId="GusFring" Control="N" Index="AGTGAG" SampleId="14-06207-ZAX-5" Desc="" Ref="Hg19" />
+      <Sample ProjectId="GusFring" Control="N" Index="GCACTA" SampleId="14-06208-ZAX-15" Desc="" Ref="Hg19" />
       <Sample ProjectId="GusFring" Control="N" Index="TGGTGA" SampleId="14-06206-OCT4-15" Desc="" Ref="Hg19" />
       <Sample ProjectId="GusFring" Control="N" Index="TTGGCA" SampleId="14-06200-Input" Desc="" Ref="Hg19" />
       <Sample ProjectId="Undetermined_indices" Control="N" Index="Undetermined" SampleId="lane1" Desc="Clusters with unmatched barcodes for lane 1" Ref="unknown" />
