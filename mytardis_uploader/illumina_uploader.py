@@ -365,10 +365,10 @@ def get_read_length_fastq(filepath):
     :return: Length of the first read in the FASTQ file
     :rtype: int
     """
-    num = subprocess.check_output("zcat -f %s | "
+    num = subprocess.check_output("zcat < %s | "
                                   "head -n 2  | "
                                   "tail -n 1  | "
-                                  "wc --chars" % filepath,
+                                  "wc -m" % filepath,
                                   shell=True)
     return int(num.strip()) - 1
 
@@ -1313,6 +1313,18 @@ def get_demultiplexer_info(demultiplexed_output_path):
                     'commandline_options': None}
         except subprocess.CalledProcessError:
             pass
+
+    # if we can't determine the bcl2fastq (or other demultiplexer) based
+    # on config & log files, or the locally installed version, try to guess if
+    # bcl2fastq 1.x or 2.x was used based on 'Project_' prefixes
+    if not version_info.get('version'):
+        if any([proj_dir.startswith('Project_')
+               for proj_dir in os.listdir(demultiplexed_output_path)]):
+            version_info['version'] = 'bcl2fastq 1.0unknown'
+            version_info['version_number'] = '1.0unknown'
+        else:
+            version_info['version'] = 'bcl2fastq 2.0unknown'
+            version_info['version_number'] = '2.0unknown'
 
     return version_info
     """
