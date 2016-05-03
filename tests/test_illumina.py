@@ -198,7 +198,7 @@ class IlluminaParserTestCase(unittest.TestCase):
         # 1.x = '9/7/2013,18:12:53.149,Illumina RTA 1.18.64'
         date, version = rta_complete_parser(self.run1_dir)
         self.assertEqual(date, datetime(2013, 9, 7, 18, 12, 53, 149000))
-        self.assertEqual(version, 'Illumina RTA 1.18.64')
+        self.assertEqual(version, 'Illumina RTA 1.17.20.0')
 
         # 2.x = 'RTA 2.7.3 completed on 9/7/2014 3:31:22 AM'
         date, version = rta_complete_parser(self.run2_dir)
