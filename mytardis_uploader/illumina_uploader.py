@@ -4,6 +4,8 @@ __author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
 import sys
 import shutil
 import re
+import string
+from collections import OrderedDict
 from urlparse import urlparse
 import csv
 from datetime import datetime
@@ -215,7 +217,22 @@ def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
     return suffixed_parameters
 
 
-def parse_samplesheet(file_path, standardize_keys=True):
+def _sanitize_samplesheet_value(gremlin_string):
+    """
+    Remove any whitespace or non-printing ASCII characters from a string.
+
+    :param gremlin_string: The string
+    :type gremlin_string: basestring
+    :return: The string with whitespace and non-printing characters removed.
+    :rtype: basestring
+    """
+    return filter(lambda x: x in string.printable and x not in string.whitespace,
+                  gremlin_string)
+
+
+def parse_samplesheet(file_path, standardize_keys=True,
+                      sanitize_fields=['FCID', 'Lane', 'SampleID', 'SampleRef',
+                                       'Index', 'SampleProject']):
 
     # Old plain CSV format, IEM v3:
     # FCID,Lane,SampleID,SampleRef,Index,Description,Control,Recipe,
@@ -239,9 +256,18 @@ def parse_samplesheet(file_path, standardize_keys=True):
 
     lines = []
     with open(file_path, "rU") as f:
+        # for l in f:
+        #     if sanitize:
+        #         # TODO: we can't juse sanitize whole lines, we need to
+        #         # do this per-field so we don't remove spaces from Description, Operator etc
+        #         # We should whitelist (or blacklist) a list of fields for sanitization
+        #         lines.append(_sanitize_samplesheet_value(l))
+        #     else:
+        #         lines.append(l)
         lines = f.readlines()
 
     chemistry = None
+    samples = []
 
     # IEM v4 INI-style CSV
     if '[Header]' in lines[0]:
@@ -255,31 +281,71 @@ def parse_samplesheet(file_path, standardize_keys=True):
                 data_index = i
                 break
 
+        # TODO: we need to parse csv directly into an OrderedDict, otherwise
+        #       the field order can change. we should probably just use
+        #       csv.reader and then convert lines to OrderedDicts ourselves
         reader = csv.DictReader(lines[data_index+1:])
 
         if standardize_keys:
             samples = []
             # remove any underscores to make names consistent between
             # old and new style samplesheets (eg Sample_ID -> SampleID)
-            for r in [row for row in reader]:
-                r = {k.replace('_', ''): r[k] for k in r.keys()}
+            for r in [OrderedDict(row) for row in reader]:
+                r = OrderedDict({k.replace('_', ''): v for k, v in r.items()})
                 samples.append(r)
         else:
-            samples = [row for row in reader]
+            samples = [OrderedDict(row) for row in reader]
 
-        return samples, chemistry
     else:  # Plain CSV (IEM v3 ?)
+
+        # TODO: we need to parse csv directly into an OrderedDict, otherwise
+        #       the field order can change. we should probably just use
+        #       csv.reader and then convert lines to OrderedDicts ourselves
         reader = csv.DictReader(lines)
-        samples = [row for row in reader]
+        samples = [OrderedDict(row) for row in reader]
+
         lastlinebit = samples[-1:][0].get('FCID', None)
         if lastlinebit is not None:
             chemistry = lastlinebit.split('_')[-1].strip()
         del samples[-1:]
-        return samples, chemistry
+
+    if sanitize_fields is not None:
+        for s in samples:
+            s.update({k: _sanitize_samplesheet_value(v) for k, v in s.items()
+                      if k in sanitize_fields})
+
+    return samples, chemistry
 
 
 def filter_samplesheet_by_project(file_path, proj_id,
-                                  project_column_label='SampleProject'):
+                                  project_column_label='SampleProject',
+                                  standardize_keys=True,
+                                  sanitize_fields=['FCID', 'Lane', 'SampleID',
+                                                   'SampleRef', 'Index',
+                                                   'SampleProject']):
+    samplesheet, chemistry = parse_samplesheet(
+        file_path,
+        standardize_keys=standardize_keys,
+        sanitize_fields=sanitize_fields)
+
+    project_samplesheet = []
+    for s in samplesheet:
+        if s.get(project_column_label, False):
+            project_samplesheet.append(s)
+
+    # convert list of dictionaries back to csv
+    if project_samplesheet:
+        outlines = []
+        outlines.append(','.join(project_samplesheet[0].keys()))
+        for s in project_samplesheet:
+            outlines.append(','.join(s.values()) + '\r\n')
+
+        return outlines
+
+
+def filter_samplesheet_by_project_old(file_path, proj_id,
+                                  project_column_label='SampleProject',
+                                  sanitize=True):
     """
     Windows \r\n
 
@@ -289,6 +355,8 @@ def filter_samplesheet_by_project(file_path, proj_id,
     :type proj_id:
     :param project_column_label:
     :type project_column_label:
+    :param sanitize: Strip any whitespace and non-printing characters
+    :type sanitize: bool
     :return:
     :rtype:
     """
@@ -314,6 +382,11 @@ def filter_samplesheet_by_project(file_path, proj_id,
         project_column_index = s_no_underscores.index(project_column_label)
         outlines.append(header+'\r\n')
         for l in f:
+            # TODO: we can't juse sanitize whole lines, we need to
+            # do this per-field so we don't remove spaces from Description, Operator etc
+            # We should whitelist (or blacklist) a list of fields for sanitization
+            if sanitize:
+                l = _sanitize_samplesheet_value(l)
             s = l.strip().split(',')
             if s[project_column_index] == proj_id or l[0] == '#':
                 outlines.append(l.strip()+'\r\n')
@@ -1923,6 +1996,11 @@ def ingest_run(run_path=None):
 
     validate_config(parser, options)
 
+    if not run_path:
+        run_path = options.path
+
+    logger.info("Begin ingesting run from: %s", run_path)
+
     # Before creating any records on the server we first check that certain
     # prerequisite files exist, that the run is complete and is generally in a
     # 'sane' state suitable for ingestion.
@@ -1979,8 +2057,6 @@ def ingest_run(run_path=None):
         raise Exception("Version mismatch.")
 
     # Create an Experiment representing the overall sequencing run
-    if not run_path:
-        run_path = options.path
     run_expt = create_run_experiment_object(run_path)
     # run_id = get_run_id_from_path(run_path)
     run_id = run_expt.parameters.run_id
