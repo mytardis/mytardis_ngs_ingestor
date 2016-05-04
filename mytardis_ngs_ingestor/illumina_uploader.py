@@ -1368,6 +1368,16 @@ def ingest_run(run_path=None):
     TMPDIRS = []
 
     def extra_config_options(argparser):
+        argparser.add_argument('--fastq-only',
+                               dest='fastq_only',
+                               type=bool,
+                               default=False,
+                               metavar='FASTQ_ONLY',
+                               help="Ingest just the FASTQ files and "
+                                    "ignore any instrument / run specific "
+                                    "files or metadata extraction. FastQC "
+                                    "reports are generated if the --run-fastqc"
+                                    "flag is also given.")
         argparser.add_argument('--threads',
                                dest='threads',
                                type=int,

@@ -47,6 +47,11 @@ experiment_owner_groups:
   - mhtp-facility-managers
   - somegreatgroup
 
+# If True, we only ingest the FASTQ files ignoring any metadata extraction
+# from instrument config and logs. FastQC reports will still be generated if
+# run_fastqc is True.
+fastq_only: False
+
 # illumina_uploader.py currently doesn't use this option
 # A list of Python regular expressions matching files to exclude
 # matches against the absolute path. 'Hidden' files beginning
