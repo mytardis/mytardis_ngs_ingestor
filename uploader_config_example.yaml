@@ -1,31 +1,44 @@
-# This is the 'location' used by the storage box
-storage_base_path: /data/instrument
+# The python logging level to use
+# one of: DEBUG, INFO, WARNING, ERROR, FATAL
+loglevel: DEBUG
 
 # The name of the default MyTardis StorageBox to use.
 # If in doubt, leave as default.
 storage_box_name: default
 
-# Default MyTardis storage mode - upload, staging or shared
+# The storage mode used for the default StorageBox (eg for fastq.gz and other
+# large files)
+# Valid options are: upload and shared
+#   upload - files are uploaded over HTTP(S)
+#   shared - this client machine and the MyTardis server both have a mount to
+#            the same shared filesystem (eg NFS or SMB). Just registers the
+#            location of files relative to storage_base_path (below), no files
+#            are copied and no bulk data upload occurs.
+#   staging - not currently supported.
+# For more details, see:
+# https://mytardis.readthedocs.io/en/develop/dev/api.html?highlight=staging#datafiles
 storage_mode: upload
 
-# The name of the MyTardis StorageBox where highly available 'live'
-# files that need to be served immediately (eg small HTML report files)
-# will be uploaded. An S3-style object store is a often a good option.
+# The name of the MyTardis StorageBox where 'live' files that need to be
+# served immediately in response to a page view (eg small HTML report files
+# from FastQC) will be uploaded.
+# An S3-style object store is a often a good option.
 # These files should never be migrated to tape.
-live_storage_box_name: object_store
-# live_storage_box_name: live
+live_storage_box_name: default
+# live_storage_box_name: object_store
 
+# This is the 'location' used by the MyTardis StorageBox when running in 'shared' mode
+storage_base_path: /data/instrument
 
-# The path to the directory with data to
-# be uploaded/registerd with MyTardis
-path: /data/instrument/some_unique_expt_id_001/
+# The path to the directory with data to be uploaded/registerd with MyTardis
+# Usually specified on the command line with --path
+# path: /data/instrument/some_unique_expt_id_001/
 
-# The path to bcl2fastq output. Uses Pythons str.format method
-# with named parameters, where {run_path} is the base path
-# of the run (eg --path config option above) and {run_id}
-# is the unique ID of the run (eg 130613_SNL177_0029_AH0EPTADXX or
-# in the example above, some_unique_expt_id_001)
-# Don't forget the double quotes !
+# The path to bcl2fastq output. Uses the Python str.format method with named
+# parameters, where {run_path} is the base path of the run (eg --path config
+# option above) and {run_id} is the unique ID of the run
+# (eg 130613_SNL177_0029_AH0EPTADXX or in the example above,
+# some_unique_expt_id_001). Don't forget the double quotes !
 bcl2fastq_output_path: "{run_path}/{run_id}.bcl2fastq"
 
 # A list of groups (by name) that will be given ownership of ingested
@@ -34,21 +47,23 @@ experiment_owner_groups:
   - mhtp-facility-managers
   - somegreatgroup
 
+# illumina_uploader.py currently doesn't use this option
 # A list of Python regular expressions matching files to exclude
 # matches against the absolute path. 'Hidden' files beginning
 # with a period (.) are excluded by default.
 # Don't use quotes, and expressions are comma delimited without
 # regard to escaping so you can't use commas :/
-exclude:
-  - '/FastQC\.done$'
-  - '/FastQC\.inprogress$'
-  - '/LIST$'
-  - '/Temp$'
-  - '/Temp/.*'
-  - 'SampleSheet.csv'
-  - '/Basecall_Stats_\w+$'
-  - '/Basecall_Stats_\w+/.*'
+#exclude:
+#  - '/FastQC\.done$'
+#  - '/FastQC\.inprogress$'
+#  - '/LIST$'
+#  - '/Temp$'
+#  - '/Temp/.*'
+#  - 'SampleSheet.csv'
+#  - '/Basecall_Stats_\w+$'
+#  - '/Basecall_Stats_\w+/.*'
 
+# The username of the MyTardis user that will ingest the data
 username: powerfuladmin
 
 # The API key (tastypie) for this username, provided by the MyTardis server.
@@ -66,23 +81,23 @@ url: http://localhost:8000
 
 # The path to the certificate of the server when using SSL/TLS, to
 # allow it's identity to be verified. You should set this if your MyTardis
-# server are uses a self-signed certificate, rather than one signed by a
-# certificate authority.
+# server are uses a self-signed certificate.
 # If you are using a self-signed certificate and the 'certificate' setting
 # isn't set, you may set this value to INSECURE (all-caps) to acknowledge that
 # you are happy to connect to a server of unverified identity (with the
-# possibility of MITM attacks). Using INSECURE is strongly discouraged.
+# possibility of MITM attacks). Using INSECURE is strongly discouraged, but
+# useful for testing.
 # certificate: /etc/ssl/certs/ssl-cert-snakeoil.pem
 # certificate: INSECURE
 # An empty or missing value default to always verify
 # certificate:
 
-# Should we run FastQC on reads before uploading
-# if expected output directory doesn't exist ?
+# Should we run FastQC on reads before uploading if expected output directory
+# doesn't exist ?
 run_fastqc: True
 
-# The number of threads to use for some paralell processes
-# usually this would be close to the number of cores on the machine
+# The number of threads to use for some paralell processes usually this would
+# be close to the number of cores on the machine
 threads: 4
 
 # The path to the FastQC executable

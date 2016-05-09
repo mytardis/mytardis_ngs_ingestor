@@ -62,9 +62,6 @@ config file becomes `--fastqc-bin=/usr/local/bin/fastqc`)
 Running
 -------
 
-`illumina_uploader.py` does not run `bcl2fastq` automatically. It is a
-assumed that the run has already been demultiplexed.
-
 To ingest a run:
 
 ```sh
@@ -77,6 +74,9 @@ where `{run_path}/{run_id}.bcl2fastq` is the path where the bcl2fastq
 
 In this example, `{run_path}` is `/mnt/bigdisk/160915_FHT451_0119_AC6AMWACXZ/` 
 and `{run_id}` is `160915_FHT451_0119_AC6AMWACXZ`.
+
+`illumina_uploader.py` does not run `bcl2fastq` automatically. It is a
+assumed that the run has already been demultiplexed.
 
 
 How a 'run' is structured in the MyTardis data model
@@ -92,7 +92,7 @@ The *Project Experiments* correspond to distinct projects produced after
 demultiplexing (eg the 'SampleProjects' in SampleSheet.csv). These 
 contain a subset of the data from the entire run and are shared with 
 end-users by the Facilty Manager. A *Project Experiment* is also 
-create for the reads where a barcode could not be assigned.
+created for the reads where a barcode could not be assigned.
 
 Datasets are created containing:
 
