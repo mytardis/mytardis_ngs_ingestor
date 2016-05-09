@@ -91,6 +91,7 @@ setup(
                       'requests-toolbelt >= 0.4.0',
                       'urllib3',
                       'xmltodict',
+                      'semantic_version',
                       ],
 
     # List additional groups of dependencies here (e.g. development
