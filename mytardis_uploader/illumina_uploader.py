@@ -1893,9 +1893,16 @@ def ingest_run(run_path=None):
                                metavar='FASTQC_BIN')
         argparser.add_argument('--bcl2fastq-output-path',
                                dest='bcl2fastq_output_path',
-                               default='{run_path}/{run_id}.bcl2fastq',
+                               default='{run_path}/Data/Intensities/BaseCalls',
                                type=str,
-                               metavar='BCL2FASTQ_OUTPUT_PATH')
+                               metavar='BCL2FASTQ_OUTPUT_PATH',
+                               help='The path to the bcl2fastq output '
+                                    '(fastq.gz files in project/sample '
+                                    'directories). The template strings '
+                                    '{run_path} and {run_id} can be used to '
+                                    'specify a path relative to the run '
+                                    'folder, or another path that includes the '
+                                    'run_id.')
         argparser.add_argument('--dump-fixtures',
                                dest='dump_fixtures',
                                action='store_true')
