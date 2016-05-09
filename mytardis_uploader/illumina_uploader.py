@@ -2293,7 +2293,8 @@ def _cleanup_tmp():
             shutil.rmtree(tmpdir)
             logger.info("Removed temp directory: %s", tmpdir)
 
-if __name__ == "__main__":
+
+def run_in_console():
     MyTardisUploader.user_agent_name = os.path.basename(sys.argv[0])
     try:
         ingest_run()
@@ -2310,3 +2311,7 @@ if __name__ == "__main__":
     _cleanup_tmp()
 
     sys.exit(0)
+
+
+if __name__ == "__main__":
+    run_in_console()
