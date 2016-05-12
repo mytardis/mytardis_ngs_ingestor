@@ -37,6 +37,11 @@ from models import DemultiplexedSamplesBase, FastqcOutputBase, \
 # created, so these can be cleaned up upon premature exit
 TMPDIRS = []
 
+# we map names from *Effective.cfg to more recognisable names
+# (MiSeq seems to be called 'Shock' some places internally)
+INSTRUMENT_TYPE_NAMES = {
+    'Shock': 'MiSeq'
+}
 
 class DemultiplexedSamples(DemultiplexedSamplesBase):
     pass
@@ -87,7 +92,8 @@ def create_run_experiment_object(run_path):
 
     runinfo_parameters = runinfo_parser(run_path)
     instrument_config = illumina_config_parser(run_path)
-    instrument_model = instrument_config.get('system:instrumenttype', '')
+    raw_model_name = instrument_config.get('system:instrumenttype', '')
+    instrument_model = INSTRUMENT_TYPE_NAMES.get(raw_model_name, raw_model_name)
     instrument_id = runinfo_parameters.get('instrument_id', '')
     samplesheet, chemistry = parse_samplesheet(join(run_path,
                                                     'SampleSheet.csv'))
@@ -106,7 +112,7 @@ def create_run_experiment_object(run_path):
 
     # the MyTardis Experiment
     expt = Experiment()
-    expt.title = "%s sequencing run %s" % (run.instrument_model, run.run_id)
+    expt.title = "%s run %s" % (run.instrument_model, run.run_id)
     expt.end_time = end_time
     expt.parameters = run
     expt.run_path = run_path
@@ -128,7 +134,11 @@ def create_project_experiment_object(
     """
 
     end_date = _format_day(run_expt.end_time)
-    project_title = 'Sequencing Project, %s, %s' % (proj_id, end_date)
+    if proj_id:
+        project_title = 'Sequencing Project, %s, %s' % (proj_id, end_date)
+    else:
+        project_title = 'Sequencing Project, %s' % end_date
+
     if proj_id == 'Undetermined_indices':
         project_title = '%s, %s, %s' % (proj_id,
                                         run_expt.parameters.run_id,
@@ -161,8 +171,12 @@ def create_fastqc_dataset_object(run_id,
     end_date = _format_day(end_time)
     fqc_dataset_title = "FastQC reports for Project %s, %s" % \
                         (proj_id, end_date)
+
     if proj_id == 'Undetermined_indices':
         fqc_dataset_title = "FastQC reports for %s, %s" % (proj_id, end_date)
+
+    if not proj_id:
+        fqc_dataset_title = "FastQC reports, %s" % end_date
 
     fqc_dataset = Dataset()
     fqc_dataset.experiments = experiments
@@ -459,13 +473,14 @@ def illumina_config_parser(run_path):
     :type run_path: str
     :rtype: dict
     """
+
     # we find the approriate config file
     config_filename = None
     for filename in os.listdir(join(run_path, 'Config')):
-        if "_Effective.cfg" in filename:
+        if "Effective.cfg" in filename:
             config_filename = filename
     if not config_filename:
-        logger.error("Cannot find Config/*_Effective.cfg file")
+        logger.error("Cannot find Config/*Effective.cfg file")
         return
 
     # we don't use ConfigParser since for whatever reason it can't handle
@@ -649,7 +664,10 @@ def create_fastq_dataset_on_server(
     fastq_dataset = Dataset()
     fastq_dataset.experiments = experiments
     end_date = _format_day(proj_expt.end_time)
-    fastq_dataset.description = 'FASTQ reads, %s, %s' % (proj_id, end_date)
+    if proj_id:
+        fastq_dataset.description = 'FASTQ reads, %s, %s' % (proj_id, end_date)
+    else:
+        fastq_dataset.description = 'FASTQ reads, %s' % end_date
 
     dataset_params = NucleotideRawReadsDataset()
     dataset_params.from_dict(proj_expt.parameters.to_dict(),
@@ -732,10 +750,16 @@ def register_project_fastq_datafiles(run_id,
 
                 # the read number isn't encoded in SampleSheet.csv, so we
                 # extract it from the FASTQ filename instead
+                read = None
                 info_from_fn = parse_sample_info_from_filename(fastq_path)
-                read = info_from_fn.get('read', None)
-                if sample_name is None:
-                    sample_name = info_from_fn.get('sample_name', None)
+                if info_from_fn is not None:
+                    read = info_from_fn.get('read', None)
+                    if sample_name is None:
+                        sample_name = info_from_fn.get('sample_name', None)
+                else:
+                    logger.warning("Unrecognized FASTQ filename pattern - "
+                                   "skipping: %s", fastq_path)
+                    continue
 
                 sampleinfo = sample_dict.get(sample_name, {})
 
@@ -844,52 +868,64 @@ def register_project_fastq_datafiles(run_id,
 def parse_sample_info_from_filename(filepath, suffix='.fastq.gz'):
     filename = os.path.basename(filepath)
 
-    def change_dict_types(d, keys, map_fn):
+    def change_dict_types(d, keys, map_fn, ignore_missing_keys=True):
         for k in keys:
-            d[k] = map_fn(d[k])
+            if k in d:
+                d[k] = map_fn(d[k])
+            elif not ignore_missing_keys:
+                raise KeyError("%s not found" % k)
         return d
 
-    # bcl2fastq 1.8.4 style filenames:
-    # {sample_name}_{index}_L00{lane}_R{read}_001.fastq.gz
-    m = re.match(r'(?P<sample_name>.*)_'
-                 # r'(?P<index>[ATGC]{6,12})-?(?P<index2>[ATGC]{6,12})?_'
-                 r'(?P<index>[ATGC-]{6,33})_'
-                 r'L0{0,3}(?P<lane>\d+)_'
-                 r'R(?P<read>\d)_'
-                 r'(?P<set_number>\d+)'
-                 r'%s' % suffix, filename)
+    # Components of regexes to match common fastq.gz filenames output
+    # by Illumina software. It's easier and more extensible to combine
+    # these than attempt to create and maintain one big regex
+    sample_name_re = r'(?P<sample_name>.*)'
+    undetermined_sample_name_re = r'(?P<sample_name>.*_Undetermined)'
+    index_re = r'(?P<index>[ATGC-]{6,33})'
+    # dual_index_re = r'(?P<index>[ATGC]{6,12})-?(?P<index2>[ATGC]{6,12})?'
+    lane_re = r'L0{0,3}(?P<lane>\d+)'
+    read_re = r'R(?P<read>\d)'
+    # index_read_re = r'I(?P<read>\d)'
+    set_number_re = r'(?P<set_number>\d+)'
+    sample_number_re = r'S(?P<sample_number>\d+)'
+    extension_re = r'%s$' % suffix
+
+    filename_regexes = [
+        # Undetermined indices files like this:
+        # lane1_Undetermined_L001_R1_001.fastq.gz
+        r'_'.join([undetermined_sample_name_re, lane_re, read_re, set_number_re]),
+
+        # bcl2fastq 2.x style filenames:
+        # {sample_name}_{sample_number}_L00{lane}_R{read}_001.fastq.gz
+        r'_'.join([sample_name_re, sample_number_re, lane_re, read_re,
+                   set_number_re]),
+
+        # bcl2fastq 1.8.4 style filenames:
+        # {sample_name}_{index}_L00{lane}_R{read}_001.fastq.gz
+        r'_'.join([sample_name_re, index_re, lane_re, read_re, set_number_re]),
+    ]
+
+    filename_regexes = [r + extension_re for r in filename_regexes]
+
+    # path_regexes = [
+    #     r'(?P<project_id>.*)/Sample_(?P<sample_id>.*)/'
+    #     r'(?P<project_id>.*)/(?P<sample_id>.*)/',
+    #     r'',
+    # ]
+
+    # combined_re = r'(%s)' % '|'.join(filename_regexes)
+    # combined_re = r'(%s)(%s)' % ('|'.join(path_regexes),
+    #                              '|'.join(filename_regexes))
+
+    for regex in filename_regexes:
+        m = re.match(regex, filename)
+        if m is not None:
+            break
 
     if m is not None:
         d = m.groupdict()
-        d = change_dict_types(d, ['lane', 'read', 'set_number'], int)
-        return d
-
-    # bcl2fastq 2.x style filenames:
-    # {sample_name}_{sample_number}_L00{lane}_R{read}_001.fastq.gz
-    m = re.match(r'(?P<sample_name>.*)_'
-                 r'S(?P<sample_number>\d+)_'
-                 r'L0{0,3}(?P<lane>\d+)_'
-                 r'R(?P<read>\d)_'
-                 r'(?P<set_number>\d+)'
-                 r'%s' % suffix, filename)
-
-    if m is not None:
-        d = m.groupdict()
-        d = change_dict_types(d, ['sample_number',
-                                  'lane', 'read', 'set_number'], int)
-        return d
-
-    # Undetermined indices files like this:
-    # lane1_Undetermined_L001_R1_001.fastq.gz
-    m = re.match(r'(?P<sample_name>.*_Undetermined)_'
-                 r'L0{0,3}(?P<lane>\d+)_'
-                 r'R(?P<read>\d)_'
-                 r'(?P<set_number>\d+)'
-                 r'%s' % suffix, filename)
-
-    if m is not None:
-        d = m.groupdict()
-        d = change_dict_types(d, ['lane', 'read', 'set_number'], int)
+        d = change_dict_types(d, ['sample_number', 'lane', 'read',
+                                  'set_number'], int)
         return d
 
     return None
@@ -1301,6 +1337,13 @@ def get_demultiplexer_info(demultiplexed_output_path):
     else:
         # if we can't find DemultiplexConfig.xml, assume the locally installed
         # bcl2fastq2 (v2.x) version was used
+
+        # TODO: This assumption is just misleading for things like MiSeq runs
+        #       the might have been demultiplexed on the instrument and
+        #       copied over. We probably shouldn't do this, just leave it blank
+        #       until we find a better way to determine the demultiplexer
+        #       (which might amount to having it specified on the commandline or
+        #        in an extra metadata file)
         try:
             out = subprocess.check_output("/usr/local/bin/bcl2fastq --version",
                                           stderr=subprocess.STDOUT,
@@ -1778,10 +1821,10 @@ def pre_ingest_checks(options):
 
     config_filename = None
     for filename in os.listdir(join(run_path, 'Config')):
-        if "_Effective.cfg" in filename:
+        if "Effective.cfg" in filename:
             config_filename = filename
     if not config_filename:
-        logger.error("Aborting - cannot find Config/*_Effective.cfg file.")
+        logger.error("Aborting - cannot find Config/*Effective.cfg file.")
         return False
 
     if not exists(join(run_path, 'SampleSheet.csv')):
@@ -2107,7 +2150,6 @@ def ingest_run(run_path=None):
                 proj_path = bcl2fastq_output_dir
             else:
                 proj_path = join(bcl2fastq_output_dir, proj_id)
-
 
         fastqc_out_dir = get_fastqc_output_directory(proj_path)
 
