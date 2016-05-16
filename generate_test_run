@@ -1,0 +1,2 @@
+#!/bin/sh
+/usr/bin/env python -m mytardis_uploader.utils.generate_test_run
