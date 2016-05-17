@@ -413,7 +413,7 @@ def run_commandline():
 if __name__ == '__main__':
     # Hint - on the commandline, run like:
     #
-    #   $ python -m mytardis_uploader.utils.generate_test_run
+    #   $ python -m mytardis_ngs_ingestor.utils.generate_test_run
     #
     # (otherwise relative imports will fail)
     run_commandline()

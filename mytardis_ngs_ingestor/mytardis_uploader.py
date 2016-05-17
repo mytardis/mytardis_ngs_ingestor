@@ -7,7 +7,7 @@
 from __init__ import __version__
 import logging
 
-logger = logging.getLogger('mytardis_uploader')
+logger = logging.getLogger('mytardis_ngs_uploader')
 
 import os
 import sys
@@ -63,7 +63,7 @@ class TastyPieAuth(AuthBase):
 
 class MyTardisUploader:
     user_agent_name = __name__
-    user_agent_url = 'https://github.com/pansapiens/mytardis_ngs_ingestor'
+    user_agent_url = 'https://github.com/mytardis/mytardis_ngs_ingestor'
 
     def __init__(self,
                  mytardis_url,
@@ -764,6 +764,7 @@ class MyTardisUploader:
 
     def remove_object_acl(self, object_id):
         self.do_get_request('objectacl', {})
+
 
 def setup_logging(loglevel=logging.DEBUG):
     logger.setLevel(loglevel)

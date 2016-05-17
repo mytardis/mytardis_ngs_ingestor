@@ -1,6 +1,6 @@
 import os
 import unittest
-from mytardis_uploader.mytardis_models import MyTardisParameterSet
+from mytardis_ngs_ingestor.mytardis_models import MyTardisParameterSet
 
 
 class TestingParameterSetModel(MyTardisParameterSet):

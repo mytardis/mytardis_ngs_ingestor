@@ -7,7 +7,7 @@ and https://github.com/pansapiens/mytardis-seqfac
 from setuptools import setup, find_packages
 from codecs import open
 from os import path
-import mytardis_uploader
+import mytardis_ngs_ingestor
 
 here = path.abspath(path.dirname(__file__))
 
@@ -30,7 +30,7 @@ with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
 
 setup(
     name='mytardis_ngs_ingestor',
-    version=mytardis_uploader.__version__,
+    version=mytardis_ngs_ingestor.__version__,
 
     description='MyTardis NGS Ingestor',
     long_description=long_description,
@@ -126,7 +126,7 @@ setup(
     entry_points={
         'console_scripts': [
             'illumina_uploader='
-            'mytardis_uploader.illumina_uploader:run_in_console',
+            'mytardis_ngs_ingestor.illumina_uploader:run_in_console',
         ],
     },
     test_suite='tests',

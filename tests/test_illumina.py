@@ -2,8 +2,8 @@ import os
 import unittest
 from datetime import datetime
 from semantic_version import Version as SemanticVersion
-import mytardis_uploader
-from mytardis_uploader.illumina_uploader import \
+import mytardis_ngs_ingestor
+from mytardis_ngs_ingestor.illumina.run_info import \
     parse_samplesheet, \
     filter_samplesheet_by_project, \
     filter_samplesheet_by_project, \
@@ -178,8 +178,9 @@ class VersionTest(unittest.TestCase):
     def test_semver(self):
         # parse the version number to ensure it's valid (invalid version number
         # formats will raise a ValueError)
-        ingestor_version = SemanticVersion(mytardis_uploader.__version__)
-        self.assertEqual(str(ingestor_version), mytardis_uploader.__version__)
+        ingestor_version = SemanticVersion(mytardis_ngs_ingestor.__version__)
+        self.assertEqual(str(ingestor_version),
+                         mytardis_ngs_ingestor.__version__)
 
 
 if __name__ == '__main__':
