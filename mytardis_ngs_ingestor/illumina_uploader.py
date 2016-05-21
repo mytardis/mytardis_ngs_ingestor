@@ -1,10 +1,11 @@
 #!/usr/bin/env python
-from __future__ import print_function
+from __future__ import print_function, absolute_import, division
 
 __author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
 
+from builtins import (bytes, str, open, super, range,
+                      zip, round, input, int, pow, object)
 import six
-from builtins import int
 from six.moves.urllib.parse import urlparse, urljoin
 import sys
 import shutil
@@ -20,7 +21,7 @@ import json
 from semantic_version import Version as SemanticVersion
 from distutils.version import LooseVersion
 
-from .standalone_html import make_html_images_inline
+from standalone_html import make_html_images_inline
 
 import mytardis_uploader
 from mytardis_uploader import MyTardisUploader
@@ -1489,8 +1490,8 @@ def ingest_run(run_path=None):
         'http://www.tardis.edu.au/schemas/ngs/project')
 
     if duplicate_runs or duplicate_projects:
-        matching = [six.u(i) for i in duplicate_runs]
-        matching += [six.u(i) for i in duplicate_projects]
+        matching = [str(i) for i in duplicate_runs]
+        matching += [str(i) for i in duplicate_projects]
         logger.warn("Duplicate runs/projects already exist on server: %s (%s)",
                     run_id, ', '.join(matching))
         if options.replace_duplicate_runs:

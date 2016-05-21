@@ -4,7 +4,12 @@
 # Steve Androulakis <steve.androulakis@monash.edu>
 # Thanks Grischa Meyer <grischa.meyer@monash.edu> for initial script
 
-from __future__ import print_function
+from __future__ import print_function, absolute_import, division
+
+__author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
+
+from builtins import (bytes, str, open, super, range,
+                      zip, round, input, int, pow, object)
 
 from __init__ import __version__
 import logging
@@ -12,7 +17,6 @@ import logging
 logger = logging.getLogger('mytardis_ngs_uploader')
 
 import six
-from builtins import int
 from six.moves.urllib.parse import urlparse, urljoin
 import os
 import sys
@@ -708,9 +712,9 @@ class MyTardisUploader:
 
         data = {
             u'pluginId': plugin_id,
-            u'entityId': six.u(entity_id),
-            u'content_type': six.u(content_type),
-            u'object_id': six.u(object_id),
+            u'entityId': str(entity_id),
+            u'content_type': str(content_type),
+            u'object_id': str(object_id),
             u'aclOwnershipType': acl_ownership_type,
             u'isOwner': True,
             u'canRead': True,

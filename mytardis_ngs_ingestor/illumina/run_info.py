@@ -214,7 +214,7 @@ def runinfo_parser(run_path):
     :rtype: dict
     """
     with open(join(run_path, "RunInfo.xml"), 'r') as f:
-        runinfo = xmltodict.parse(f)['RunInfo']['Run']
+        runinfo = xmltodict.parse(f.read())['RunInfo']['Run']
 
     info = {u'run_id': runinfo['@Id'],
             u'run_number': runinfo['@Number'],
@@ -334,7 +334,7 @@ def get_demultiplexer_info(demultiplexed_output_path):
                                "DemultiplexConfig.xml")
     if exists(demulti_config_path):
         with open(demulti_config_path, 'r') as f:
-            xml = xmltodict.parse(f)
+            xml = xmltodict.parse(f.read())
             version = xml['DemultiplexConfig']['Software']['@Version']
             version = ' '.join(version.split('-'))
             cmdline = xml['DemultiplexConfig']['Software']['@CmdAndArgs']

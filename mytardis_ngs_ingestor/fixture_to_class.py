@@ -18,7 +18,12 @@
 # python fixture_to_class.py myfixture.json >models.py
 #
 
-from __future__ import print_function
+from __future__ import print_function, absolute_import, division
+
+__author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
+
+from builtins import (bytes, str, open, super, range,
+                      zip, round, input, int, pow, object)
 import six
 import sys
 import json
@@ -68,7 +73,7 @@ def wrap_python_code(code):
         # This code attempts to add missing quotes to strings
         # that are split across lines by 'wrap'. There could
         # be bugs.
-        ll = six.u(l)
+        ll = str(l)
         unpaired_ticks = ll.count(u"'") % 2
         if open_quote_next_line and unpaired_ticks > 0:
             ll = u"u'" + ll
@@ -138,7 +143,7 @@ class ClassDef:
         fields['pk'] = self.fixture['pk']
         fields['model'] = self.fixture['model']
         for k, v in fields.items():
-            vv = six.u(v)
+            vv = str(v)
             if isinstance(v, six.string_types):
                 vv = '"%s"' % v
             attribs.append("self._%s__schema = %s  # type: %s" %
