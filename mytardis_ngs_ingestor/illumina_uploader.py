@@ -4,12 +4,12 @@ __author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
 import sys
 import shutil
 import re
-from urlparse import urlparse
+from six.moves.urllib.parse import urlparse, urljoin
+import csv
 from datetime import datetime
 import subprocess
 from tempfile import mkdtemp
 import atexit
-from urlparse import urljoin
 
 import os
 from os.path import join, splitext, exists, isdir, isfile
@@ -567,7 +567,7 @@ def register_project_fastq_datafiles(run_id,
                         replica_url=replica_url,
                         md5_checksum=md5_checksum,
                     )
-                except Exception, ex:
+                except Exception as ex:
                     logger.error("Failed to register Datafile: "
                                  "%s", fastq_path)
                     logger.debug("Exception: %s", ex)
@@ -654,7 +654,7 @@ def register_project_fastqc_datafiles(run_id,
                     replica_url=replica_url,
                     md5_checksum=md5_checksum,
                 )
-            except Exception, ex:
+            except Exception as ex:
                 logger.error("Failed to register Datafile: "
                              "%s", fastqc_zip_path)
                 logger.debug("Exception: %s", ex)
@@ -1210,7 +1210,7 @@ def dump_schema_fixtures_as_json():
             fixtures.extend(klass().to_schema())
             fixtures.extend(klass().to_parameter_schema())
 
-    print json.dumps(fixtures, indent=2)
+    print(json.dumps(fixtures, indent=2))
 
 
 def pre_ingest_checks(options):
@@ -1526,7 +1526,7 @@ def ingest_run(run_path=None):
         for group in options.experiment_owner_groups:
             uploader.share_experiment_with_group(run_expt_url, group)
 
-    except Exception, e:
+    except Exception as e:
         logger.error("Failed to create Experiment for sequencing run: %s",
                      run_path)
         logger.error("Exception: %s: %s", type(e).__name__, e)
@@ -1628,7 +1628,7 @@ def ingest_run(run_path=None):
                 for group in options.experiment_owner_groups:
                     uploader.share_experiment_with_group(project_url, group)
 
-            except Exception, e:
+            except Exception as e:
                 logger.error("Failed to create Experiment for project: %s",
                              proj_id)
                 logger.debug("Exception: %s", e)
@@ -1683,7 +1683,7 @@ def ingest_run(run_path=None):
                 # associated FastQC dataset
                 proj_expt.parameters.fastqc_dataset = fqc_dataset_url
 
-            except Exception, e:
+            except Exception as e:
                 logger.error("Failed to create FastQC Dataset for Project: %s",
                              proj_id)
                 logger.debug("Exception: %s", e)
@@ -1718,7 +1718,7 @@ def ingest_run(run_path=None):
                 parent_expt_urls,
                 uploader,
                 fastqc_summary=fqc_summary)
-        except Exception, e:
+        except Exception as e:
             logger.error("Failed to create Dataset for Project: %s",
                          proj_id)
             logger.debug("Exception: %s", e)

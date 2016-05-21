@@ -155,7 +155,9 @@ class MyTardisParameterSet(object):
             if k.startswith('_') and k.endswith('__attr_schema'):
                 param_schemas.append(v)
 
-        param_schemas.sort()
+        # param_schemas.sort()  # not Python3 compatible
+        # We sort the list of dictionaries so this output is deterministic
+        param_schemas = sorted(param_schemas, key=lambda d: repr(d))
         return param_schemas
 
 
