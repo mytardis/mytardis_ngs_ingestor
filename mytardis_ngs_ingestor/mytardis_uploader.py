@@ -4,12 +4,15 @@
 # Steve Androulakis <steve.androulakis@monash.edu>
 # Thanks Grischa Meyer <grischa.meyer@monash.edu> for initial script
 
+from __future__ import print_function
+
 from __init__ import __version__
 import logging
 
 logger = logging.getLogger('mytardis_ngs_uploader')
 
 import six
+from builtins import int
 from six.moves.urllib.parse import urlparse, urljoin
 import os
 import sys

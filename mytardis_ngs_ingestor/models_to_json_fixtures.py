@@ -5,6 +5,8 @@
 # Usage:
 # $ models_to_json_fixtures.py >sequencing_facility_fixtures.json
 
+from __future__ import print_function
+
 import illumina_uploader
 
 if __name__ == "__main__":

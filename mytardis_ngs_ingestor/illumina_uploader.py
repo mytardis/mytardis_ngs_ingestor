@@ -1,7 +1,10 @@
 #!/usr/bin/env python
+from __future__ import print_function
+
 __author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
 
 import six
+from builtins import int
 from six.moves.urllib.parse import urlparse, urljoin
 import sys
 import shutil

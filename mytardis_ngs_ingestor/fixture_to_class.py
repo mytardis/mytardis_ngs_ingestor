@@ -18,6 +18,7 @@
 # python fixture_to_class.py myfixture.json >models.py
 #
 
+from __future__ import print_function
 import six
 import sys
 import json
@@ -188,8 +189,8 @@ if __name__ == "__main__":
 
             for a in classes[namespace].attributes:
                 if name == a.name:
-                    sys.stderr.write("WARNING: Duplicate ParameterName: "
-                                     "%s (%s)\n" % (name, namespace))
+                    print("WARNING: Duplicate ParameterName: %s (%s)\n" %
+                          (name, namespace),  file=sys.stderr)
 
             classes[namespace].attributes.append(
                 AttributeDef(name,
