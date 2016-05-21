@@ -9,6 +9,8 @@ import logging
 
 logger = logging.getLogger('mytardis_ngs_uploader')
 
+import six
+from six.moves.urllib.parse import urlparse, urljoin
 import os
 import sys
 import mimetypes
@@ -19,7 +21,6 @@ import backoff
 from time import strftime
 import datetime
 import csv
-from urlparse import urljoin
 
 import urllib3
 logging.captureWarnings(True)
@@ -427,7 +428,7 @@ class MyTardisUploader:
             if response.status_code == 502:
                 self._raise_502(response)
 
-        except requests.exceptions.RequestException, e:
+        except requests.exceptions.RequestException as e:
             logger.error("Request failed : %s : %s", e.message, url)
             raise e
 
@@ -484,7 +485,6 @@ class MyTardisUploader:
         return response
 
     def _get_path_from_url(self, url_string):
-        from urlparse import urlparse
         o = urlparse(url_string)
         return o.path
 
@@ -659,7 +659,6 @@ class MyTardisUploader:
         :type uri: str
         :rtype: int
         """
-        from urlparse import urlparse
         resource_id = int(urlparse(uri).path.rstrip('/').split('/')[-1:][0])
         return resource_id
 
@@ -695,7 +694,7 @@ class MyTardisUploader:
         :return: A requests Response object
         :rtype: Response
         """
-        if isinstance(content_object, basestring):
+        if isinstance(content_object, six.string_types):
             object_id = self._resource_uri_to_id(content_object)
         elif isinstance(content_object, int):
             object_id = content_object
@@ -706,9 +705,9 @@ class MyTardisUploader:
 
         data = {
             u'pluginId': plugin_id,
-            u'entityId': unicode(entity_id),
-            u'content_type': unicode(content_type),
-            u'object_id': unicode(object_id),
+            u'entityId': six.u(entity_id),
+            u'content_type': six.u(content_type),
+            u'object_id': six.u(object_id),
             u'aclOwnershipType': acl_ownership_type,
             u'isOwner': True,
             u'canRead': True,
@@ -1079,7 +1078,7 @@ def run():
     ####
     import getpass
 
-    print """\
+    print("""\
     MyTardis uploader generic v1
     Steve Androulakis <steve.androulakis@monash.edu>
     Uploads the given directory as an Experiment, and the immediate
@@ -1095,7 +1094,7 @@ def run():
       <path>/metadata/<dataset_name>_<filename>_metadata.csv
       <path>/metadata/<dataset_name>_<filename>_metadata.json
 
-    """
+    """)
 
     setup_logging()
 

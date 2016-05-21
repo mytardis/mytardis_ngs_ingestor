@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 __author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
 
+import six
+from six.moves.urllib.parse import urlparse, urljoin
 import sys
 import shutil
-import re
-from six.moves.urllib.parse import urlparse, urljoin
-import csv
 from datetime import datetime
 import subprocess
 from tempfile import mkdtemp
@@ -17,6 +16,8 @@ import json
 
 from semantic_version import Version as SemanticVersion
 from distutils.version import LooseVersion
+
+from .standalone_html import make_html_images_inline
 
 import mytardis_uploader
 from mytardis_uploader import MyTardisUploader
@@ -262,13 +263,13 @@ def query_experiment_parameterset(self,
                                   parameter_name=None,
                                   value=None):
     query_params = {}
-    if isinstance(schema_namespace, basestring):
+    if isinstance(schema_namespace, six.string_types):
         query_params[u'name__schema__namespace'] = schema_namespace
-    if isinstance(parameter_name, basestring):
+    if isinstance(parameter_name, six.string_types):
         query_params[u'name__name'] = parameter_name
     if isinstance(value, (float, int)):
         query_params[u'numeric_value'] = value
-    if isinstance(value, (basestring)):
+    if isinstance(value, six.string_types):
         query_params[u'string_value'] = value
     if isinstance(value, datetime.datetime):
         query_params[u'datetime_value'] = value.isoformat()
@@ -711,7 +712,6 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, uploader):
             inline_report_abspath = join(report_dir, inline_report_filename)
             if LooseVersion(fqc_version) < LooseVersion('0.11.3'):
                 # convert fastqc_report.html to version with inline images
-                from standalone_html import make_html_images_inline
                 make_html_images_inline(report_file, inline_report_abspath)
             else:
                 os.rename(report_file, inline_report_abspath)
@@ -1486,8 +1486,8 @@ def ingest_run(run_path=None):
         'http://www.tardis.edu.au/schemas/ngs/project')
 
     if duplicate_runs or duplicate_projects:
-        matching = [unicode(i) for i in duplicate_runs]
-        matching += [unicode(i) for i in duplicate_projects]
+        matching = [six.u(i) for i in duplicate_runs]
+        matching += [six.u(i) for i in duplicate_projects]
         logger.warn("Duplicate runs/projects already exist on server: %s (%s)",
                     run_id, ', '.join(matching))
         if options.replace_duplicate_runs:

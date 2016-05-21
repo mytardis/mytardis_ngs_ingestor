@@ -8,5 +8,5 @@
 import illumina_uploader
 
 if __name__ == "__main__":
-    print illumina_uploader.dump_schema_fixtures_as_json()
+    print(illumina_uploader.dump_schema_fixtures_as_json())
 
