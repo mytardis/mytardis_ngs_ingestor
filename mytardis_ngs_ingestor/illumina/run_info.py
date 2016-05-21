@@ -1,6 +1,10 @@
+from __future__ import absolute_import, division, print_function
+from builtins import (bytes, str, open, super, range,
+                      zip, round, input, int, pow, object)
 import logging
 import os
 from os.path import join, splitext, exists, isdir, isfile
+from pathlib2 import Path
 import subprocess
 import re
 import csv
@@ -518,6 +522,61 @@ def parse_sample_info_from_filename(filepath, suffix='.fastq.gz'):
         return d
 
     return None
+
+
+def get_sample_project_mapping(basepath,
+                               samplesheet=None,
+                               suffix='.fastq.gz',
+                               catch_undetermined=True):
+    """
+    Given a path containing fastq.gz files, possibily nested in Project/Sample
+    directories, return a data structure mapping fastq-samples to projects.
+
+    TODO: The SampleSheet.csv may be used as a hint but is not required.
+
+    :param basepath:
+    :type basepath:
+    :return:
+    :rtype:
+    """
+
+    from fs.opener import opener
+
+    slash = os.path.sep
+
+    fq_files = []
+    with opener.opendir(basepath) as vfs:
+        for fn in vfs.walkfiles():
+            if suffix in fn:
+                fq_files.append(fn.lstrip(slash))
+
+    project_mapping = {}
+    for fqpath in fq_files:
+        project = ''
+        fqfile = fqpath
+        if slash in fqpath:
+            parts = Path(fqpath).parts
+            if len(parts) == 3:
+                project, sample_id, fqfile = map(str, parts)
+            if len(parts) == 2:
+                project, fqfile = map(str, parts)
+            if len(parts) == 1:
+                fqfile = str(parts[0])
+
+        if catch_undetermined and 'Undetermined' in fqfile:
+            project = u'Undetermined_indices'
+
+        # TODO: also incorporate sample_id in this datastructure
+        if project not in project_mapping:
+            project_mapping[project] = []
+        project_mapping[project].append(fqpath)
+
+    # TODO: Use the SampleSheet.csv to validate or hint
+    # TODO: Also assign sample_id, sample_name, lane, read, etc
+    #       we could use parse_sample_info_from_filename for this,
+    #       and/or use the FASTQ header(s)
+
+    return project_mapping
 
 
 def get_sample_id_from_fastq_filename(filepath):

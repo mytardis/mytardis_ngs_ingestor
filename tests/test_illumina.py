@@ -1,4 +1,5 @@
 import os
+from os import path
 import unittest
 from datetime import datetime
 from semantic_version import Version as SemanticVersion
@@ -7,25 +8,29 @@ from mytardis_ngs_ingestor.illumina.run_info import \
     parse_samplesheet, \
     filter_samplesheet_by_project, \
     filter_samplesheet_by_project, \
-    rta_complete_parser
+    rta_complete_parser, get_sample_project_mapping
 
 
 class IlluminaParserTestCase(unittest.TestCase):
     def setUp(self):
-        self.run1_dir = os.path.join(
-            os.path.dirname(__file__),
+        self.run1_dir = path.join(
+            path.dirname(__file__),
             'test_data/runs/130907_SNL177_0001_AH9PJLADXZ')
 
-        self.run2_dir = os.path.join(
-            os.path.dirname(__file__),
+        self.run2_dir = path.join(
+            path.dirname(__file__),
             'test_data/runs/140907_SNL177_0002_AC9246ACXX')
 
-        self.samplesheet_csv_path = os.path.join(os.path.dirname(__file__),
-                                                 self.run1_dir,
-                                                 'SampleSheet.csv')
-        self.samplesheet_v4_path = os.path.join(os.path.dirname(__file__),
-                                                self.run2_dir,
-                                                'SampleSheet.csv')
+        self.run3_dir = path.join(
+            path.dirname(__file__),
+            'test_data/runs/150907_M04416_0003_000000000-ANV1L')
+
+        self.samplesheet_csv_path = path.join(os.path.dirname(__file__),
+                                              self.run1_dir,
+                                              'SampleSheet.csv')
+        self.samplesheet_v4_path = path.join(os.path.dirname(__file__),
+                                             self.run2_dir,
+                                             'SampleSheet.csv')
 
     def tearDown(self):
         pass
@@ -153,7 +158,54 @@ class IlluminaParserTestCase(unittest.TestCase):
         for expected_line, project_line in zip(expected, project_lines):
             self.assertEqual(project_line, expected_line)
 
-    # TODO: These times and RTA versions aren't atually consistent
+    def test_get_sample_project_mapping(self):
+        bcl2fastq_output_path = path.join(self.run2_dir,
+                                          'Data/Intensities/BaseCalls')
+        mapping = get_sample_project_mapping(bcl2fastq_output_path)
+        expected = {
+            u'Phr00t': [u'Phr00t/16-01788/Q1L_S8_L003_R1_001.fastq.gz',
+                        u'Phr00t/16-01787/Q1N_S7_L003_R1_001.fastq.gz',
+                        u'Phr00t/16-01787/Q1N_S7_L004_R1_001.fastq.gz'],
+            u'Shigeru_Miyamoto': [
+                u'Shigeru_Miyamoto/16-00489/QQH4K9F2_S6_L002_R1_001.fastq.gz',
+                u'Shigeru_Miyamoto/16-00488/QQH4K4F2_S5_L002_R1_001.fastq.gz',
+                u'Shigeru_Miyamoto/16-00487/QQInputF2_S4_L002_R1_001.fastq.gz'],
+            u'StephenLavelle': [
+                u'StephenLavelle/16-00984/QQ1H2O3_S3_L001_R1_001.fastq.gz',
+                u'StephenLavelle/16-00983/QQ1H2O2_S2_L001_R1_001.fastq.gz',
+                u'StephenLavelle/16-00982/QQ1H2O1_S1_L001_R1_001.fastq.gz'],
+            u'Undetermined_indices': [
+                u'Undetermined_S0_L001_R1_001.fastq.gz',
+                u'Undetermined_S0_L002_R1_001.fastq.gz',
+                u'Undetermined_S0_L003_R1_001.fastq.gz',
+                u'Undetermined_S0_L004_R1_001.fastq.gz',
+                u'Undetermined_S0_L005_R1_001.fastq.gz',
+                u'Undetermined_S0_L006_R1_001.fastq.gz',
+                u'Undetermined_S0_L007_R1_001.fastq.gz',
+                u'Undetermined_S0_L008_R1_001.fastq.gz']
+        }
+
+        self.assertDictEqual(mapping, expected)
+
+        bcl2fastq_output_path = path.join(self.run3_dir,
+                                          'Data/Intensities/BaseCalls')
+
+        mapping = get_sample_project_mapping(bcl2fastq_output_path)
+        expected = {'': [u'BUGS-1_CACGTCTA_L001_R1_001.fastq.gz',
+                         u'BUGS-1_CACGTCTA_L001_R2_001.fastq.gz',
+                         u'BUGS-2_AGCTAGTG_L001_R1_001.fastq.gz',
+                         u'BUGS-2_AGCTAGTG_L001_R2_001.fastq.gz',
+                         u'DRUGS-1_ACGTCGTT_L001_R1_001.fastq.gz',
+                         u'DRUGS-1_ACGTCGTT_L001_R2_001.fastq.gz',
+                         u'DRUGS-2_GTCCTGTT_L001_R1_001.fastq.gz',
+                         u'DRUGS-2_GTCCTGTT_L001_R2_001.fastq.gz'],
+                    u'Undetermined_indices': [
+                        u'lane1_Undetermined_L001_R1_001.fastq.gz',
+                        u'lane1_Undetermined_L001_R2_001.fastq.gz']}
+
+        self.assertDictEqual(mapping, expected)
+
+    # TODO: These times and RTA versions aren't actually consistent
     #       with the other times of the mock runs. Make them
     #       consistent.
     def test_rta_complete_parser(self):

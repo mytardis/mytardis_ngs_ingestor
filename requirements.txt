@@ -2,7 +2,9 @@ appsettings
 backoff
 colorlog
 fs
+future
 ndg-httpsclient
+pathlib2
 pyasn1
 pyopenssl
 python-dateutil
