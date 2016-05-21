@@ -1,6 +1,8 @@
 mytardis_ngs_ingestor
 =====================
 
+[![Build Status](https://semaphoreci.com/api/v1/pansapiens/mytardis_ngs_ingestor/branches/develop/shields_badge.svg)](https://semaphoreci.com/pansapiens/mytardis_ngs_ingestor)
+
 `mytardis_ngs_ingestor` is a data ingestion client to upload 
 next-generation sequencing data (NGS) to a MyTardis data management 
 server.
