@@ -543,13 +543,13 @@ def get_sample_project_mapping(basepath,
 
     from fs.opener import opener
 
-    slash = os.path.sep
-
     fq_files = []
     with opener.opendir(basepath) as vfs:
         for fn in vfs.walkfiles():
             if suffix in fn:
                 fq_files.append(fn.lstrip('/').lstrip('\\'))
+
+    fq_files = sorted(fq_files)
 
     project_mapping = OrderedDict()
     for fqpath in fq_files:

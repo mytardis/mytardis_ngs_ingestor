@@ -163,20 +163,26 @@ class IlluminaParserTestCase(unittest.TestCase):
         bcl2fastq_output_path = path.join(self.run2_dir,
                                           'Data/Intensities/BaseCalls')
         mapping = get_sample_project_mapping(bcl2fastq_output_path)
-        expected = OrderedDict([('Undetermined_indices',
-                                 ['Undetermined_S0_L001_R1_001.fastq.gz', 'Undetermined_S0_L002_R1_001.fastq.gz',
-                                  'Undetermined_S0_L003_R1_001.fastq.gz', 'Undetermined_S0_L004_R1_001.fastq.gz',
-                                  'Undetermined_S0_L005_R1_001.fastq.gz', 'Undetermined_S0_L006_R1_001.fastq.gz',
-                                  'Undetermined_S0_L007_R1_001.fastq.gz', 'Undetermined_S0_L008_R1_001.fastq.gz']), (
-                                    'StephenLavelle', ['StephenLavelle/16-00984/QQ1H2O3_S3_L001_R1_001.fastq.gz',
-                                                       'StephenLavelle/16-00983/QQ1H2O2_S2_L001_R1_001.fastq.gz',
-                                                       'StephenLavelle/16-00982/QQ1H2O1_S1_L001_R1_001.fastq.gz']), (
-                                    'Shigeru_Miyamoto', ['Shigeru_Miyamoto/16-00489/QQH4K9F2_S6_L002_R1_001.fastq.gz',
-                                                         'Shigeru_Miyamoto/16-00488/QQH4K4F2_S5_L002_R1_001.fastq.gz',
-                                                         'Shigeru_Miyamoto/16-00487/QQInputF2_S4_L002_R1_001.fastq.gz']),
-                                ('Phr00t', ['Phr00t/16-01788/Q1L_S8_L003_R1_001.fastq.gz',
-                                            'Phr00t/16-01787/Q1N_S7_L003_R1_001.fastq.gz',
-                                            'Phr00t/16-01787/Q1N_S7_L004_R1_001.fastq.gz'])])
+        expected = OrderedDict([('Phr00t', ['Phr00t/16-01787/Q1N_S7_L003_R1_001.fastq.gz',
+                                            'Phr00t/16-01787/Q1N_S7_L004_R1_001.fastq.gz',
+                                            'Phr00t/16-01788/Q1L_S8_L003_R1_001.fastq.gz']),
+                                ('Shigeru_Miyamoto', [
+                                    'Shigeru_Miyamoto/16-00487/QQInputF2_S4_L002_R1_001.fastq.gz',
+                                    'Shigeru_Miyamoto/16-00488/QQH4K4F2_S5_L002_R1_001.fastq.gz',
+                                    'Shigeru_Miyamoto/16-00489/QQH4K9F2_S6_L002_R1_001.fastq.gz']),
+                                ('StephenLavelle', [
+                                    'StephenLavelle/16-00982/QQ1H2O1_S1_L001_R1_001.fastq.gz',
+                                    'StephenLavelle/16-00983/QQ1H2O2_S2_L001_R1_001.fastq.gz',
+                                    'StephenLavelle/16-00984/QQ1H2O3_S3_L001_R1_001.fastq.gz']),
+                                ('Undetermined_indices',
+                                 ['Undetermined_S0_L001_R1_001.fastq.gz',
+                                  'Undetermined_S0_L002_R1_001.fastq.gz',
+                                  'Undetermined_S0_L003_R1_001.fastq.gz',
+                                  'Undetermined_S0_L004_R1_001.fastq.gz',
+                                  'Undetermined_S0_L005_R1_001.fastq.gz',
+                                  'Undetermined_S0_L006_R1_001.fastq.gz',
+                                  'Undetermined_S0_L007_R1_001.fastq.gz',
+                                  'Undetermined_S0_L008_R1_001.fastq.gz'])])
 
         self.assertDictEqual(mapping, expected)
 
