@@ -8,6 +8,7 @@ from pathlib2 import Path
 import subprocess
 import re
 import csv
+from collections import OrderedDict
 from dateutil import parser as dateparser
 import xmltodict
 
@@ -534,10 +535,10 @@ def get_sample_project_mapping(basepath,
 
     TODO: The SampleSheet.csv may be used as a hint but is not required.
 
-    :param basepath:
-    :type basepath:
-    :return:
-    :rtype:
+    :param basepath: Path to directory tree of fastq.gz files - eg, bcl2fastq output directory
+    :type basepath: str
+    :return: Dictionary lists, {project_id : [relative fastq.gz paths]}
+    :rtype: OrderedDict
     """
 
     from fs.opener import opener
@@ -548,20 +549,19 @@ def get_sample_project_mapping(basepath,
     with opener.opendir(basepath) as vfs:
         for fn in vfs.walkfiles():
             if suffix in fn:
-                fq_files.append(fn.lstrip(slash))
+                fq_files.append(fn.lstrip('/').lstrip('\\'))
 
-    project_mapping = {}
+    project_mapping = OrderedDict()
     for fqpath in fq_files:
         project = ''
         fqfile = fqpath
-        if slash in fqpath:
-            parts = Path(fqpath).parts
-            if len(parts) == 3:
-                project, sample_id, fqfile = map(str, parts)
-            if len(parts) == 2:
-                project, fqfile = map(str, parts)
-            if len(parts) == 1:
-                fqfile = str(parts[0])
+        parts = Path(fqpath).parts
+        if len(parts) == 3:
+            project, sample_id, fqfile = map(str, parts)
+        if len(parts) == 2:
+            project, fqfile = map(str, parts)
+        if len(parts) == 1:
+            fqfile = str(parts[0])
 
         if catch_undetermined and 'Undetermined' in fqfile:
             project = u'Undetermined_indices'
