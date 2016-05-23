@@ -36,13 +36,16 @@ from models import DemultiplexedSamplesBase, FastqcOutputBase, \
     IlluminaSequencingRunBase, NucleotideRawReadsDatasetBase, \
     IlluminaRunConfigBase
 
-from illumina.run_info import parse_samplesheet, samplesheet_to_dict, \
-    get_project_ids_from_samplesheet, get_number_of_reads_fastq, \
+from mytardis_ngs_ingestor.illumina import run_info, fastqc
+from mytardis_ngs_ingestor.illumina.run_info import parse_samplesheet, \
+    samplesheet_to_dict, get_project_ids_from_samplesheet, \
+    get_number_of_reads_fastq, \
     get_read_length_fastq, rta_complete_parser, runinfo_parser, \
     illumina_config_parser, get_run_id_from_path, get_demultiplexer_info, \
     get_sample_directories, get_fastq_read_files, \
     get_sample_id_from_fastq_filename, get_sample_name_from_fastq_filename, \
-    parse_sample_info_from_filename, filter_samplesheet_by_project
+    parse_sample_info_from_filename, filter_samplesheet_by_project, \
+    get_sample_project_mapping
 
 # a module level list of temporary directories that have been
 # created, so these can be cleaned up upon premature exit
@@ -225,7 +228,8 @@ def create_fastqc_dataset_on_server(fastqc_dataset, uploader):
     return uploader.create_dataset(fastqc_dataset.package())
 
 
-def run_fastqc_on_project(proj_path,
+def run_fastqc_on_project(fastq_files,
+                          proj_path,
                           output_directory=None,
                           fastqc_bin=None,
                           threads=2):
@@ -248,10 +252,6 @@ def run_fastqc_on_project(proj_path,
                      "or doesn't exist.",
                      output_directory)
         return None
-
-    fastq_files = []
-    for sample_path, sample_id in get_sample_directories(proj_path):
-        fastq_files.extend([f for f in get_fastq_read_files(sample_path)])
 
     fqc_output_directory = fastqc.run_fastqc(fastq_files,
                                              output_directory=output_directory,
@@ -1125,11 +1125,10 @@ def pre_ingest_checks(options):
         undetermined_in_root_folder = \
             LooseVersion(demultiplexer_version_num) >= LooseVersion('2')
 
-    projects = get_project_ids_from_samplesheet(
-        samplesheet,
-        include_no_index_name='Undetermined_indices')
+    project_fastq_mapping = get_sample_project_mapping(bcl2fastq_output_dir,
+                                                       absolute_paths=True)
 
-    for p in projects:
+    for p, fq_files in project_fastq_mapping.items():
         p_path = join(bcl2fastq_output_dir,
                       proj_id_to_proj_dir(
                           p,
@@ -1188,6 +1187,10 @@ def pre_ingest_checks(options):
 def ingest_run(run_path=None):
     global logger
     logger = setup_logging()
+    # set logger for these modules to our logger
+    run_info.logger = logger
+    fastqc.logger = logger
+
     global TMPDIRS
     TMPDIRS = []
 
@@ -1405,11 +1408,15 @@ def ingest_run(run_path=None):
         undetermined_in_root_folder = \
             LooseVersion(demultiplexer_version_num) >= LooseVersion('2')
 
-    projects = get_project_ids_from_samplesheet(
-        samplesheet,
-        include_no_index_name='Undetermined_indices')
+    project_fastq_mapping = get_sample_project_mapping(bcl2fastq_output_dir,
+                                                       absolute_paths=True)
 
-    for proj_id in projects:
+    for proj_id, fastq_files in project_fastq_mapping.items():
+        proj_path = join(bcl2fastq_output_dir,
+                         proj_id_to_proj_dir(
+                             proj_id,
+                             demultiplexer_version_num=demultiplexer_version_num))
+
         proj_expt = create_project_experiment_object(
             proj_id,
             run_expt,
@@ -1420,11 +1427,6 @@ def ingest_run(run_path=None):
             run_expt.parameters.demultiplexing_program
         proj_expt.parameters.demultiplexing_commandline_options = \
             run_expt.parameters.demultiplexing_commandline_options
-
-        proj_path = join(bcl2fastq_output_dir,
-                         proj_id_to_proj_dir(
-                             proj_id,
-                             demultiplexer_version_num=demultiplexer_version_num))
 
         if proj_id == 'Undetermined_indices':
             if undetermined_in_root_folder:
@@ -1442,6 +1444,7 @@ def ingest_run(run_path=None):
                 and not exists(fastqc_out_dir):
             fqc_tmp_dir = create_tmp_dir()
             fastqc_out_dir = run_fastqc_on_project(
+                fastq_files,
                 proj_path,
                 output_directory=fqc_tmp_dir,
                 fastqc_bin=options.fastqc_bin,
@@ -1586,9 +1589,8 @@ def ingest_run(run_path=None):
                         fq_dataset_url,
                         proj_id)
         except Exception as e:
-            logger.error("Uploading SampleSheet.csv for Project failed: %s (%s)",
-                        fq_dataset_url,
-                        proj_id)
+            logger.error("Uploading SampleSheet.csv for Project failed: "
+                         "%s (%s)", fq_dataset_url, proj_id)
 
         if proj_id == 'Undetermined_indices':
             no_sample_directories = undetermined_in_root_folder

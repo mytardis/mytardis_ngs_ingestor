@@ -205,6 +205,14 @@ class IlluminaParserTestCase(unittest.TestCase):
 
         self.assertDictEqual(mapping, expected)
 
+        # test absolute_paths flag
+        mapping = get_sample_project_mapping(bcl2fastq_output_path,
+                                             absolute_paths=True)
+        for k, v in expected.items():
+            expected[k] = [path.join(bcl2fastq_output_path, f) for f in v]
+
+        self.assertDictEqual(mapping, expected)
+
     # TODO: These times and RTA versions aren't actually consistent
     #       with the other times of the mock runs. Make them
     #       consistent.

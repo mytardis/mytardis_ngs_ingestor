@@ -528,6 +528,7 @@ def parse_sample_info_from_filename(filepath, suffix='.fastq.gz'):
 def get_sample_project_mapping(basepath,
                                samplesheet=None,
                                suffix='.fastq.gz',
+                               absolute_paths=False,
                                catch_undetermined=True):
     """
     Given a path containing fastq.gz files, possibily nested in Project/Sample
@@ -535,7 +536,8 @@ def get_sample_project_mapping(basepath,
 
     TODO: The SampleSheet.csv may be used as a hint but is not required.
 
-    :param basepath: Path to directory tree of fastq.gz files - eg, bcl2fastq output directory
+    :param basepath: Path to directory tree of fastq.gz files - eg, bcl2fastq
+                     output directory
     :type basepath: str
     :return: Dictionary lists, {project_id : [relative fastq.gz paths]}
     :rtype: OrderedDict
@@ -569,6 +571,8 @@ def get_sample_project_mapping(basepath,
         # TODO: also incorporate sample_id in this datastructure
         if project not in project_mapping:
             project_mapping[project] = []
+        if absolute_paths:
+            fqpath = join(basepath, fqpath)
         project_mapping[project].append(fqpath)
 
     # TODO: Use the SampleSheet.csv to validate or hint
