@@ -21,6 +21,7 @@ import json
 from semantic_version import Version as SemanticVersion
 from distutils.version import LooseVersion
 
+from illumina import fastqc
 from standalone_html import make_html_images_inline
 
 import mytardis_uploader
@@ -222,6 +223,41 @@ def create_fastqc_dataset_object(run_id,
 
 def create_fastqc_dataset_on_server(fastqc_dataset, uploader):
     return uploader.create_dataset(fastqc_dataset.package())
+
+
+def run_fastqc_on_project(proj_path,
+                          output_directory=None,
+                          fastqc_bin=None,
+                          threads=2):
+    if output_directory is None:
+        output_directory = get_fastqc_output_directory(proj_path)
+        if exists(output_directory):
+            logger.error("FastQC - output directory already exists: %s",
+                         output_directory)
+            return None
+        try:
+            os.mkdir(output_directory)
+        except OSError:
+            logger.error("FastQC - couldn't create output directory: %s",
+                         output_directory)
+            return None
+
+    if (not exists(output_directory)) or \
+            (not isdir(output_directory)):
+        logger.error("FastQC - output path %s isn't a directory "
+                     "or doesn't exist.",
+                     output_directory)
+        return None
+
+    fastq_files = []
+    for sample_path, sample_id in get_sample_directories(proj_path):
+        fastq_files.extend([f for f in get_fastq_read_files(sample_path)])
+
+    fqc_output_directory = fastqc.run_fastqc(fastq_files,
+                                             output_directory=output_directory,
+                                             fastqc_bin=fastqc_bin,
+                                             threads=threads)
+    return fqc_output_directory
 
 
 def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
@@ -627,7 +663,7 @@ def register_project_fastqc_datafiles(run_id,
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
 
             fastqc_version = \
-                parse_fastqc_data_txt(fastqc_zip_path)['fastqc_version']
+                fastqc.parse_data_txt(fastqc_zip_path)['fastqc_version']
             sample_id = get_sample_name_from_fastqc_filename(fastqc_zip_path)
             parameters = {'run_id': run_id,
                           'project': proj_id,
@@ -693,7 +729,7 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, uploader):
     """
 
     for fastqc_zip_path in get_fastqc_zip_files(fastqc_out_dir):
-        fastqc_data_tables = parse_fastqc_data_txt(fastqc_zip_path)
+        fastqc_data_tables = fastqc.parse_data_txt(fastqc_zip_path)
         fqc_version = fastqc_data_tables['fastqc_version']
 
         # Depending on the version of FastQC used and specific
@@ -837,7 +873,7 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
     fastqc_zips.sort(cmp=sort_fqc_sample_cmp)
 
     for fastqc_zip_path in fastqc_zips:
-        qc_pass_fail_table_raw = parse_fastqc_summary_txt(fastqc_zip_path)
+        qc_pass_fail_table_raw = fastqc.parse_summary_txt(fastqc_zip_path)
         fastq_filename = qc_pass_fail_table_raw[0][2]
         fqfile_details = parse_sample_info_from_filename(fastq_filename)
         sample_id = get_sample_id_from_fastq_filename(fastq_filename)
@@ -849,8 +885,8 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
             qc_pass_fail_table.append((check, result))
 
         # project_summary.append((sample_id, qc_pass_fail_table))
-        fqc_detailed_data[sample_id] = parse_fastqc_data_txt(fastqc_zip_path)
-        basic_stats = _extract_fastqc_basic_stats(fqc_detailed_data, sample_id)
+        fqc_detailed_data[sample_id] = fastqc.parse_data_txt(fastqc_zip_path)
+        basic_stats = fastqc.extract_basic_stats(fqc_detailed_data, sample_id)
         sample_name = fqfile_details.get('sample_name', None)
         lane = fqfile_details.get('lane', None)
         index = fqfile_details.get('index', None)
@@ -911,218 +947,6 @@ def get_fastqc_zip_files(fastqc_out_path):
 
 def get_fastqc_output_directory(proj_path):
     return join(proj_path, 'FastQC.out')
-
-
-def run_fastqc(fastq_paths,
-               output_directory=None,
-               fastqc_bin=None,
-               threads=2,
-               extra_options=''):
-
-    if not fastq_paths:
-        logger.warning('FastQC - called with no FASTQ file paths provided, '
-                       'skipping.')
-        return None
-
-    tmp_dir = None
-    if not output_directory:
-        try:
-            tmp_dir = create_tmp_dir()
-            output_directory = tmp_dir
-        except OSError:
-            logger.error('FastQC - failed to create temp directory.')
-            return None
-
-    if not fastqc_bin:
-        # We will assume it's on path with the default name
-        fastqc_bin = 'fastqc'
-
-    cmd = 'nice %s %s --noextract --threads %d --outdir %s %s' % \
-          (fastqc_bin,
-           extra_options,
-           threads,
-           output_directory,
-           ' '.join(fastq_paths))
-
-    logger.info('Running FastQC on: %s', ', '.join(fastq_paths))
-
-    cmd_out = None
-    try:
-        # Unfortunately FastQC doesn't always return sensible
-        # exit codes on failure, so we parse the output
-        cmd_out = subprocess.check_output(cmd,
-                                          shell=True,
-                                          stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError:
-        logger.error('FastQC stdout: %s', cmd_out)
-        return None
-
-    success = False
-    if 'Analysis complete' in cmd_out.splitlines()[-1]:
-        success = True
-    else:
-        logger.error('FastQC stdout: %s', cmd_out)
-
-    if not success:
-        if tmp_dir is not None:
-            shutil.rmtree(output_directory)
-            return None
-
-    return output_directory
-
-
-def run_fastqc_on_project(proj_path,
-                          output_directory=None,
-                          fastqc_bin=None,
-                          threads=2):
-
-    if output_directory is None:
-        output_directory = get_fastqc_output_directory(proj_path)
-        if exists(output_directory):
-            logger.error("FastQC - output directory already exists: %s",
-                         output_directory)
-            return None
-        try:
-            os.mkdir(output_directory)
-        except OSError:
-            logger.error("FastQC - couldn't create output directory: %s",
-                         output_directory)
-            return None
-
-    if (not exists(output_directory)) or \
-       (not isdir(output_directory)):
-        logger.error("FastQC - output path %s isn't a directory "
-                     "or doesn't exist.",
-                     output_directory)
-        return None
-
-    fastq_files = []
-    for sample_path, sample_id in get_sample_directories(proj_path):
-        fastq_files.extend([f for f in get_fastq_read_files(sample_path)])
-
-    fqc_output_directory = run_fastqc(fastq_files,
-                                      output_directory=output_directory,
-                                      fastqc_bin=fastqc_bin,
-                                      threads=threads)
-    return fqc_output_directory
-
-
-def file_from_zip(zip_file_path, filename, mode='r'):
-    # eg rootpath =
-    # FastQC.out/15-02380-CE11-T13-L1_AACCAG_L001_R1_001_fastqc.zip
-    # ie   fastq_filename + '_fastqc.zip'
-
-    from fs.opener import opener
-    # from fs.zipfs import ZipFS
-
-    # fs.opener.opener magic detects a filesystem type if we give it
-    # a URI-like string, eg zip://foo/bla/file.zip
-    # (eg https://commons.apache.org/proper/commons-vfs/filesystems.html)
-    # So we munge the path to a zip file to become a compatible URI
-    # (an http, ftp, webdav url could also be used)
-    if splitext(zip_file_path)[1] == '.zip':
-        zip_file_path = 'zip://' + zip_file_path
-
-    with opener.parse(zip_file_path)[0] as vfs:
-        for fn in vfs.walkfiles():
-            if os.path.basename(fn) == filename:
-                return vfs.open(fn, mode)
-
-
-def parse_file_from_zip(zip_file_path, filename, parser):
-    return parser(file_from_zip(zip_file_path, filename))
-
-
-def parse_fastqc_summary_txt(zip_file_path):
-    """
-    Extract the overall PASS/WARN/FAIL summary.txt table from FastQC results
-    contained in a zip file.
-    """
-    def _parse(fh):
-        summary = [tuple(line.strip().split('\t')) for line in fh]
-        return summary
-
-    return parse_file_from_zip(zip_file_path,
-                               'summary.txt',
-                               _parse)
-
-
-def parse_fastqc_data_txt(zip_file_path):
-    """
-    Extract the tables in fastqc_data.txt from FastQC results contained
-    in a zip file.
-
-    Returns a dictionary representing the tables in the file,
-    keyed by section headers in the form:
-
-     {u'Basic Statistics':
-      {'column_labels': (u'Measure', u'Value'),
-      'rows': [
-       (u'Filename', u'14-06207-SOX-5_AGTGAG_L001_R1_001.fastq.gz'),
-       (u'File type', u'Conventional base calls'),
-       (u'Encoding', u'Sanger / Illumina 1.9'), (u'Total Sequences', u'157171'),
-       (u'Filtered Sequences', u'0'), (u'Sequence length', u'51'),
-       (u'%GC', u'40')
-      ],
-      'qc_result': u'pass'},
-
-      u'fastqc_version': '0.12',
-     }
-
-     The FastQC version is stored under data['fastqc_version'].
-
-    :type zip_file_path: str
-    :return: dict
-    """
-    def _parse(fh):
-        data = {'fastqc_version': fh.readline().split('\t')[1].strip()}
-        section = None
-        for l in fh:
-            line = l.strip()
-            if line[0:2] == '>>':
-                if line == '>>END_MODULE':
-                    # end section
-                    continue
-                else:
-                    # start new section
-                    section, qc_result = line[2:].split('\t')
-                    data[section] = {'rows': [],
-                                     'qc_result': qc_result}
-                    continue
-            if line[0] == '#':
-                column_labels = tuple(line[1:].split('\t'))
-                data[section]['column_labels'] = column_labels
-                continue
-            else:
-                data_row = tuple(line.split('\t'))
-                data[section]['rows'].append(data_row)
-
-        return data
-
-    return parse_file_from_zip(zip_file_path,
-                               'fastqc_data.txt',
-                               _parse)
-
-
-def _extract_fastqc_basic_stats(fastqc_data, sample_id):
-    basic_stats = fastqc_data[sample_id]['Basic Statistics']
-    stats = {}
-    for row in basic_stats['rows']:
-        k = row[0]
-        v = row[1]
-        if 'Total Sequences' in k:
-            stats['number_of_reads'] = int(v)
-        # No longer used since apparently this is always zero ?
-        # if 'Sequences flagged as poor quality' in k:
-        #     stats['number_of_poor_quality_reads'] = int(v)
-        if 'Sequence length' in k:
-            # this can be a single number (eg 51) or a range (eg 35-51)
-            # we take the upper value in the range
-            stats['read_length'] = int(v.split('-')[-1])
-        if '%GC' in k:
-            stats['percent_gc'] = float(v)
-
-    return stats
 
 
 class TmpZipExtract:
