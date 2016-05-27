@@ -394,60 +394,6 @@ def get_run_id_from_path(run_path):
     return os.path.basename(run_path.strip(os.path.sep))
 
 
-def get_sample_directories(project_path):
-    """
-    Returns an iterator that gives tuples of ("Sample_" directory, Sample ID)
-    from within a bcl2fastq Project_ directory.
-
-    :type project_path: str
-    :return: Iterator
-    """
-    for item in os.listdir(project_path):
-        sample_path = join(project_path, item)
-        if not isdir(sample_path):
-            continue
-
-        fqfiles = os.listdir(sample_path)
-        # detect any directory containing FASTQ files
-        if any([f.endswith('.fastq.gz') for f in fqfiles]):
-            # we strip Sample_ (if it's there) to get the SampleName
-            yield sample_path, item.lstrip('Sample_')
-
-
-def get_fastq_read_files(sample_path):
-    """
-    Returns an iterator that gives gzipped FASTQ read files from a
-    a bcl2fastq Project_*/Sample_* directory.
-
-    :type sample_path: str
-    :return: Iterator
-    """
-    for item in os.listdir(sample_path):
-        fastq_path = join(sample_path, item)
-
-        # NOTE: an alternative would be to use SampleSheet.csv
-        # to construct the expected output filenames
-        # Illumina FASTQ files use the following naming scheme:
-        # <sample id>_<index>_L<lane>_R<read number>_<setnumber>.fastq.gz
-        # For example, the following is a valid FASTQ file name:
-        # NA10831_ATCACG_L002_R1_001.fastq.gz
-        # Note that lane and set numbers are 0-padded to 3 digits.
-        # In the case of non-multiplexed runs, <sample name> will be replaced
-        # with the lane numbers (lane1, lane2, ..., lane8) and <index> will be
-        #  replaced with "NoIndex".
-        # read_number = 1  # or 2?
-        # set_number = 1
-        # fn = '%s_%s_L%03d_R%d_%03d' % (ss['SampleID'],
-        #                                ss['Index'],
-        #                                ss['Lane'],
-        #                                read_number,
-        #                                set_number)
-
-        # we just return things with the .fastq.gz extension
-        if item.endswith('.fastq.gz') and isfile(fastq_path):
-            yield fastq_path
-
-
 # TODO: We could actually make patterns like these one a config option
 # (either raw Python regex with named groups, or write a translator to
 #  simplify the syntax so we can write {sample_id}_bla_{index} in the config

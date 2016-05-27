@@ -42,7 +42,6 @@ from mytardis_ngs_ingestor.illumina.run_info import parse_samplesheet, \
     get_number_of_reads_fastq, \
     get_read_length_fastq, rta_complete_parser, runinfo_parser, \
     illumina_config_parser, get_run_id_from_path, get_demultiplexer_info, \
-    get_sample_directories, get_fastq_read_files, \
     get_sample_id_from_fastq_filename, get_sample_name_from_fastq_filename, \
     parse_sample_info_from_filename, filter_samplesheet_by_project, \
     get_sample_project_mapping
@@ -480,143 +479,132 @@ def create_run_config_dataset_on_server(run_expt, run_expt_url, uploader):
 
 
 def register_project_fastq_datafiles(run_id,
-                                     proj_path,
+                                     fastq_files,
                                      samplesheet,
                                      dataset_url,
                                      uploader,
                                      fastqc_data=None,
-                                     no_sample_directories=False,
                                      fast_mode=False):
 
     sample_dict = samplesheet_to_dict(samplesheet)
 
-    if no_sample_directories:  # eg, Undetermined_indices
-        sample_path_and_name = [(proj_path, None)]
-    else:
-        sample_path_and_name = get_sample_directories(proj_path)
-
     # Upload datafiles for the FASTQ reads in the project,
     # for each Sample_ directory
-    for sample_path, sample_name in sample_path_and_name:
-        for fastq_path in get_fastq_read_files(sample_path):
+    for fastq_path in fastq_files:
 
-                sample_id = get_sample_id_from_fastq_filename(fastq_path)
+            sample_id = get_sample_id_from_fastq_filename(fastq_path)
 
-                # sample_name may not be in the SampleSheet dict
-                # if we are dealing the unaligned reads (eg sample_names
-                # lane1, lane2 etc)
-                # So, we grab either the info for the sample_name, or
-                # we use an empty dict (where all params will then be
-                # the default missing values)
+            # sample_name may not be in the SampleSheet dict
+            # if we are dealing the unaligned reads (eg sample_names
+            # lane1, lane2 etc)
+            # So, we grab either the info for the sample_name, or
+            # we use an empty dict (where all params will then be
+            # the default missing values)
 
-                # TODO: ensure we can also deal with unbarcoded runs,
-                #       where Index is "NoIndex" and sample_names are
-                #       lane1, lane2 etc.
+            # TODO: ensure we can also deal with unbarcoded runs,
+            #       where Index is "NoIndex" and sample_names are
+            #       lane1, lane2 etc.
 
-                # the read number isn't encoded in SampleSheet.csv, so we
-                # extract it from the FASTQ filename instead
-                read = None
-                info_from_fn = parse_sample_info_from_filename(fastq_path)
-                if info_from_fn is not None:
-                    read = info_from_fn.get('read', None)
-                    if sample_name is None:
-                        sample_name = info_from_fn.get('sample_name', None)
-                else:
-                    logger.warning("Unrecognized FASTQ filename pattern - "
-                                   "skipping: %s", fastq_path)
-                    continue
+            # the read number isn't encoded in SampleSheet.csv, so we
+            # extract it from the FASTQ filename instead
+            info_from_fn = parse_sample_info_from_filename(fastq_path)
+            if info_from_fn is not None:
+                read = info_from_fn.get('read', None)
+                sample_name = info_from_fn.get('sample_name', None)
+            else:
+                logger.warning("Unrecognized FASTQ filename pattern - "
+                               "skipping: %s", fastq_path)
+                continue
 
-                sampleinfo = sample_dict.get(sample_name, {})
+            sampleinfo = sample_dict.get(sample_name, {})
 
-                reference_genome = sampleinfo.get('SampleRef', '')
-                index_sequence = sampleinfo.get('Index', '')
-                is_control = sampleinfo.get('Control', '')
-                recipe = sampleinfo.get('Recipe', '')
-                operator = sampleinfo.get('Operator', '')
-                description = sampleinfo.get('Description', '')
-                project = sampleinfo.get('SampleProject', '')
-                lane = sampleinfo.get('Lane', None)
-                if lane is not None:
-                    lane = int(lane)
-                # flowcell ID is already attached to the Dataset metadata
-                # and can be inferrd from the sample_id, so we don't make
-                # a special field for it
-                # fcid = sampleinfo.get('FCID')
+            reference_genome = sampleinfo.get('SampleRef', '')
+            index_sequence = sampleinfo.get('Index', '')
+            is_control = sampleinfo.get('Control', '')
+            recipe = sampleinfo.get('Recipe', '')
+            operator = sampleinfo.get('Operator', '')
+            description = sampleinfo.get('Description', '')
+            project = sampleinfo.get('SampleProject', '')
+            lane = sampleinfo.get('Lane', None)
+            if lane is not None:
+                lane = int(lane)
+            # flowcell ID is already attached to the Dataset metadata
+            # and can be inferrd from the sample_id, so we don't make
+            # a special field for it
+            # fcid = sampleinfo.get('FCID')
 
-                parameters = {'run_id': run_id,
-                              'sample_id': sample_id,
-                              'sample_name': sample_name,
-                              'reference_genome': reference_genome,
-                              'index_sequence': index_sequence,
-                              'is_control': is_control,
-                              'recipe': recipe,
-                              'operator_name': operator,
-                              'description': description,
-                              'project': project,
-                              'lane': lane,
-                              'read': read,
-                              }
+            parameters = {'run_id': run_id,
+                          'sample_id': sample_id,
+                          'sample_name': sample_name,
+                          'reference_genome': reference_genome,
+                          'index_sequence': index_sequence,
+                          'is_control': is_control,
+                          'recipe': recipe,
+                          'operator_name': operator,
+                          'description': description,
+                          'project': project,
+                          'lane': lane,
+                          'read': read,
+                          }
 
-                fqc_completed_list = []
-                if fastqc_data:
-                    fqc_completed_list = [s['filename']
-                                          for s in fastqc_data.get('samples',
-                                                                   [])
-                                          ]
+            fqc_completed_list = []
+            if fastqc_data:
+                fqc_completed_list = [s['filename']
+                                      for s in fastqc_data.get('samples', [])]
 
-                filename = os.path.basename(fastq_path)
-                if filename in fqc_completed_list:
-                    # grab the FastQC data for just this FASTQ file
-                    sample_fqcdata = next((s for s in fastqc_data['samples'] if
-                                           s['filename'] == filename), None)
-                    basic_stats = sample_fqcdata['basic_stats']
-                    parameters.update(basic_stats)
-                elif not fast_mode:
-                    # If there is no FastQC data with read counts etc for
-                    # this sample (e for Undetermined_indicies) we calculate
-                    # our own
-                    logger.info("Calculating number of reads for: %s",
-                                fastq_path)
-                    parameters['number_of_reads'] = \
-                        get_number_of_reads_fastq(fastq_path)
-                    logger.info("Calculating read length for: %s", fastq_path)
-                    parameters['read_length'] = \
-                        get_read_length_fastq(fastq_path)
+            filename = os.path.basename(fastq_path)
+            if filename in fqc_completed_list:
+                # grab the FastQC data for just this FASTQ file
+                sample_fqcdata = next((s for s in fastqc_data['samples'] if
+                                       s['filename'] == filename), None)
+                basic_stats = sample_fqcdata['basic_stats']
+                parameters.update(basic_stats)
+            elif not fast_mode:
+                # If there is no FastQC data with read counts etc for
+                # this sample (e for Undetermined_indicies) we calculate
+                # our own
+                logger.info("Calculating number of reads for: %s",
+                            fastq_path)
+                parameters['number_of_reads'] = \
+                    get_number_of_reads_fastq(fastq_path)
+                logger.info("Calculating read length for: %s", fastq_path)
+                parameters['read_length'] = \
+                    get_read_length_fastq(fastq_path)
 
-                fq_datafile = DataFile()
-                datafile_params = FastqRawReads()
-                datafile_params.from_dict(parameters, existing_only=True)
-                fq_datafile.parameters = datafile_params
-                datafile_parameter_sets = fq_datafile.package_parameter_sets()
+            fq_datafile = DataFile()
+            datafile_params = FastqRawReads()
+            datafile_params.from_dict(parameters, existing_only=True)
+            fq_datafile.parameters = datafile_params
+            datafile_parameter_sets = fq_datafile.package_parameter_sets()
 
-                replica_url = fastq_path
-                if uploader.storage_mode == 'shared':
-                    replica_url = get_shared_storage_replica_url(
-                        uploader.storage_box_location,
-                        fastq_path)
+            replica_url = fastq_path
+            if uploader.storage_mode == 'shared':
+                replica_url = get_shared_storage_replica_url(
+                    uploader.storage_box_location,
+                    fastq_path)
 
-                if fast_mode:
-                    md5_checksum = '__undetermined__'
-                else:
-                    md5_checksum = None  # will be calculated
+            if fast_mode:
+                md5_checksum = '__undetermined__'
+            else:
+                md5_checksum = None  # will be calculated
 
-                try:
-                    uploader.upload_file(
+            try:
+                uploader.upload_file(
+                    fastq_path,
+                    dataset_url,
+                    parameter_sets_list=datafile_parameter_sets,
+                    replica_url=replica_url,
+                    md5_checksum=md5_checksum,
+                )
+            except Exception as ex:
+                logger.error("Failed to register Datafile: "
+                             "%s", fastq_path)
+                logger.debug("Exception: %s", ex)
+                raise ex
+
+            logger.info("Added Datafile: %s (%s)",
                         fastq_path,
-                        dataset_url,
-                        parameter_sets_list=datafile_parameter_sets,
-                        replica_url=replica_url,
-                        md5_checksum=md5_checksum,
-                    )
-                except Exception as ex:
-                    logger.error("Failed to register Datafile: "
-                                 "%s", fastq_path)
-                    logger.debug("Exception: %s", ex)
-                    raise ex
-
-                logger.info("Added Datafile: %s (%s)",
-                            fastq_path,
-                            dataset_url)
+                        dataset_url)
 
 
 def get_sample_id_from_fastqc_zip_filename(filepath):
@@ -1592,19 +1580,13 @@ def ingest_run(run_path=None):
             logger.error("Uploading SampleSheet.csv for Project failed: "
                          "%s (%s)", fq_dataset_url, proj_id)
 
-        if proj_id == 'Undetermined_indices':
-            no_sample_directories = undetermined_in_root_folder
-        else:
-            no_sample_directories = False
-
         register_project_fastq_datafiles(
             run_id,
-            proj_path,
+            fastq_files,
             samplesheet,
             fq_dataset_url,
             uploader,
             fastqc_data=fqc_summary,
-            no_sample_directories=no_sample_directories,
             fast_mode=options.fast)
 
     logger.info("Ingestion of run %s complete !", run_id)
