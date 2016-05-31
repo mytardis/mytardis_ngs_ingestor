@@ -44,7 +44,7 @@ from mytardis_ngs_ingestor.illumina.run_info import parse_samplesheet, \
     illumina_config_parser, get_run_id_from_path, get_demultiplexer_info, \
     get_sample_id_from_fastq_filename, get_sample_name_from_fastq_filename, \
     parse_sample_info_from_filename, filter_samplesheet_by_project, \
-    get_sample_project_mapping
+    get_sample_project_mapping, undetermined_reads_in_root
 
 # a module level list of temporary directories that have been
 # created, so these can be cleaned up upon premature exit
@@ -561,7 +561,7 @@ def register_project_fastq_datafiles(run_id,
                 parameters.update(basic_stats)
             elif not fast_mode:
                 # If there is no FastQC data with read counts etc for
-                # this sample (e for Undetermined_indicies) we calculate
+                # this sample (eg for Undetermined_indicies) we calculate
                 # our own
                 logger.info("Calculating number of reads for: %s",
                             fastq_path)
@@ -1108,24 +1108,16 @@ def pre_ingest_checks(options):
         # return False
 
     demultiplexer_version_num = demultiplexer_info.get('version_number', '')
-    undetermined_in_root_folder = False
-    if demultiplexer_version_num:
-        undetermined_in_root_folder = \
-            LooseVersion(demultiplexer_version_num) >= LooseVersion('2')
 
     project_fastq_mapping = get_sample_project_mapping(bcl2fastq_output_dir,
                                                        absolute_paths=True)
 
-    for p, fq_files in project_fastq_mapping.items():
-        p_path = join(bcl2fastq_output_dir,
-                      proj_id_to_proj_dir(
-                          p,
-                          demultiplexer_version_num=demultiplexer_version_num))
-        if p == 'Undetermined_indices':
-            if undetermined_in_root_folder:
-                p_path = bcl2fastq_output_dir
-            else:
-                p_path = join(bcl2fastq_output_dir, 'Undetermined_indices')
+    for proj_dir, fq_files in project_fastq_mapping.items():
+        p_path = join(bcl2fastq_output_dir, proj_dir)
+
+        if proj_dir == 'Undetermined_indices' and \
+                undetermined_reads_in_root(bcl2fastq_output_dir):
+            p_path = bcl2fastq_output_dir
 
         if not exists(p_path):
             logger.error("Aborting - project directory '%s' is missing.",
@@ -1391,19 +1383,12 @@ def ingest_run(run_path=None):
         raise Exception()
 
     demultiplexer_version_num = demultiplexer_info.get('version_number', '')
-    undetermined_in_root_folder = False
-    if demultiplexer_version_num:
-        undetermined_in_root_folder = \
-            LooseVersion(demultiplexer_version_num) >= LooseVersion('2')
 
     project_fastq_mapping = get_sample_project_mapping(bcl2fastq_output_dir,
                                                        absolute_paths=True)
 
     for proj_id, fastq_files in project_fastq_mapping.items():
-        proj_path = join(bcl2fastq_output_dir,
-                         proj_id_to_proj_dir(
-                             proj_id,
-                             demultiplexer_version_num=demultiplexer_version_num))
+        proj_path = join(bcl2fastq_output_dir, proj_id)
 
         proj_expt = create_project_experiment_object(
             proj_id,
@@ -1416,11 +1401,9 @@ def ingest_run(run_path=None):
         proj_expt.parameters.demultiplexing_commandline_options = \
             run_expt.parameters.demultiplexing_commandline_options
 
-        if proj_id == 'Undetermined_indices':
-            if undetermined_in_root_folder:
-                proj_path = bcl2fastq_output_dir
-            else:
-                proj_path = join(bcl2fastq_output_dir, proj_id)
+        if proj_id == 'Undetermined_indices' and \
+                undetermined_reads_in_root(bcl2fastq_output_dir):
+            proj_path = bcl2fastq_output_dir
 
         fastqc_out_dir = get_fastqc_output_directory(proj_path)
 
@@ -1466,9 +1449,6 @@ def ingest_run(run_path=None):
             logger.info("Created Project Experiment: %s (%s)",
                         project_url,
                         proj_id)
-
-        # samples_in_project = [s['SampleID'] for s in samplesheet]
-        # sample_desc = 'FASTQ reads for samples '+', '.join(samples_in_project)
 
         # We associate Undetermined_indices Datasets with the overall 'run'
         # Experiment only (unlike proper Project Datasets which also have

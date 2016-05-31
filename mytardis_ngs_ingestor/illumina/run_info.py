@@ -514,6 +514,13 @@ def get_sample_project_mapping(basepath,
         if catch_undetermined and 'Undetermined' in fqfile:
             project = u'Undetermined_indices'
 
+        # TODO: we currently don't deal with Project_ prefixes, really
+        #       the project ID doesn't include Project_. If we strip
+        #       this here, maybe we need to include the project directory
+        #       in the fastq paths so we can know the path and project id
+        #       - will require fixes to downstream code that
+        #       does join(bcl2fastq_output_dir, project_id, fastq_file)
+
         # TODO: also incorporate sample_id in this datastructure
         if project not in project_mapping:
             project_mapping[project] = []
@@ -527,6 +534,31 @@ def get_sample_project_mapping(basepath,
     #       and/or use the FASTQ header(s)
 
     return project_mapping
+
+
+def undetermined_reads_in_root(basepath):
+    """
+    Returns False if the Undetermined_indicies fastq.gz files are in their own
+    project directory (ie, old bcl2fastq 1.8.4 style), or True if they are
+    bare in the root of the bcl2fastq output diretory (eg bcl2fastq 2.x)
+
+    :param basepath:
+    :type basepath:
+    :return:
+    :rtype:
+    """
+    for f in os.listdir(basepath):
+        if 'Undetermined_' not in f:
+            continue
+
+        f_path = join(basepath, f)
+
+        if isfile(f_path):
+            return True
+        if isdir(f_path):
+            return False
+
+    raise Exception("No Undetermined_indices files or directories found.")
 
 
 def get_sample_id_from_fastq_filename(filepath):
