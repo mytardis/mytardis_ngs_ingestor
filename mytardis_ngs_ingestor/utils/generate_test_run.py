@@ -95,7 +95,7 @@ def add_options(parser):
     parser.add_argument("-i", "--instrument",
                         dest="instrument_id",
                         type=str,
-                        default='M04416',
+                        default='M04242',
                         help="The instrument ID",
                         metavar="INSTRUMENT_ID")
 

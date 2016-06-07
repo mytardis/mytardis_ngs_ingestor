@@ -1,5 +1,5 @@
 <DemultiplexConfig>
-  <Software Version="bcl2fastq-1.8.3" CmdAndArgs="/usr/local/bin/bcl2fastq/bin/configureBclToFastq.pl --fastq-cluster-count 300000000 --input-dir ./Data/Intensities/BaseCalls --output-dir ././130907_SNL177_0001_AH9PJLADXZ.bcl2fastq --sample-sheet ./SampleSheet.csv --no-eamss" Name="configureBclToFastq.pl">
+  <Software Version="bcl2fastq-1.8.3" CmdAndArgs="/usr/local/bin/bcl2fastq/bin/configureBclToFastq.pl --fastq-cluster-count 300000000 --input-dir ./Data/Intensities/BaseCalls --output-dir ././130907_DMO177_0001_AH9PJLADXZ.bcl2fastq --sample-sheet ./SampleSheet.csv --no-eamss" Name="configureBclToFastq.pl">
     <Software Version="1.17.20.0" Name="RTA">
       <Software Version="1.17.20.0" Name="RTA">
         <Software Version="2.0.5" Platform="HiSeq" Name="HiSeq Control Software" />

@@ -22,14 +22,18 @@ from semantic_version import Version as SemanticVersion
 from distutils.version import LooseVersion
 
 from illumina import fastqc
-from standalone_html import make_html_images_inline
+from utils.standalone_html import make_html_images_inline
 
 import mytardis_uploader
 from mytardis_uploader import MyTardisUploader
 from mytardis_uploader import setup_logging, get_config, validate_config
 # from mytardis_ngs_ingestor import get_exclude_patterns_as_regex_list
 
-import models
+from illumina.models import DemultiplexedSamplesBase, FastqcOutputBase, \
+    FastqcReportsBase, FastqRawReadsBase, HiddenFastqcProjectSummaryBase, \
+    IlluminaSequencingRunBase, NucleotideRawReadsDatasetBase, \
+    IlluminaRunConfigBase
+
 from mytardis_models import Experiment, Dataset, DataFile
 from models import DemultiplexedSamplesBase, FastqcOutputBase, \
     FastqcReportsBase, FastqRawReadsBase, HiddenFastqcProjectSummaryBase, \
@@ -325,7 +329,7 @@ def get_experiments_from_server_by_run_id(uploader, run_id,
 
     :param uploader: An uploader object instance
     :type uploader: MyTardisUploader
-    :param run_id: The unique run ID (eg 150225_SNL177_0111_AHFNLKADXX)
+    :param run_id: The unique run ID (eg 150225_DMO177_0111_AHFNLKADXX)
     :type run_id: basestring
     :param schema_namespace: The namespace of the MyTardis schema (a URL)
     :type schema_namespace: basestring

@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <RunInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Version="2">
-  <Run Id="140907_SNL177_0002_AC9246ACXX" Number="2">
+  <Run Id="140907_DMO177_0002_AC9246ACXX" Number="2">
     <Flowcell>C9246ACXX</Flowcell>
-    <Instrument>SNL177</Instrument>
+    <Instrument>DMO177</Instrument>
     <Date>140907</Date>
     <Reads>
       <Read Number="1" NumCycles="51" IsIndexedRead="N" />

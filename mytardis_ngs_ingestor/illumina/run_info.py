@@ -315,7 +315,7 @@ def get_demultiplexer_info(demultiplexed_output_path):
     eg. {'version': 'bcl2fastq 1.8.3,
          'commandline_options':
          '--input-dir ./Data/Intensities/BaseCalls ' +
-         '--output-dir ./130613_SNL177_0029_AH0EPTADXX.pc ' +
+         '--output-dir ./130613_DMO177_0029_AH0EPTADXX.pc ' +
          '--sample-sheet ./SampleSheet.csv --no-eamss'}
 
     :param demultiplexed_output_path: bcl2fastq (or similar) output path
