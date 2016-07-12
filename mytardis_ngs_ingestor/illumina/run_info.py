@@ -424,7 +424,8 @@ def parse_sample_info_from_filename(filepath, suffix='.fastq.gz'):
     index_re = r'(?P<index>[ATGC-]{6,33})'
     # dual_index_re = r'(?P<index>[ATGC]{6,12})-?(?P<index2>[ATGC]{6,12})?'
     lane_re = r'L0{0,3}(?P<lane>\d+)'
-    read_re = r'R(?P<read>\d)'
+    # Usually R1 or R2, can be I1 etc if index reads are output seperately
+    read_re = r'[RI](?P<read>\d)'
     # index_read_re = r'I(?P<read>\d)'
     set_number_re = r'(?P<set_number>\d+)'
     sample_number_re = r'S(?P<sample_number>\d+)'

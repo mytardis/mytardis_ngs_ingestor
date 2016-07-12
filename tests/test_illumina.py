@@ -9,7 +9,8 @@ from mytardis_ngs_ingestor.illumina.run_info import \
     parse_samplesheet, \
     filter_samplesheet_by_project, \
     filter_samplesheet_by_project, \
-    rta_complete_parser, get_sample_project_mapping
+    rta_complete_parser, get_sample_project_mapping, \
+    parse_sample_info_from_filename
 
 
 class IlluminaParserTestCase(unittest.TestCase):
@@ -227,6 +228,15 @@ class IlluminaParserTestCase(unittest.TestCase):
         date, version = rta_complete_parser(self.run2_dir)
         self.assertEqual(date, datetime(2014, 9, 7, 3, 31, 22))
         self.assertEqual(version, 'RTA 2.7.3')
+
+    def test_parse_sample_info_from_filename(self):
+        fq_info = parse_sample_info_from_filename(
+            'DMSO-7_S7_L008_I2_001.fastq.gz')
+        self.assertEqual(fq_info.get('sample_name', None), 'DMSO-7')
+        self.assertEqual(fq_info.get('sample_number', None), 7)
+        self.assertEqual(fq_info.get('lane', None), 8)
+        self.assertEqual(fq_info.get('read', None), 2)
+        self.assertEqual(fq_info.get('set_number', None), 1)
 
 
 class VersionTest(unittest.TestCase):
