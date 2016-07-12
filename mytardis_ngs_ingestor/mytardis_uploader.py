@@ -360,7 +360,7 @@ class MyTardisUploader:
 
         return self._get_parametersets_from_json(filename)
 
-    def _raise_502(self, response):
+    def _raise_request_exception(self, response):
         e = requests.exceptions.RequestException(response=response)
         e.message = "%s %s" % (response.status_code, response.reason)
         raise e
@@ -433,7 +433,7 @@ class MyTardisUploader:
             # server (eg Nginx or Apache) in front of MyTardis could be
             # temporarily restarting
             if response.status_code == 502:
-                self._raise_502(response)
+                self._raise_request_exception(response)
 
         except requests.exceptions.RequestException as e:
             logger.error("Request failed : %s : %s", e.message, url)
