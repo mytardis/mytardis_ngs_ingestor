@@ -29,14 +29,14 @@ from mytardis_uploader import MyTardisUploader
 from mytardis_uploader import setup_logging, get_config, validate_config
 # from mytardis_ngs_ingestor import get_exclude_patterns_as_regex_list
 
-from mytardis_ngs_ingestor.mytardis_models import Experiment, Dataset, DataFile
-from mytardis_ngs_ingestor.illumina.models import DemultiplexedSamplesBase, \
+from mytardis_models import Experiment, Dataset, DataFile
+from illumina.models import DemultiplexedSamplesBase, \
     FastqcOutputBase, FastqcReportsBase, FastqRawReadsBase, \
     HiddenFastqcProjectSummaryBase, IlluminaSequencingRunBase, \
     NucleotideRawReadsDatasetBase, IlluminaRunConfigBase
 
-from mytardis_ngs_ingestor.illumina import run_info, fastqc
-from mytardis_ngs_ingestor.illumina.run_info import parse_samplesheet, \
+from illumina import run_info, fastqc
+from illumina.run_info import parse_samplesheet, \
     samplesheet_to_dict, get_project_ids_from_samplesheet, \
     get_number_of_reads_fastq, \
     get_read_length_fastq, rta_complete_parser, runinfo_parser, \
