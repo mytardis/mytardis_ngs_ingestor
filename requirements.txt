@@ -1,5 +1,6 @@
 appsettings
 backoff
+beautifulsoup4
 colorlog
 fs
 future
