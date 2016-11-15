@@ -764,7 +764,8 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
                       "sample_name": "OCT4-15",
                       "index": "TGGTGA",
                       "lane": "1",
-                      "read_pair": "1",
+                      "read": "1",
+                      "read_type: "R",
                       "illumina_sample_sheet": { .... },
                       "qc_checks" : [("Basic Statistics", "PASS"),],
                       "basic_stats": {"number_of_reads": 1042034623, ...},
@@ -807,7 +808,7 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
             return None
         sample_number = a.get('sample_number', None)
         if sample_number is not None:
-            return int(sample_number - 1)
+            return int(sample_number) - 1
 
         # otherwise, fall back to finding the sample in the samplesheet
         # to get it's index
@@ -820,44 +821,18 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
 
         return None
 
-    def sort_fqc_sample_cmp(a, b):
-        """
-        Sorting comparison (cmp) function to order FastQC output filenames
-        to the equivalent ordering in SampleSheet.csv
-
-        :param a: The path to a FastQC output zip file.
-        :param b: The path to a FastQC output zip file.
-        :type a: str
-        :type b: str
-        :rtype order: int
-        """
-        aa = parse_sample_info_from_filename(a, '_fastqc.zip')
-        bb = parse_sample_info_from_filename(b, '_fastqc.zip')
-        ai = find_sample_index(aa)
-        bi = find_sample_index(bb)
-        if ai is None or bi is None:
-            return 0
-        if ai > bi:
-            return 1
-        if ai < bi:
-            return -1
-        if ai == bi:
-            if aa['lane'] < bb['lane']:
-                return 1
-            if aa['lane'] > bb['lane']:
-                return -1
-            if aa['lane'] == bb['lane']:
-                if aa['read'] < bb['read']:
-                    return 1
-                if aa['read'] > bb['read']:
-                    return -1
-                if aa['read'] == bb['read']:
-                    return -1 if aa['set_number'] < bb['set_number'] else 1
-
-        return 0
-
     fastqc_zips = list(get_fastqc_zip_files(fastqc_out_dir))
-    fastqc_zips.sort(cmp=sort_fqc_sample_cmp)
+
+    # Attempt to sort the list of FastQC output files to the same order seen
+    # in SampleSheet.csv. Multiple attribute list sort.
+    _fn2dict = parse_sample_info_from_filename
+    fastqc_zips.sort(key=lambda f:
+                     (find_sample_index(_fn2dict(f, '_fastqc.zip')),
+                      _fn2dict(f, '_fastqc.zip').get('lane', None),
+                      _fn2dict(f, '_fastqc.zip').get('read', None),
+                      _fn2dict(f, '_fastqc.zip').get('read_type', None),
+                      _fn2dict(f, '_fastqc.zip').get('set_number', None))
+                     )
 
     for fastqc_zip_path in fastqc_zips:
         qc_pass_fail_table_raw = fastqc.parse_summary_txt(fastqc_zip_path)
@@ -897,7 +872,9 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
                        u'fastqc_report_filename': fqc_report_filename,
                        u'index': index,
                        u'lane': lane,
-                       u'read': fqfile_details.get('read', None),
+                       u'read': '%s%s' % (fqfile_details.get('read_type', ''),
+                                          fqfile_details.get('read', '')),
+                       u'read_type': fqfile_details.get('read_type', None),
                        # TODO: include the SampleSheet line for this sample
                        u'illumina_sample_sheet': { },
                        }
@@ -1366,7 +1343,8 @@ def ingest_run(run_path=None):
             trash_experiments_server(uploader, matching)
         else:
             logger.error("Please manually remove existing run before "
-                         "ingesting: %s (%s)", run_id, ', '.join(matching))
+                         "ingesting, or set the --replace-duplicate-runs=True "
+                         "option: %s (%s)", run_id, ', '.join(matching))
             raise Exception()
 
     # The directory where bcl2fastq puts its output,

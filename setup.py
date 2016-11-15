@@ -37,7 +37,7 @@ setup(
     url='https://github.com/pansapiens/mytardis_ngs_ingestor',
 
     author='Andrew Perry',
-    author_email='ajperry@pansapiens.com',
+    author_email='Andrew.Perry@monash.edu',
 
     license='MIT',
 

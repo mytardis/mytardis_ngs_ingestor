@@ -236,6 +236,16 @@ class IlluminaParserTestCase(unittest.TestCase):
         self.assertEqual(fq_info.get('sample_number', None), 7)
         self.assertEqual(fq_info.get('lane', None), 8)
         self.assertEqual(fq_info.get('read', None), 2)
+        self.assertEqual(fq_info.get('read_type', None), 'I')
+        self.assertEqual(fq_info.get('set_number', None), 1)
+
+        fq_info = parse_sample_info_from_filename(
+            '16-04333_TGACCA_L007_R3_001.fastq.gz')
+        self.assertEqual(fq_info.get('sample_name', None), '16-04333')
+        self.assertEqual(fq_info.get('sample_number', None), None)
+        self.assertEqual(fq_info.get('lane', None), 7)
+        self.assertEqual(fq_info.get('read', None), 3)
+        self.assertEqual(fq_info.get('read_type', None), 'R')
         self.assertEqual(fq_info.get('set_number', None), 1)
 
 
