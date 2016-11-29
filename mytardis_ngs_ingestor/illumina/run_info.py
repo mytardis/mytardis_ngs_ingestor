@@ -79,7 +79,8 @@ def parse_samplesheet(file_path, standardize_keys=True):
 
 
 def filter_samplesheet_by_project(file_path, proj_id,
-                                  project_column_label='SampleProject'):
+                                  project_column_label='SampleProject',
+                                  output_ini_headers=False):
 
     """
     Windows \r\n
@@ -99,24 +100,48 @@ def filter_samplesheet_by_project(file_path, proj_id,
     # last line: #_IEMVERSION_3_TruSeq LT,,,,,,,,,
     outlines = []
     with open(file_path, "rU") as f:
+        header_content = []
         header = f.readline().strip()
+        header_content.append(header + '\r\n')
 
         # skip any INI-style headers down to the CSV sample list in the [Data]
         if '[Header]' in header:
-            while not '[Data]' in header:
-                header = f.readline()
+            while '[Data]' not in header:
+                header = f.readline().strip()
+                header_content.append(header + '\r\n')
             header = f.readline().strip()
+            header_content.append(header + '\r\n')
+
+        if output_ini_headers:
+            outlines.extend(header_content[:-1])
 
         s = header.split(',')
         # old samplesheet formats have no underscores in column labels,
         # newer (IEMv4) ones do. by removing underscores here, we can find
         # 'SampleProject' and 'Sample_Project', whichever exists
-        s_no_underscores = [c.replace('_', '') for c in s]
-        project_column_index = s_no_underscores.index(project_column_label)
+        s_no_underscores = [c.lower().replace('_', '') for c in s]
+        project_column_index = s_no_underscores.index(project_column_label.lower())
         outlines.append(header + '\r\n')
+
+        # find the set of unique project ids in the sample sheet
+        proj_ids_in_sheet = set()
         for l in f:
             s = l.strip().split(',')
-            if s[project_column_index] == proj_id or l[0] == '#':
+            proj_ids_in_sheet.add(s[project_column_index].strip())
+
+        # We want to output all lines if there is only a single project.
+        # The on-instrument FASTQ generation for MiSeq seems to not produce
+        # Project directories, even if there is a Sample_Project specified in
+        # the samplesheet. So the 'proj_id' here might be empty, but we still
+        # want all the SampleSheet.csv lines of the one and only project in the
+        # SampleSheet in this case.
+        one_project_only = (len(proj_ids_in_sheet) == 1)
+
+        for l in f:
+            s = l.strip().split(',')
+            if (one_project_only or
+                    s[project_column_index].strip() == proj_id.strip() or
+                    l[0] == '#'):
                 outlines.append(l.strip() + '\r\n')
     return outlines
 

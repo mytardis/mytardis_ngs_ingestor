@@ -33,6 +33,10 @@ class IlluminaParserTestCase(unittest.TestCase):
         self.samplesheet_v4_path = path.join(os.path.dirname(__file__),
                                              self.run2_dir,
                                              'SampleSheet.csv')
+        self.samplesheet_single_proj_path = path.join(
+            os.path.dirname(__file__),
+            'test_data',
+            'SampleSheet_single_project.csv')
 
     def tearDown(self):
         pass
@@ -159,6 +163,39 @@ class IlluminaParserTestCase(unittest.TestCase):
 
         for expected_line, project_line in zip(expected, project_lines):
             self.assertEqual(project_line, expected_line)
+
+        project_lines = filter_samplesheet_by_project(
+            self.samplesheet_single_proj_path, '', output_ini_headers=True)
+        expected = \
+"""[Header],,,,,,,\r
+IEMFileVersion,4,,,,,,\r
+Experiment Name,John Smythe,,,,,,\r
+Date,7/09/2015,,,,,,\r
+Workflow,GenerateFASTQ,,,,,,\r
+Application,FASTQ Only,,,,,,\r
+Assay,OTE,,,,,,\r
+Description,,,,,,,\r
+Chemistry,Default,,,,,,\r
+,,,,,,,\r
+[Reads],,,,,,,\r
+151,,,,,,,\r
+151,,,,,,,\r
+,,,,,,,\r
+[Settings],,,,,,,\r
+ReverseComplement,0,,,,,,\r
+OnlyGenerateFASTQ,1,,,,,,\r
+,,,,,,,\r
+[Data],,,,,,,\r
+Lane,Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,Sample_Project,Description\r
+1,Sample-04345,BUGS-1,,,A1,CACGTCTA,Cytogenetics,\r
+1,Sample-04353,DRUGS-1,,,A2,ACGTCGTT,Cytogenetics,\r
+"""
+
+        for expected_line, project_line in \
+                zip(expected.splitlines(), project_lines):
+            self.assertEqual(project_line, expected_line + '\r\n')
+
+
 
     def test_get_sample_project_mapping(self):
         bcl2fastq_output_path = path.join(self.run2_dir,
