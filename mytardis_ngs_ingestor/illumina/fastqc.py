@@ -1,9 +1,10 @@
 import os
 from os.path import join, splitext, exists, isdir, isfile
+import shutil
 import subprocess
 import logging
 
-from fs.opener import opener
+from fs import open_fs
 # from fs.zipfs import ZipFS
 
 
@@ -73,7 +74,7 @@ def file_from_zip(zip_file_path, filename, mode='r'):
     # FastQC.out/15-02380-CE11-T13-L1_AACCAG_L001_R1_001_fastqc.zip
     # ie   fastq_filename + '_fastqc.zip'
 
-    # fs.opener.opener magic detects a filesystem type if we give it
+    # fs.open_fs magic detects a filesystem type if we give it
     # a URI-like string, eg zip://foo/bla/file.zip
     # (eg https://commons.apache.org/proper/commons-vfs/filesystems.html)
     # So we munge the path to a zip file to become a compatible URI
@@ -81,8 +82,8 @@ def file_from_zip(zip_file_path, filename, mode='r'):
     if splitext(zip_file_path)[1] == '.zip':
         zip_file_path = 'zip://' + zip_file_path
 
-    with opener.parse(zip_file_path)[0] as vfs:
-        for fn in vfs.walkfiles():
+    with open_fs(zip_file_path) as vfs:
+        for fn in vfs.walk.files():
             if os.path.basename(fn) == filename:
                 return vfs.open(fn, mode)
 

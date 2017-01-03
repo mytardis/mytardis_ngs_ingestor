@@ -2,7 +2,7 @@ appsettings
 backoff
 beautifulsoup4
 colorlog
-fs
+fs>=2.0,<3.0
 future
 ndg-httpsclient
 pathlib2

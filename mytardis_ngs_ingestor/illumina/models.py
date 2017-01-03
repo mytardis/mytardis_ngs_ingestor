@@ -1,7 +1,7 @@
 # Data model generated from ../fixtures/sequencing_facility_schema.json
 
 
-from mytardis_models import MyTardisParameterSet
+from mytardis_ngs_ingestor.mytardis_models import MyTardisParameterSet
 
 
 class IlluminaSequencingRunBase(MyTardisParameterSet):

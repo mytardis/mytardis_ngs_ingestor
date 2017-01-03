@@ -3,8 +3,8 @@ from __future__ import print_function, absolute_import, division
 
 __author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
 
-from builtins import (bytes, str, open, super, range,
-                      zip, round, input, int, pow, object)
+from future.builtins import (bytes, str, open, super, range,
+                             zip, round, input, int, pow, object)
 import six
 from six.moves.urllib.parse import urlparse, urljoin
 import sys
@@ -17,33 +17,50 @@ import atexit
 import os
 from os.path import join, splitext, exists, isdir, isfile
 import json
+from collections import OrderedDict
 
 from semantic_version import Version as SemanticVersion
 from distutils.version import LooseVersion
 
-from illumina import fastqc
-from utils.standalone_html import make_html_images_inline
+from mytardis_ngs_ingestor.utils.standalone_html import make_html_images_inline
 
-import mytardis_uploader
-from mytardis_uploader import MyTardisUploader
-from mytardis_uploader import setup_logging, get_config, validate_config
+import mytardis_ngs_ingestor.mytardis_uploader
+from mytardis_ngs_ingestor.mytardis_uploader import MyTardisUploader
+from mytardis_ngs_ingestor.mytardis_uploader import (setup_logging,
+                                                     get_config,
+                                                     validate_config)
 # from mytardis_ngs_ingestor import get_exclude_patterns_as_regex_list
 
-from mytardis_models import Experiment, Dataset, DataFile
-from illumina.models import DemultiplexedSamplesBase, \
-    FastqcOutputBase, FastqcReportsBase, FastqRawReadsBase, \
-    HiddenFastqcProjectSummaryBase, IlluminaSequencingRunBase, \
-    NucleotideRawReadsDatasetBase, IlluminaRunConfigBase
+from mytardis_ngs_ingestor.mytardis_models import Experiment, Dataset, DataFile
+from mytardis_ngs_ingestor.illumina.models import (
+    DemultiplexedSamplesBase,
+    FastqcOutputBase,
+    FastqcReportsBase,
+    FastqRawReadsBase,
+    HiddenFastqcProjectSummaryBase,
+    IlluminaSequencingRunBase,
+    NucleotideRawReadsDatasetBase,
+    IlluminaRunConfigBase)
 
-from illumina import run_info, fastqc
-from illumina.run_info import parse_samplesheet, \
-    samplesheet_to_dict, get_project_ids_from_samplesheet, \
-    get_number_of_reads_fastq, \
-    get_read_length_fastq, rta_complete_parser, runinfo_parser, \
-    illumina_config_parser, get_run_id_from_path, get_demultiplexer_info, \
-    get_sample_id_from_fastq_filename, get_sample_name_from_fastq_filename, \
-    parse_sample_info_from_filename, filter_samplesheet_by_project, \
-    get_sample_project_mapping, undetermined_reads_in_root
+from mytardis_ngs_ingestor.illumina import run_info, fastqc
+from mytardis_ngs_ingestor.illumina.run_info import (
+    parse_samplesheet,
+    samplesheet_to_dict,
+    get_project_ids_from_samplesheet,
+    get_number_of_reads_fastq,
+    get_read_length_fastq,
+    rta_complete_parser,
+    runinfo_parser,
+    illumina_config_parser,
+    get_run_id_from_path,
+    get_demultiplexer_info,
+    get_sample_id_from_fastq_filename,
+    get_sample_name_from_fastq_filename,
+    parse_sample_info_from_filename,
+    filter_samplesheet_by_project,
+    get_sample_project_mapping,
+    undetermined_reads_in_root,
+    get_index_from_fastq_content)
 
 # a module level list of temporary directories that have been
 # created, so these can be cleaned up upon premature exit
@@ -788,13 +805,16 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
     :type samplesheet: list[dict]
     :rtype project_summary: dict
     """
+    index_field_names = ['index', 'i7indexid', 'index2']
+
     project_summary = {u'samples': [], u'fastqc_version': None}
     fqc_detailed_data = {}
 
-    def find_sample_index(a):
+    def find_samplesheet_position(a):
         """
-        Returns the index of a matching sample from SampleSheet.csv, given
-        a dictionary of the type returned by parse_sample_info_from_filename.
+        Returns the index (zero-based int, not 'barcode') of a matching sample
+        from SampleSheet.csv, given a dictionary of the type returned by
+        parse_sample_info_from_filename.
 
         :param a: A dictionary representing a Sample ID.
         :type a: dict
@@ -813,10 +833,9 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
         # otherwise, fall back to finding the sample in the samplesheet
         # to get it's index
         for i, s in enumerate(samplesheet):
-            if s['SampleID'] == a['sample_name'] and \
-                    (s.get('Index', None) == a['index'] or
-                             s.get('index', None) == a['index']) and \
-                            int(s['Lane']) == a['lane']:
+            if s['sampleid'] == a['sample_name'] and \
+               s.get('index', None) == a['index'] and \
+               int(s['lane']) == a['lane']:
                 return i
 
         return None
@@ -827,7 +846,7 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
     # in SampleSheet.csv. Multiple attribute list sort.
     _fn2dict = parse_sample_info_from_filename
     fastqc_zips.sort(key=lambda f:
-                     (find_sample_index(_fn2dict(f, '_fastqc.zip')),
+                     (find_samplesheet_position(_fn2dict(f, '_fastqc.zip')),
                       _fn2dict(f, '_fastqc.zip').get('lane', None),
                       _fn2dict(f, '_fastqc.zip').get('read', None),
                       _fn2dict(f, '_fastqc.zip').get('read_type', None),
@@ -858,11 +877,22 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
         #       instead using fastq_filename to read the first header of
         #       the actual FASTQ file and extract the index from there
         #       get the index for cases where it isn't in the filename
+        # eg, FASTQ header where AACCAG is the index:
+        #
+        #  @SNL177:149:C9GRWACXX:1:1105:1636:1949 1:N:0:AACCAG
+        #
         if index is None:
             for s in samplesheet:
-                if s.get('SampleName', None) == sample_name and \
-                   s.get('Lane', None) == str(lane):
-                    index = s.get('index', None) or s.get('Index', None)
+                if s.get('samplename', None) == sample_name and \
+                   s.get('lane', None) == str(lane):
+                    index = s.get('index', None) or s.get('index', None)
+                    fqfile_details['index'] = index
+
+        indexes = OrderedDict()
+        for index_field in index_field_names:
+            if index_field in fqfile_details:
+                indexes[index_field] = fqfile_details[index_field]
+        combined_index = ' '.join(['%s:%s' % (k, v) for k, v in indexes.items()])
 
         sample_data = {u'sample_id': sample_id,
                        u'sample_name': sample_name,
@@ -871,6 +901,7 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
                        u'filename': fastq_filename,
                        u'fastqc_report_filename': fqc_report_filename,
                        u'index': index,
+                       u'indexes': json.loads(json.dumps(indexes)),
                        u'lane': lane,
                        u'read': '%s%s' % (fqfile_details.get('read_type', ''),
                                           fqfile_details.get('read', '')),
@@ -998,10 +1029,12 @@ def is_server_version_compatible(ingestor_version, server_version):
 
 
 def dump_schema_fixtures_as_json():
+    import illumina
+    import mytardis_models
     fixtures = []
-    for name, klass in models.__dict__.items():
+    for name, klass in illumina.models.__dict__.items():
         if (not name.startswith('__') and
-                issubclass(klass, models.MyTardisParameterSet)):
+                issubclass(klass, mytardis_models.MyTardisParameterSet)):
             fixtures.extend(klass().to_schema())
             fixtures.extend(klass().to_parameter_schema())
 
@@ -1303,7 +1336,7 @@ def ingest_run(run_path=None):
     # some app-specific REST API calls
     uploader.tardis_app_name = 'sequencing-facility'
 
-    ingestor_version = mytardis_uploader.__version__
+    ingestor_version = mytardis_ngs_ingestor.mytardis_uploader.__version__
     seqfac_app_version = get_mytardis_seqfac_app_version(uploader)
     logger.info("Verifying MyTardis server app '%s' matches the ingestor "
                 "version (%s)." % (uploader.tardis_app_name,
@@ -1387,7 +1420,8 @@ def ingest_run(run_path=None):
                 run_expt_url)
 
     samplesheet_path = join(run_path, 'SampleSheet.csv')
-    samplesheet, chemistry = parse_samplesheet(samplesheet_path)
+    samplesheet, chemistry = parse_samplesheet(samplesheet_path,
+                                               standardize_keys=True)
 
     # Under the Run Experiment we create a Dataset with the IlluminaRunConfig
     # schema containing the SampleSheet.csv, maybe also some logs and

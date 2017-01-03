@@ -5,9 +5,11 @@ import logging
 import os
 from os.path import join, splitext, exists, isdir, isfile
 from pathlib2 import Path
+from fs import open_fs
 import subprocess
 import re
 import csv
+import gzip
 from collections import OrderedDict
 from dateutil import parser as dateparser
 import xmltodict
@@ -37,7 +39,19 @@ def parse_samplesheet(file_path, standardize_keys=True):
     # .. >snip< ..
     #
 
-    lines = []
+    def _format_keys(reader):
+        if standardize_keys:
+            formatted = []
+            # remove any underscores to make names consistent between
+            # old and new style samplesheets (eg Sample_ID -> SampleID)
+            for r in [row for row in reader]:
+                r = {k.replace('_', '').lower(): r[k] for k in r.keys()}
+                formatted.append(r)
+        else:
+            formatted = [row for row in reader]
+
+        return formatted
+
     with open(file_path, "rU") as f:
         lines = f.readlines()
 
@@ -57,25 +71,18 @@ def parse_samplesheet(file_path, standardize_keys=True):
 
         reader = csv.DictReader(lines[data_index+1:])
 
-        if standardize_keys:
-            samples = []
-            # remove any underscores to make names consistent between
-            # old and new style samplesheets (eg Sample_ID -> SampleID)
-            for r in [row for row in reader]:
-                r = {k.replace('_', ''): r[k] for k in r.keys()}
-                samples.append(r)
-        else:
-            samples = [row for row in reader]
+        samples = _format_keys(reader)
 
-        return samples, chemistry
     else:  # Plain CSV (IEM v3 ?)
         reader = csv.DictReader(lines)
-        samples = [row for row in reader]
-        lastlinebit = samples[-1:][0].get('FCID', None)
+        samples = _format_keys(reader)
+        lastlinebit = samples[-1:][0].get('FCID', None) or \
+                      samples[-1:][0].get('fcid', None)
         if lastlinebit is not None:
             chemistry = lastlinebit.split('_')[-1].strip()
         del samples[-1:]
-        return samples, chemistry
+
+    return samples, chemistry
 
 
 def filter_samplesheet_by_project(file_path, proj_id,
@@ -530,11 +537,9 @@ def get_sample_project_mapping(basepath,
     :rtype: OrderedDict
     """
 
-    from fs.opener import opener
-
     fq_files = []
-    with opener.opendir(basepath) as vfs:
-        for fn in vfs.walkfiles():
+    with open_fs(basepath) as vfs:
+        for fn in vfs.walk.files():
             if fn.endswith(suffix):
                 fq_files.append(fn.lstrip('/').lstrip('\\'))
 
@@ -634,3 +639,17 @@ def get_sample_name_from_fastq_filename(filepath):
     """
     parts = parse_sample_info_from_filename(filepath)
     return parts['sample_name']
+
+
+def get_index_from_fastq_content(filepath):
+    """
+    Given a path to a FASTQ.gz file, returns the index sequence (assuming
+    standard Illumina headers)
+
+    :param filepath: The path to a gzipped FASTQ file.
+    :type filepath: basestring
+    :return: The index 'barcode' sequence.
+    :rtype: str
+    """
+    with gzip.open(filepath, 'rb') as f:
+        return f.readline().split(':').pop()

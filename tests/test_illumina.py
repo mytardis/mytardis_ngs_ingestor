@@ -5,6 +5,8 @@ from datetime import datetime
 from collections import OrderedDict
 from semantic_version import Version as SemanticVersion
 import mytardis_ngs_ingestor
+from mytardis_ngs_ingestor.illumina_uploader import \
+    get_fastqc_summary_for_project
 from mytardis_ngs_ingestor.illumina.run_info import \
     parse_samplesheet, \
     filter_samplesheet_by_project, \
@@ -47,42 +49,42 @@ class IlluminaParserTestCase(unittest.TestCase):
         self.assertEqual(chemistry, 'TruSeq LT')
 
         expected = [
-            {'index': 'CGATGT', 'Lane': '1', 'Description': '',
-             'SampleID': '16-00982', 'SamplePlate': '', 'I7IndexID': 'A002',
-             'SampleWell': '', 'SampleProject': 'StephenLavelle',
-             'SampleName': 'QQ1H2O1'},
-            {'index': 'TGACCA', 'Lane': '1', 'Description': '',
-             'SampleID': '16-00983', 'SamplePlate': '', 'I7IndexID': 'A004',
-             'SampleWell': '', 'SampleProject': 'StephenLavelle',
-             'SampleName': 'QQ1H2O2'},
-            {'index': 'CAGATC', 'Lane': '1', 'Description': '',
-             'SampleID': '16-00984', 'SamplePlate': '', 'I7IndexID': 'A007',
-             'SampleWell': '', 'SampleProject': 'StephenLavelle',
-             'SampleName': 'QQ1H2O3'},
-            {'index': 'AACCAG', 'Lane': '2', 'Description': '',
-             'SampleID': '16-00487', 'SamplePlate': '', 'I7IndexID': 'A001',
-             'SampleWell': '', 'SampleProject': 'Shigeru_Miyamoto',
-             'SampleName': 'QQInputF2'},
-            {'index': 'TGGTGA', 'Lane': '2', 'Description': '',
-             'SampleID': '16-00488', 'SamplePlate': '', 'I7IndexID': 'A002',
-             'SampleWell': '', 'SampleProject': 'Shigeru_Miyamoto',
-             'SampleName': 'QQH4K4F2'},
-            {'index': 'AGTGAG', 'Lane': '2', 'Description': '',
-             'SampleID': '16-00489', 'SamplePlate': '', 'I7IndexID': 'A003',
-             'SampleWell': '', 'SampleProject': 'Shigeru_Miyamoto',
-             'SampleName': 'QQH4K9F2'},
-            {'index': 'AACCAG', 'Lane': '3', 'Description': '',
-             'SampleID': '16-01787', 'SamplePlate': '', 'I7IndexID': 'A001',
-             'SampleWell': '', 'SampleProject': 'Phr00t',
-             'SampleName': 'Q1N'},
-            {'index': 'TGGTGA', 'Lane': '3', 'Description': '',
-             'SampleID': '16-01788', 'SamplePlate': '', 'I7IndexID': 'A002',
-             'SampleWell': '', 'SampleProject': 'Phr00t',
-             'SampleName': 'Q1L'},
-            {'index': 'AACCAG', 'Lane': '4', 'Description': '',
-             'SampleID': '16-01787', 'SamplePlate': '', 'I7IndexID': 'A001',
-             'SampleWell': '', 'SampleProject': 'Phr00t',
-             'SampleName': 'Q1N'}
+            {'index': 'CGATGT', 'lane': '1', 'description': '',
+             'sampleid': '16-00982', 'sampleplate': '', 'i7indexid': 'A002',
+             'samplewell': '', 'sampleproject': 'StephenLavelle',
+             'samplename': 'QQ1H2O1'},
+            {'index': 'TGACCA', 'lane': '1', 'description': '',
+             'sampleid': '16-00983', 'sampleplate': '', 'i7indexid': 'A004',
+             'samplewell': '', 'sampleproject': 'StephenLavelle',
+             'samplename': 'QQ1H2O2'},
+            {'index': 'CAGATC', 'lane': '1', 'description': '',
+             'sampleid': '16-00984', 'sampleplate': '', 'i7indexid': 'A007',
+             'samplewell': '', 'sampleproject': 'StephenLavelle',
+             'samplename': 'QQ1H2O3'},
+            {'index': 'AACCAG', 'lane': '2', 'description': '',
+             'sampleid': '16-00487', 'sampleplate': '', 'i7indexid': 'A001',
+             'samplewell': '', 'sampleproject': 'Shigeru_Miyamoto',
+             'samplename': 'QQInputF2'},
+            {'index': 'TGGTGA', 'lane': '2', 'description': '',
+             'sampleid': '16-00488', 'sampleplate': '', 'i7indexid': 'A002',
+             'samplewell': '', 'sampleproject': 'Shigeru_Miyamoto',
+             'samplename': 'QQH4K4F2'},
+            {'index': 'AGTGAG', 'lane': '2', 'description': '',
+             'sampleid': '16-00489', 'sampleplate': '', 'i7indexid': 'A003',
+             'samplewell': '', 'sampleproject': 'Shigeru_Miyamoto',
+             'samplename': 'QQH4K9F2'},
+            {'index': 'AACCAG', 'lane': '3', 'description': '',
+             'sampleid': '16-01787', 'sampleplate': '', 'i7indexid': 'A001',
+             'samplewell': '', 'sampleproject': 'Phr00t',
+             'samplename': 'Q1N'},
+            {'index': 'TGGTGA', 'lane': '3', 'description': '',
+             'sampleid': '16-01788', 'sampleplate': '', 'i7indexid': 'A002',
+             'samplewell': '', 'sampleproject': 'Phr00t',
+             'samplename': 'Q1L'},
+            {'index': 'AACCAG', 'lane': '4', 'description': '',
+             'sampleid': '16-01787', 'sampleplate': '', 'i7indexid': 'A001',
+             'samplewell': '', 'sampleproject': 'Phr00t',
+             'samplename': 'Q1N'}
         ]
 
         for expected_sample, sample in zip(expected, samples):
@@ -91,57 +93,58 @@ class IlluminaParserTestCase(unittest.TestCase):
         self.assertEqual(chemistry, 'TruSeq LT')
 
     def test_parse_samplesheet_csv(self):
-        samples, chemistry = parse_samplesheet(self.samplesheet_csv_path)
+        samples, chemistry = parse_samplesheet(self.samplesheet_csv_path,
+                                               standardize_keys=True)
         expected = [
-            {'Control': 'N', 'Index': 'AACCAG', 'Lane': '1',
-             'Description': 'May contain nuts',
-             'SampleProject': 'GusFring', 'Recipe': '',
-             'SampleID': '14-06205-OCT4-5', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'TGGTGA', 'Lane': '1', 'Description': '',
-             'SampleProject': 'GusFring', 'Recipe': '',
-             'SampleID': '14-06206-OCT4-15', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'AGTGAG', 'Lane': '1', 'Description': '',
-             'SampleProject': 'GusFring', 'Recipe': '',
-             'SampleID': '14-06207-ZAX-5', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'GCACTA', 'Lane': '1', 'Description': '',
-             'SampleProject': 'GusFring', 'Recipe': '',
-             'SampleID': '14-06208-ZAX-15', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'TTGGCA', 'Lane': '1', 'Description': '',
-             'SampleProject': 'GusFring', 'Recipe': '',
-             'SampleID': '14-06200-Input', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'ACCTCA', 'Lane': '2', 'Description': '',
-             'SampleProject': 'Walter_White', 'Recipe': '',
-             'SampleID': '14-05655-SW38', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'AAGAGG', 'Lane': '2', 'Description': '',
-             'SampleProject': 'Walter_White', 'Recipe': '',
-             'SampleID': '14-05658-SW41', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'GGAGAA', 'Lane': '2', 'Description': '',
-             'SampleProject': 'Walter_White', 'Recipe': '',
-             'SampleID': '14-05659-SW42', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'AGCATG', 'Lane': '2', 'Description': '',
-             'SampleProject': 'Walter_White', 'Recipe': '',
-             'SampleID': '14-05660-SW43', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'GAGTCA', 'Lane': '2', 'Description': '',
-             'SampleProject': 'Walter_White', 'Recipe': '',
-             'SampleID': '14-05661-SW44', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'CGTAGA', 'Lane': '2', 'Description': '',
-             'SampleProject': 'Walter_White', 'Recipe': '',
-             'SampleID': '14-06203-SW45', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'},
-            {'Control': 'N', 'Index': 'TCAGAG', 'Lane': '2', 'Description': '',
-             'SampleProject': 'Walter_White', 'Recipe': '',
-             'SampleID': '14-06204-SW46', 'FCID': 'H9PJLADXZ',
-             'SampleRef': 'Hg19', 'Operator': 'TW'}]
+            {'control': 'N', 'index': 'AACCAG', 'lane': '1',
+             'description': 'May contain nuts',
+             'sampleproject': 'GusFring', 'recipe': '',
+             'sampleid': '14-06205-OCT4-5', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'TGGTGA', 'lane': '1', 'description': '',
+             'sampleproject': 'GusFring', 'recipe': '',
+             'sampleid': '14-06206-OCT4-15', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'AGTGAG', 'lane': '1', 'description': '',
+             'sampleproject': 'GusFring', 'recipe': '',
+             'sampleid': '14-06207-ZAX-5', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'GCACTA', 'lane': '1', 'description': '',
+             'sampleproject': 'GusFring', 'recipe': '',
+             'sampleid': '14-06208-ZAX-15', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'TTGGCA', 'lane': '1', 'description': '',
+             'sampleproject': 'GusFring', 'recipe': '',
+             'sampleid': '14-06200-Input', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'ACCTCA', 'lane': '2', 'description': '',
+             'sampleproject': 'Walter_White', 'recipe': '',
+             'sampleid': '14-05655-SW38', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'AAGAGG', 'lane': '2', 'description': '',
+             'sampleproject': 'Walter_White', 'recipe': '',
+             'sampleid': '14-05658-SW41', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'GGAGAA', 'lane': '2', 'description': '',
+             'sampleproject': 'Walter_White', 'recipe': '',
+             'sampleid': '14-05659-SW42', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'AGCATG', 'lane': '2', 'description': '',
+             'sampleproject': 'Walter_White', 'recipe': '',
+             'sampleid': '14-05660-SW43', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'GAGTCA', 'lane': '2', 'description': '',
+             'sampleproject': 'Walter_White', 'recipe': '',
+             'sampleid': '14-05661-SW44', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'CGTAGA', 'lane': '2', 'description': '',
+             'sampleproject': 'Walter_White', 'recipe': '',
+             'sampleid': '14-06203-SW45', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'},
+            {'control': 'N', 'index': 'TCAGAG', 'lane': '2', 'description': '',
+             'sampleproject': 'Walter_White', 'recipe': '',
+             'sampleid': '14-06204-SW46', 'fcid': 'H9PJLADXZ',
+             'sampleref': 'Hg19', 'operator': 'TW'}]
 
         for sample_line, expected_line in zip(samples, expected):
             self.assertDictEqual(sample_line, expected_line)
@@ -284,6 +287,16 @@ Lane,Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,Sample_Pro
         self.assertEqual(fq_info.get('read', None), 3)
         self.assertEqual(fq_info.get('read_type', None), 'R')
         self.assertEqual(fq_info.get('set_number', None), 1)
+
+    def test_project_summary_json(self):
+        samplesheet_path = self.samplesheet_v4_path
+        fastqc_out_path = path.join(path.dirname(__file__), 'test_data/fastqc/')
+        samplesheet, chemistry = parse_samplesheet(samplesheet_path,
+                                                   standardize_keys=True)
+        expected = {u'fastqc_version': u'0.11.3', u'samples': [{u'read': u'R1', u'basic_stats': {'read_length': 51, 'number_of_reads': 2000, 'percent_gc': 51.0}, u'fastqc_report_filename': u'Q1N_S7_L004_R1_001_fastqc.html', u'sample_id': u'Q1N_S7_L004_R1_001', u'illumina_sample_sheet': {}, u'read_type': u'R', u'filename': u'Q1N_S7_L004_R1_001.fastq.gz', u'index': 'AACCAG', u'lane': 4, u'qc_checks': [(u'Basic Statistics', u'PASS'), (u'Per base sequence quality', u'PASS'), (u'Per sequence quality scores', u'WARN'), (u'Per base sequence content', u'PASS'), (u'Per sequence GC content', u'FAIL'), (u'Per base N content', u'PASS'), (u'Sequence Length Distribution', u'PASS'), (u'Sequence Duplication Levels', u'PASS'), (u'Overrepresented sequences', u'PASS'), (u'Adapter Content', u'PASS'), (u'Kmer Content', u'PASS')], u'indexes': {u'index': u'AACCAG'}, u'sample_name': u'Q1N'}]}
+        result = get_fastqc_summary_for_project(fastqc_out_path, samplesheet)
+
+        self.assertDictEqual(result, expected)
 
 
 class VersionTest(unittest.TestCase):
