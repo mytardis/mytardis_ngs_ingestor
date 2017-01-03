@@ -155,6 +155,7 @@ def filter_samplesheet_by_project(file_path, proj_id,
 
 def samplesheet_to_dict(samplesheet_rows, key='SampleID'):
     by_sample_id = {}
+    key = key.lower()
     for sample in samplesheet_rows:
         sample_id = sample[key]
         by_sample_id[sample_id] = sample.copy()

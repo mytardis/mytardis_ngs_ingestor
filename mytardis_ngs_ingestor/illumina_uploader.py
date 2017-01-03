@@ -22,17 +22,17 @@ from collections import OrderedDict
 from semantic_version import Version as SemanticVersion
 from distutils.version import LooseVersion
 
-from mytardis_ngs_ingestor.utils.standalone_html import make_html_images_inline
+from utils import standalone_html
 
-import mytardis_ngs_ingestor.mytardis_uploader
-from mytardis_ngs_ingestor.mytardis_uploader import MyTardisUploader
-from mytardis_ngs_ingestor.mytardis_uploader import (setup_logging,
+import mytardis_uploader
+from mytardis_uploader import MyTardisUploader
+from mytardis_uploader import (setup_logging,
                                                      get_config,
                                                      validate_config)
 # from mytardis_ngs_ingestor import get_exclude_patterns_as_regex_list
 
-from mytardis_ngs_ingestor.mytardis_models import Experiment, Dataset, DataFile
-from mytardis_ngs_ingestor.illumina.models import (
+from mytardis_models import Experiment, Dataset, DataFile
+from illumina.models import (
     DemultiplexedSamplesBase,
     FastqcOutputBase,
     FastqcReportsBase,
@@ -42,8 +42,8 @@ from mytardis_ngs_ingestor.illumina.models import (
     NucleotideRawReadsDatasetBase,
     IlluminaRunConfigBase)
 
-from mytardis_ngs_ingestor.illumina import run_info, fastqc
-from mytardis_ngs_ingestor.illumina.run_info import (
+from illumina import run_info, fastqc
+from illumina.run_info import (
     parse_samplesheet,
     samplesheet_to_dict,
     get_project_ids_from_samplesheet,
@@ -756,7 +756,7 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, uploader):
             inline_report_abspath = join(report_dir, inline_report_filename)
             if LooseVersion(fqc_version) < LooseVersion('0.11.3'):
                 # convert fastqc_report.html to version with inline images
-                make_html_images_inline(report_file, inline_report_abspath)
+                standalone_html.make_html_images_inline(report_file, inline_report_abspath)
             else:
                 os.rename(report_file, inline_report_abspath)
 
@@ -1336,7 +1336,7 @@ def ingest_run(run_path=None):
     # some app-specific REST API calls
     uploader.tardis_app_name = 'sequencing-facility'
 
-    ingestor_version = mytardis_ngs_ingestor.mytardis_uploader.__version__
+    ingestor_version = mytardis_uploader.__version__
     seqfac_app_version = get_mytardis_seqfac_app_version(uploader)
     logger.info("Verifying MyTardis server app '%s' matches the ingestor "
                 "version (%s)." % (uploader.tardis_app_name,
