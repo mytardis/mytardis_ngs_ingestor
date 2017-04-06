@@ -1,35 +1,52 @@
 import os
 from os.path import join, splitext, exists, isdir, isfile
 import shutil
+from pathlib2 import Path
 import subprocess
+import psutil
 import logging
 
 from fs import open_fs
 # from fs.zipfs import ZipFS
 
+from mytardis_ngs_ingestor.utils import tmp_dirs
 
 logger = logging.getLogger()
+
+_fastqc_jvm_Xmx_memory = 250  # MB
 
 
 def run_fastqc(fastq_paths,
                output_directory=None,
                fastqc_bin=None,
-               threads=2,
+               threads=None,
                extra_options=''):
+    cmd_out = None
+
+    if threads is None:
+        # We set threads to the number of cpus, or less if the RAM would be
+        # exhausted
+        cpus = psutil.cpu_count()
+        threads = int(cpus)
+
+        memory = psutil.virtual_memory().total / (1024.0 * 1024.0)  # MB
+        max_threads_for_mem = memory / _fastqc_jvm_Xmx_memory
+        if max_threads_for_mem < cpus:
+            threads = int(max_threads_for_mem) - 1
 
     if not fastq_paths:
         logger.warning('FastQC - called with no FASTQ file paths provided, '
                        'skipping.')
-        return None
+        return None, cmd_out
 
     tmp_dir = None
     if not output_directory:
         try:
-            tmp_dir = create_tmp_dir()
+            tmp_dir = tmp_dirs.create_tmp_dir()
             output_directory = tmp_dir
         except OSError:
             logger.error('FastQC - failed to create temp directory.')
-            return None
+            return None, cmd_out
 
     if not fastqc_bin:
         # We will assume it's on path with the default name
@@ -44,7 +61,6 @@ def run_fastqc(fastq_paths,
 
     logger.info('Running FastQC on: %s', ', '.join(fastq_paths))
 
-    cmd_out = None
     try:
         # Unfortunately FastQC doesn't always return sensible
         # exit codes on failure, so we parse the output
@@ -53,7 +69,7 @@ def run_fastqc(fastq_paths,
                                           stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError:
         logger.error('FastQC stdout: %s', cmd_out)
-        return None
+        return None, cmd_out
 
     success = False
     if 'Analysis complete' in cmd_out.splitlines()[-1]:
@@ -64,9 +80,56 @@ def run_fastqc(fastq_paths,
     if not success:
         if tmp_dir is not None:
             shutil.rmtree(output_directory)
-            return None
+            return None, cmd_out
 
-    return output_directory
+    return output_directory, cmd_out
+
+
+def get_fastqc_output_directory(proj_path):
+    return join(proj_path, 'FastQC.out')
+
+
+def run_fastqc_on_project(fastq_files,
+                          proj_path,
+                          output_directory=None,
+                          fastqc_bin=None,
+                          threads=2,
+                          clobber=False):
+    cmd_out = None
+
+    if output_directory is None:
+        output_directory = get_fastqc_output_directory(proj_path)
+        if exists(output_directory):
+            if clobber:
+                logger.warning("Removing old FastQC output directory: %s",
+                             output_directory)
+                shutil.rmtree(output_directory)
+            else:
+                logger.error("FastQC - output directory already exists: %s",
+                             output_directory)
+                return None, cmd_out
+        try:
+            # os.mkdir(output_directory)
+            Path(str(output_directory)).mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.error("FastQC - couldn't create output directory: %s",
+                         output_directory)
+            return None, cmd_out
+
+    if not exists(output_directory) or \
+            not isdir(output_directory):
+        logger.error("FastQC - output path %s isn't a directory "
+                     "or doesn't exist.",
+                     output_directory)
+        return None, cmd_out
+
+    fqc_output_directory, cmd_out = run_fastqc(
+        fastq_files,
+        output_directory=output_directory,
+        fastqc_bin=fastqc_bin,
+        threads=threads)
+
+    return fqc_output_directory, cmd_out
 
 
 def file_from_zip(zip_file_path, filename, mode='r'):
@@ -135,6 +198,7 @@ def parse_data_txt(zip_file_path):
     :type zip_file_path: str
     :return: dict
     """
+
     def _parse(fh):
         data = {'fastqc_version': fh.readline().split('\t')[1].strip()}
         section = None

@@ -11,7 +11,11 @@ __author__ = 'Andrew Perry <Andrew.Perry@monash.edu.au>'
 from builtins import (bytes, str, open, super, range,
                       zip, round, input, int, pow, object)
 
-from __init__ import __version__
+try:
+    from __init__ import __version__
+except ImportError:
+    from mytardis_ngs_ingestor.__init__ import __version__
+
 import logging
 
 logger = logging.getLogger('mytardis_ngs_uploader')
@@ -113,6 +117,10 @@ class MyTardisUploader:
                 'Content-Type': 'application/json',
                 'User-Agent': self.user_agent}
 
+    # TODO: Replace use of this with the jsondate package.
+    #       jsondate is now in requirements.txt
+    #       use: import jsondate as json
+    #       then just use json.dumps as normal, remove this method
     @staticmethod
     def dict_to_json(d):
         """

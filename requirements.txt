@@ -2,10 +2,14 @@ appsettings
 backoff
 beautifulsoup4
 colorlog
+crython
+# -e git+https://github.com/ahawker/crython.git#egg=crython
 fs>=2.0,<3.0
 future
+jsondate
 ndg-httpsclient
 pathlib2
+psutil
 pyasn1
 pyopenssl
 python-dateutil
@@ -14,6 +18,7 @@ pyyaml # apt: libyaml-dev python-dev
 requests>=2.7.0
 requests-toolbelt>=0.4.0
 semantic_version
+simplekv
 six
 urllib3
 xmltodict

@@ -6,6 +6,7 @@ from collections import OrderedDict
 from semantic_version import Version as SemanticVersion
 from mytardis_ngs_ingestor.illumina_uploader import \
     get_fastqc_summary_for_project
+import mytardis_ngs_ingestor
 from mytardis_ngs_ingestor.illumina.run_info import \
     parse_samplesheet, \
     filter_samplesheet_by_project, \

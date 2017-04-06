@@ -1,0 +1,2 @@
+#!/bin/sh
+python -m mytardis_ngs_ingestor.autoprocess $*

@@ -538,6 +538,9 @@ def get_sample_project_mapping(basepath,
     :rtype: OrderedDict
     """
 
+    if not os.path.exists(basepath):
+        raise IOError('Path %s does not exist !' % basepath)
+
     fq_files = []
     with open_fs(basepath) as vfs:
         for fn in vfs.walk.files():

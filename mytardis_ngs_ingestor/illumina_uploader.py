@@ -11,8 +11,6 @@ import sys
 import shutil
 from datetime import datetime
 import subprocess
-from tempfile import mkdtemp
-import atexit
 
 import os
 from os.path import join, splitext, exists, isdir, isfile
@@ -22,17 +20,16 @@ from collections import OrderedDict
 from semantic_version import Version as SemanticVersion
 from distutils.version import LooseVersion
 
-from utils import standalone_html
+from mytardis_ngs_ingestor.utils import tmp_dirs
+from mytardis_ngs_ingestor.utils import standalone_html
 
-import mytardis_uploader
-from mytardis_uploader import MyTardisUploader
-from mytardis_uploader import (setup_logging,
-                                                     get_config,
-                                                     validate_config)
+import mytardis_ngs_ingestor.mytardis_uploader
+from mytardis_ngs_ingestor.mytardis_uploader import MyTardisUploader
+from mytardis_ngs_ingestor.mytardis_uploader import (setup_logging, get_config, validate_config)
 # from mytardis_ngs_ingestor import get_exclude_patterns_as_regex_list
 
-from mytardis_models import Experiment, Dataset, DataFile
-from illumina.models import (
+from mytardis_ngs_ingestor.mytardis_models import Experiment, Dataset, DataFile
+from mytardis_ngs_ingestor.illumina.models import (
     DemultiplexedSamplesBase,
     FastqcOutputBase,
     FastqcReportsBase,
@@ -42,8 +39,8 @@ from illumina.models import (
     NucleotideRawReadsDatasetBase,
     IlluminaRunConfigBase)
 
-from illumina import run_info, fastqc
-from illumina.run_info import (
+from mytardis_ngs_ingestor.illumina import run_info, fastqc
+from mytardis_ngs_ingestor.illumina.run_info import (
     parse_samplesheet,
     samplesheet_to_dict,
     get_project_ids_from_samplesheet,
@@ -61,10 +58,6 @@ from illumina.run_info import (
     get_sample_project_mapping,
     undetermined_reads_in_root,
     get_index_from_fastq_content)
-
-# a module level list of temporary directories that have been
-# created, so these can be cleaned up upon premature exit
-TMPDIRS = []
 
 # we map names from *Effective.cfg to more recognisable names
 # (MiSeq seems to be called 'Shock' some places internally)
@@ -241,38 +234,6 @@ def create_fastqc_dataset_object(run_id,
 
 def create_fastqc_dataset_on_server(fastqc_dataset, uploader):
     return uploader.create_dataset(fastqc_dataset.package())
-
-
-def run_fastqc_on_project(fastq_files,
-                          proj_path,
-                          output_directory=None,
-                          fastqc_bin=None,
-                          threads=2):
-    if output_directory is None:
-        output_directory = get_fastqc_output_directory(proj_path)
-        if exists(output_directory):
-            logger.error("FastQC - output directory already exists: %s",
-                         output_directory)
-            return None
-        try:
-            os.mkdir(output_directory)
-        except OSError:
-            logger.error("FastQC - couldn't create output directory: %s",
-                         output_directory)
-            return None
-
-    if (not exists(output_directory)) or \
-            (not isdir(output_directory)):
-        logger.error("FastQC - output path %s isn't a directory "
-                     "or doesn't exist.",
-                     output_directory)
-        return None
-
-    fqc_output_directory = fastqc.run_fastqc(fastq_files,
-                                             output_directory=output_directory,
-                                             fastqc_bin=fastqc_bin,
-                                             threads=threads)
-    return fqc_output_directory
 
 
 def add_suffix_to_parameter_set(parameters, suffix, divider='__'):
@@ -943,10 +904,6 @@ def get_fastqc_zip_files(fastqc_out_path):
             yield fastqc_path
 
 
-def get_fastqc_output_directory(proj_path):
-    return join(proj_path, 'FastQC.out')
-
-
 class TmpZipExtract:
     """
     A Context Manager class that unzips a zip file to a temporary path
@@ -990,13 +947,6 @@ def get_shared_storage_replica_url(storage_box_location, file_path):
         replica_url = os.path.relpath(os.path.normpath(file_path),
                                       storage_box_location)
         return replica_url
-
-
-def create_tmp_dir(*args, **kwargs):
-    tmpdir = mkdtemp(*args, **kwargs)
-    global TMPDIRS
-    TMPDIRS.append(tmpdir)
-    return tmpdir
 
 
 def get_mytardis_seqfac_app_version(uploader):
@@ -1220,77 +1170,7 @@ def pre_ingest_checks_fastq_only(options):
     return True
 
 
-def ingest_run(run_path=None):
-    global logger
-    logger = setup_logging()
-    # set logger for these modules to our logger
-    run_info.logger = logger
-    fastqc.logger = logger
-
-    global TMPDIRS
-    TMPDIRS = []
-
-    def extra_config_options(argparser):
-        argparser.add_argument('--fastq-only',
-                               dest='fastq_only',
-                               action='store_true',
-                               help="Ingest just the FASTQ files and "
-                                    "ignore any instrument / run specific "
-                                    "files or metadata extraction. FastQC "
-                                    "reports are generated if the --run-fastqc"
-                                    "flag is also given.")
-        argparser.add_argument('--threads',
-                               dest='threads',
-                               type=int,
-                               metavar='THREADS')
-        argparser.add_argument('--run-fastqc',
-                               dest='run_fastqc',
-                               type=bool,
-                               default=False,
-                               metavar='RUN_FASTQC')
-        argparser.add_argument('--fastqc-bin',
-                               dest='fastqc_bin',
-                               type=str,
-                               metavar='FASTQC_BIN')
-        argparser.add_argument('--bcl2fastq-output-path',
-                               dest='bcl2fastq_output_path',
-                               default='{run_path}/Data/Intensities/BaseCalls',
-                               type=str,
-                               metavar='BCL2FASTQ_OUTPUT_PATH',
-                               help='The path to the bcl2fastq output '
-                                    '(fastq.gz files in project/sample '
-                                    'directories). The template strings '
-                                    '{run_path} and {run_id} can be used to '
-                                    'specify a path relative to the run '
-                                    'folder, or another path that includes the '
-                                    'run_id.')
-        argparser.add_argument('--dump-fixtures',
-                               dest='dump_fixtures',
-                               action='store_true')
-        argparser.add_argument('--live-storage-box-name',
-                               dest='live_storage_box_name',
-                               default='live',
-                               type=str,
-                               metavar='LIVE_STORAGE_BOX_NAME')
-        argparser.add_argument('--replace-duplicate-runs',
-                               dest='replace_duplicate_runs',
-                               type=bool,
-                               default=False,
-                               metavar='REPLACE_DUPLICATE_RUNS')
-        argparser.add_argument('--ignore-zero-sized-bcl-check',
-                               dest='ignore_zero_sized_bcl_check',
-                               type=bool,
-                               default=False,
-                               metavar='IGNORE_ZERO_SIZED_BCL_CHECK')
-
-    parser, options = get_config(add_extra_options_fn=extra_config_options)
-
-    if options.dump_fixtures:
-        dump_schema_fixtures_as_json()
-        sys.exit(1)
-
-    validate_config(parser, options)
-
+def ingest_run(options, run_path=None):
     # Before creating any records on the server we first check that certain
     # prerequisite files exist, that the run is complete and is generally in a
     # 'sane' state suitable for ingestion.
@@ -1336,7 +1216,7 @@ def ingest_run(run_path=None):
     # some app-specific REST API calls
     uploader.tardis_app_name = 'sequencing-facility'
 
-    ingestor_version = mytardis_uploader.__version__
+    ingestor_version = mytardis_ngs_ingestor.mytardis_uploader.__version__
     seqfac_app_version = get_mytardis_seqfac_app_version(uploader)
     logger.info("Verifying MyTardis server app '%s' matches the ingestor "
                 "version (%s)." % (uploader.tardis_app_name,
@@ -1468,7 +1348,7 @@ def ingest_run(run_path=None):
                 undetermined_reads_in_root(bcl2fastq_output_dir):
             proj_path = bcl2fastq_output_dir
 
-        fastqc_out_dir = get_fastqc_output_directory(proj_path)
+        fastqc_out_dir = fastqc.get_fastqc_output_directory(proj_path)
 
         # Run FastQC if output doesn't exist.
         # We output to a tmp dir since we don't expect to have write
@@ -1476,8 +1356,8 @@ def ingest_run(run_path=None):
         if options.run_fastqc \
                 and not options.fast \
                 and not exists(fastqc_out_dir):
-            fqc_tmp_dir = create_tmp_dir()
-            fastqc_out_dir = run_fastqc_on_project(
+            fqc_tmp_dir = tmp_dirs.create_tmp_dir()
+            fastqc_out_dir, fastqc_output = fastqc.run_fastqc_on_project(
                 fastq_files,
                 proj_path,
                 output_directory=fqc_tmp_dir,
@@ -1569,7 +1449,7 @@ def ingest_run(run_path=None):
             # eg, for 'Undetermined_indices' (since these won't be present on
             # shared storage).
             # We always upload the html reports to be serverd live (below).
-            if fastqc_out_dir and fastqc_out_dir not in TMPDIRS:
+            if fastqc_out_dir and fastqc_out_dir not in tmp_dirs.TMPDIRS:
                 register_project_fastqc_datafiles(run_id,
                                                   proj_id,
                                                   fastqc_out_dir,
@@ -1604,7 +1484,7 @@ def ingest_run(run_path=None):
         try:
             # Create a temporary SampleSheet.csv containing only lines for the
             # current Project, to be uploaded to the FASTQ Dataset
-            tmp_dir = create_tmp_dir()
+            tmp_dir = tmp_dirs.create_tmp_dir()
             project_samplesheet_path = join(tmp_dir, 'SampleSheet.csv')
             with open(project_samplesheet_path, 'w') as f:
                 lines = filter_samplesheet_by_project(samplesheet_path,
@@ -1635,30 +1515,90 @@ def ingest_run(run_path=None):
     logger.info("Ingestion of run %s complete !", run_id)
 
 
-@atexit.register
-def _cleanup_tmp():
-    global TMPDIRS
-    for tmpdir in TMPDIRS:
-        if exists(tmpdir):
-            shutil.rmtree(tmpdir)
-            logger.info("Removed temp directory: %s", tmpdir)
+def extra_config_options(argparser):
+    argparser.add_argument('--fastq-only',
+                           dest='fastq_only',
+                           action='store_true',
+                           help="Ingest just the FASTQ files and "
+                                "ignore any instrument / run specific "
+                                "files or metadata extraction. FastQC "
+                                "reports are generated if the --run-fastqc"
+                                "flag is also given.")
+    argparser.add_argument('--threads',
+                           dest='threads',
+                           type=int,
+                           metavar='THREADS')
+    argparser.add_argument('--run-fastqc',
+                           dest='run_fastqc',
+                           type=bool,
+                           default=False,
+                           metavar='RUN_FASTQC')
+    argparser.add_argument('--fastqc-bin',
+                           dest='fastqc_bin',
+                           type=str,
+                           metavar='FASTQC_BIN')
+    argparser.add_argument('--bcl2fastq-output-path',
+                           dest='bcl2fastq_output_path',
+                           default='{run_path}/Data/Intensities/BaseCalls',
+                           type=str,
+                           metavar='BCL2FASTQ_OUTPUT_PATH',
+                           help='The path to the bcl2fastq output '
+                                '(fastq.gz files in project/sample '
+                                'directories). The template strings '
+                                '{run_path} and {run_id} can be used to '
+                                'specify a path relative to the run '
+                                'folder, or another path that includes the '
+                                'run_id.')
+    argparser.add_argument('--dump-fixtures',
+                           dest='dump_fixtures',
+                           action='store_true')
+    argparser.add_argument('--live-storage-box-name',
+                           dest='live_storage_box_name',
+                           default='live',
+                           type=str,
+                           metavar='LIVE_STORAGE_BOX_NAME')
+    argparser.add_argument('--replace-duplicate-runs',
+                           dest='replace_duplicate_runs',
+                           type=bool,
+                           default=False,
+                           metavar='REPLACE_DUPLICATE_RUNS')
+    argparser.add_argument('--ignore-zero-sized-bcl-check',
+                           dest='ignore_zero_sized_bcl_check',
+                           type=bool,
+                           default=False,
+                           metavar='IGNORE_ZERO_SIZED_BCL_CHECK')
 
 
 def run_in_console():
     MyTardisUploader.user_agent_name = os.path.basename(sys.argv[0])
+
+    parser, options = get_config(add_extra_options_fn=extra_config_options)
+
+    if options.dump_fixtures:
+        dump_schema_fixtures_as_json()
+        sys.exit(1)
+
+    validate_config(parser, options)
+
+    global logger
+    logger = setup_logging()
+    # set logger for these modules to our logger
+    run_info.logger = logger
+    fastqc.logger = logger
+
     try:
-        ingest_run()
+        ingest_run(options)
     except Exception as e:
         if e != SystemExit:
             import traceback
             # traceback.print_exc(file=sys.stdout)
             logger.debug((traceback.format_exc()))
-        _cleanup_tmp()
+        tmp_dirs._cleanup_tmp()
         logger.error("Ingestion failed.")
         sys.exit(1)
 
-    # since atexit doesn't seem to work
-    _cleanup_tmp()
+    # since atexit doesn't seem to always work
+    tmp_dirs._cleanup_tmp()
 
     sys.exit(0)
 

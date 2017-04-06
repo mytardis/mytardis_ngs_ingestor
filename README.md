@@ -3,9 +3,8 @@ mytardis_ngs_ingestor
 
 [![Build Status](https://semaphoreci.com/api/v1/pansapiens/mytardis_ngs_ingestor/branches/develop/shields_badge.svg)](https://semaphoreci.com/pansapiens/mytardis_ngs_ingestor)
 
-`mytardis_ngs_ingestor` is a data ingestion client to upload 
-next-generation sequencing data (NGS) to a MyTardis data management 
-server.
+`mytardis_ngs_ingestor` is a client to register and upload next-generation 
+sequencing data (NGS) to a MyTardis data management server.
 
 It runs on Linux and currently supports runs from Illumina HiSeq, 
 NextSeq and MiSeq instruments.
@@ -33,6 +32,7 @@ source ~/.virtualenvs/mytardis_ngs_ingestor/bin/activate
 
 Install Python dependencies:
 ```sh
+pip install -U pip
 pip install -r requirements.txt
 ```
 
@@ -67,7 +67,7 @@ Running
 To ingest a run:
 
 ```sh
-python mytardis_uploader/illumina_uploader.py --path=/mnt/bigdisk/160915_FHT451_0119_AC6AMWACXZ/ \
+python -m mytardis_uploader.illumina_uploader --path=/mnt/bigdisk/160915_FHT451_0119_AC6AMWACXZ/ \
 --bcl2fastq-output-path="{run_path}/{run_id}.bcl2fastq"
 ```
 
@@ -79,6 +79,17 @@ and `{run_id}` is `160915_FHT451_0119_AC6AMWACXZ`.
 
 `illumina_uploader.py` does not run `bcl2fastq` automatically. It is a
 assumed that the run has already been demultiplexed.
+
+Demultiplexing and QC
+---------------------
+
+The `autoprocess.py` script can be used to demultiplex (bcl2fastq) and run
+QC (eg fastqc) on runs, prior to ingestion into MyTardis. It is intended to
+be executed by a cron job every few minutes to process any completed sequencing
+runs as they appear.
+
+```
+python -m mytardis_uploader.autoprocess --
 
 
 How a 'run' is structured in the MyTardis data model
