@@ -69,6 +69,7 @@ def run_fastqc(fastq_paths,
            ' '.join(fastq_paths))
 
     logger.info('Running FastQC on: %s', ', '.join(fastq_paths))
+    logger.info('Command: %s', cmd)
 
     try:
         # Unfortunately FastQC doesn't always return sensible

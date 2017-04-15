@@ -11,9 +11,11 @@ from argparse import ArgumentParser
 
 import logging
 from mytardis_uploader import setup_logging
+
 logger = setup_logging()
 from illumina import run_info
 from illumina import fastqc
+
 run_info.logger = logger
 fastqc.logger = logger
 
@@ -28,7 +30,7 @@ from illumina import fastqc
 import illumina_uploader
 
 # status enum
-CREATED = 'created'    # record created, no action taken on task yet
+CREATED = 'created'  # record created, no action taken on task yet
 RUNNING = 'running'
 COMPLETE = 'complete'
 ERROR = 'error'
@@ -93,6 +95,9 @@ class ProcessingTask:
 
     def is_pending(self):
         return self.status != COMPLETE
+
+    def is_running(self):
+        return self.status == RUNNING
 
     def is_failed(self):
         return self.status == ERROR
@@ -260,112 +265,14 @@ def log_status(task, verbose=True):
 #         return current_task
 
 
-def do_create_checksum_manifest(run_dir, options):
+def do_rta_complete(run_dir, options):
     global current_task
-    current_task = taskdb.get_or_create('create_checksum_manifest')
-
-    if current_task.is_failed():
-        log_status(current_task, options.verbose)
-        return current_task
-
-    cmd_out = None
-    try:
-        current_task.status = RUNNING
-        # current_task.info['command'] = cmd
-        taskdb.update(current_task)
-        success, cmd_out = run_create_checksum_manifest(run_dir)
-        current_task.status = COMPLETE
-        current_task.info['output'] = cmd_out
-        taskdb.update(current_task)
-    except Exception as e:
-        logger.exception("create_checksum_manifest task failed with an "
-                         "exception.")
-        current_task.status = ERROR
-        current_task.info['output'] = cmd_out
-        taskdb.update(current_task)
-
-    log_status(current_task, options.verbose)
-
-    return current_task
-
-
-def do_rsync_to_archive_task(run_dir, options):
-    task_name = 'rsync_to_archive'
-    global current_task
-    current_task = taskdb.get_or_create(task_name)
-
-    # archive_basepath = '/srv/sonas/mhtp/market/illumina/'
-    archive_basepath = '/data/illumina/archive_test'
-    rsync_extra = '--exclude="{run_dir}/Thumbnail_Images/" ' \
-                  '--include="*.xml" ' \
-                  '--include="*.csv" ' \
-                  '--include="*.log" ' \
-                  '--exclude="{run_dir}/Data/Intensities/BaseCalls/L00*/" '.format(
-        run_dir=run_dir)
-
-    if current_task.is_failed():
-        log_status(current_task, options.verbose)
-        return current_task
-
-    cmd_out = None
-    try:
-        current_task.status = RUNNING
-        # current_task.info['command'] = cmd
-        taskdb.update(current_task)
-        success, cmd_out = run_rsync(run_dir, archive_basepath,
-                                     sudo=True,
-                                     chown='root:root',
-                                     extra_args=rsync_extra)
-        if success:
-            current_task.status = COMPLETE
-            current_task.info['output'] = cmd_out
-            taskdb.update(current_task)
-        else:
-            raise Exception('%s task failed (non-zero exit code).' % task_name)
-    except Exception as e:
-        logger.exception("%s task failed." % task_name)
-        current_task.status = ERROR
-        current_task.info['output'] = cmd_out
-        taskdb.update(current_task)
-
-    log_status(current_task, options.verbose)
-
-    return current_task
-
-
-def try_autoprocessing(run_dir, options):
-    global current_task
-    global taskdb
-
-    run_id = get_run_id_from_path(run_dir)
-    taskdb = TaskDb(run_dir, ProcessingTask, run_id)
-
-    ##
-    # Check if the run should be ignored.
-    # If so, silently skip it (unless we are being verbose)
-    ##
-    if taskdb.exists('ignore'):
-        if options.verbose:
-            logger.info("Skipping %s, set to ignore.", run_id)
-        return taskdb.get_as('ignore')
-
-    ##
-    # Check if all processing is complete for the run.
-    # If so, silently skip it (unless we are being verbose)
-    ##
-    current_task = taskdb.get_as('all_complete', None)
-    if taskdb.is_complete('all_complete'):
-        if options.verbose:
-            log_status(current_task, options.verbose)
-        return current_task
-
-    if options.verbose:
-        logger.info('Starting autoprocessing on: %s', run_dir)
-
-    ##
-    # Check if run has finished transferring from the sequencer
-    ##
     current_task = taskdb.get_or_create('rta_complete')
+
+    if current_task.is_failed() or current_task.is_running():
+        log_status(current_task, options.verbose)
+        return current_task
+
     if current_task.is_pending():
         if run_is_complete(run_dir):
             current_task.status = COMPLETE
@@ -375,29 +282,25 @@ def try_autoprocessing(run_dir, options):
             taskdb.update(current_task)
 
     log_status(current_task, options.verbose)
+    return current_task
 
-    if taskdb.is_pending('rta_complete'):
-        return current_task
 
-    bcl2fastq_output_dir = path.join(run_dir, '%s.bcl2fastq' % run_id)
-    # bcl2fastq_extra_args = ["--tiles s_1_1101"]
-    bcl2fastq_extra_args = get_bcl2fastq_extra_args(run_dir)
-
-    ##
-    # Demultiplex with bcl2fastq
-    ##
+def do_bcl2fastq(run_dir, options):
+    global current_task
     current_task = taskdb.get_or_create('bcl2fastq')
-    if current_task.is_failed():
+
+    if current_task.is_failed() or current_task.is_running():
         log_status(current_task, options.verbose)
         return current_task
 
     if current_task.is_pending():
         current_task.status = RUNNING
         taskdb.update(current_task)
-        success, output = run_bcl2fastq(run_dir,
-                                        output_directory=bcl2fastq_output_dir,
-                                        stderr_file=path.join(run_dir, '%s.err' % run_id),
-                                        extra_args=bcl2fastq_extra_args)
+        success, output = run_bcl2fastq(
+            run_dir,
+            output_directory=options.bcl2fastq['output_dir'],
+            stderr_file=path.join(run_dir, '%s.err' % options.run_id),
+            extra_args=options.bcl2fastq['extra_args'])
         if success:
             current_task.status = COMPLETE
             current_task.info = {'output': output}
@@ -410,15 +313,14 @@ def try_autoprocessing(run_dir, options):
             # return current_task
 
     log_status(current_task, options.verbose)
-    if current_task.is_pending():
-        return current_task
+    return current_task
 
 
-    ##
-    # Run FastQC on each Project in the run
-    ##
+def do_fastqc(run_dir, options):
+    global current_task
     current_task = taskdb.get_or_create('fastqc')
-    if current_task.is_failed():
+
+    if current_task.is_failed() or current_task.is_running():
         log_status(current_task, options.verbose)
         return current_task
 
@@ -427,12 +329,14 @@ def try_autoprocessing(run_dir, options):
         taskdb.update(current_task)
 
         try:
-            fastqs_per_project = get_sample_project_mapping(bcl2fastq_output_dir)
+            fastqs_per_project = get_sample_project_mapping(
+                options.bcl2fastq['output_dir'])
             ok = []
             failing_project = None
             for project, fastqs in fastqs_per_project.items():
-                fastqs = [path.join(bcl2fastq_output_dir, fq) for fq in fastqs]
-                proj_path = path.join(bcl2fastq_output_dir, project)
+                fastqs = [path.join(options.bcl2fastq['output_dir'], fq)
+                          for fq in fastqs]
+                proj_path = path.join(options.bcl2fastq['output_dir'], project)
                 result, output = fastqc.run_fastqc_on_project(fastqs,
                                                               proj_path,
                                                               clobber=True)
@@ -459,47 +363,93 @@ def try_autoprocessing(run_dir, options):
             return current_task
 
     log_status(current_task, options.verbose)
-    if current_task.is_pending():
+    return current_task
+
+
+def do_create_checksum_manifest(run_dir, options):
+    global current_task
+    current_task = taskdb.get_or_create('create_checksum_manifest')
+
+    if current_task.is_failed() or current_task.is_running():
+        log_status(current_task, options.verbose)
         return current_task
 
+    cmd_out = None
+    try:
+        current_task.status = RUNNING
+        # current_task.info['command'] = cmd
+        taskdb.update(current_task)
+        success, cmd_out = run_create_checksum_manifest(run_dir)
+        current_task.status = COMPLETE
+        current_task.info['output'] = cmd_out
+        taskdb.update(current_task)
+    except Exception as e:
+        logger.exception("create_checksum_manifest task failed with an "
+                         "exception.")
+        current_task.status = ERROR
+        current_task.info['output'] = cmd_out
+        taskdb.update(current_task)
 
-    ##
-    # Create checksum manifest file
-    ##
-    """
-    current_task = do_create_checksum_manifest(run_dir, options)
-    if current_task.is_failed() or current_task.is_pending():
+    log_status(current_task, options.verbose)
+    return current_task
+
+
+def do_rsync_to_archive(run_dir, options):
+    task_name = 'rsync_to_archive'
+    global current_task
+    current_task = taskdb.get_or_create(task_name)
+
+    if current_task.is_failed() or current_task.is_running():
+        log_status(current_task, options.verbose)
         return current_task
-    """
 
-    ##
-    # Custom scripts on run_dir / bcl2fastq_output_dir
-    ##
-    # TODO: eg, Copy to archival storage
+    # archive_basepath = '/srv/sonas/mhtp/market/illumina/'
+    archive_basepath = '/data/illumina/archive_test'
+    rsync_extra = '--exclude="{run_dir}/Thumbnail_Images/" ' \
+                  '--include="*.xml" ' \
+                  '--include="*.csv" ' \
+                  '--include="*.log" ' \
+                  '--exclude="{run_dir}/Data/Intensities/BaseCalls/L00*/" '.format(
+        run_dir=run_dir)
+
+    cmd_out = None
+    try:
+        current_task.status = RUNNING
+        # current_task.info['command'] = cmd
+        taskdb.update(current_task)
+        success, cmd_out = run_rsync(run_dir, archive_basepath,
+                                     sudo=True,
+                                     chown='root:root',
+                                     extra_args=rsync_extra)
+        if success:
+            current_task.status = COMPLETE
+            current_task.info['output'] = cmd_out
+            taskdb.update(current_task)
+        else:
+            raise Exception('%s task failed (non-zero exit code).' % task_name)
+    except Exception as e:
+        logger.exception("%s task failed." % task_name)
+        current_task.status = ERROR
+        current_task.info['output'] = cmd_out
+        taskdb.update(current_task)
+
+    log_status(current_task, options.verbose)
+    return current_task
 
 
-    ##
-    # Rsync to archival storage
-    ##
-    """
-    current_task = do_rsync_to_archive_task(run_dir, options)
-    if current_task.is_failed() or current_task.is_pending():
-        return current_task
-    """
-
-    ##
-    # Ingest using illumina_uploader
-    ##
+def do_mytardis_upload(run_dir, options):
+    global current_task
     current_task = taskdb.get_or_create('mytardis_upload')
+
+    if current_task.is_failed() or current_task.is_running():
+        log_status(current_task, options.verbose)
+        return current_task
+
     if not options.uploader:
         logger.exception("mytardis_upload task failed - config %s not found",
                          options.uploader_config)
         current_task.status = ERROR
         taskdb.update(current_task)
-
-    if current_task.is_failed():
-        log_status(current_task, options.verbose)
-        return current_task
 
     try:
         current_task.status = RUNNING
@@ -514,10 +464,103 @@ def try_autoprocessing(run_dir, options):
         taskdb.update(current_task)
 
     log_status(current_task, options.verbose)
+    return current_task
 
-    if taskdb.is_pending('mytardis_upload'):
+
+def try_autoprocessing(run_dir, options):
+    global current_task
+    global taskdb
+
+    run_id = get_run_id_from_path(run_dir)
+    options.run_id = run_id
+    # TODO: Fix these so they actually come from the TOML config
+    options.bcl2fastq = {}
+    options.bcl2fastq['output_dir'] = path.join(run_dir,
+                                                '%s.bcl2fastq' % run_id)
+    options.bcl2fastq['extra_args'] = get_legcay_bcl2fastq_extra_args(run_dir)
+
+    taskdb = TaskDb(run_dir, ProcessingTask, run_id)
+
+    ##
+    # Check if the run should be ignored.
+    # If so, silently skip it (unless we are being verbose)
+    ##
+    if taskdb.exists('ignore'):
+        if options.verbose:
+            logger.info("Skipping %s, set to ignore.", run_id)
+        return taskdb.get_as('ignore')
+
+    ##
+    # Check if all processing is complete for the run.
+    # If so, silently skip it (unless we are being verbose)
+    ##
+    current_task = taskdb.get_as('all_complete', None)
+    if taskdb.is_complete('all_complete'):
+        if options.verbose:
+            log_status(current_task, options.verbose)
         return current_task
 
+    if options.verbose:
+        logger.info('Starting autoprocessing on: %s', run_dir)
+
+    # TODO: Run tasks like this
+    # tasks = ['rta_complete', 'bcl2fastq', 'fastqc',
+    #          'create_checksum_manifest', 'rsync_to_archive']
+    # for task_name in tasks:
+    #     fn_name = 'do_%s' % task_name
+    #     current_task = globals()[fn_name](run_dir, options)
+    #     if current_task.is_failed() or current_task.is_pending():
+    #         return current_task
+
+    ##
+    # Check if run has finished transferring from the sequencer
+    ##
+    current_task = do_rta_complete(run_dir, options)
+    if current_task.is_failed() or current_task.is_pending():
+        return current_task
+
+    ##
+    # Demultiplex with bcl2fastq
+    ##
+    current_task = do_bcl2fastq(run_dir, options)
+    if current_task.is_failed() or current_task.is_pending():
+        return current_task
+
+    ##
+    # Run FastQC on each Project in the run
+    ##
+    current_task = do_fastqc(run_dir, options)
+    if current_task.is_failed() or current_task.is_pending():
+        return current_task
+
+    ##
+    # Create checksum manifest file
+    ##
+    current_task = do_create_checksum_manifest(run_dir, options)
+    if current_task.is_failed() or current_task.is_pending():
+        return current_task
+
+    ##
+    # Custom scripts on run_dir / bcl2fastq_output_dir
+    ##
+    # TODO: eg, Copy to archival storage
+
+
+    ##
+    # Rsync to archival storage
+    ##
+    """
+    current_task = do_rsync_to_archive(run_dir, options)
+    if current_task.is_failed() or current_task.is_pending():
+        return current_task
+    """
+
+    ##
+    # Ingest using illumina_uploader
+    ##
+    current_task = do_mytardis_upload(run_dir, options)
+    if current_task.is_failed() or current_task.is_pending():
+        return current_task
 
     ##
     # Create an 'all_complete' task that allows us to silently skip
@@ -617,7 +660,7 @@ def run_bcl2fastq(runfolder_dir,
     if stderr_file:
         stderr_file = ' 2>&1 | tee -a %s' % stderr_file
 
-    cmd = '{nice}{bcl2fastq} {options} {stderr_file}'\
+    cmd = '{nice}{bcl2fastq} {options} {stderr_file}' \
         .format(nice=nice,
                 bcl2fastq=bcl2fastqc_bin,
                 stderr_file=stderr_file,
@@ -636,6 +679,7 @@ def run_bcl2fastq(runfolder_dir,
     # )
 
     logger.info('Running bcl2fastq on: %s', runfolder_dir)
+    logger.info('Command: %s', cmd)
 
     cmd_out = None
     try:
@@ -650,7 +694,8 @@ def run_bcl2fastq(runfolder_dir,
     success = False
     # A successful outcome has something like this as the last line in stderr
     # "2017-04-02 15:56:32 [1bbb880] Processing completed with 0 errors and 0 warnings."
-    if cmd_out and 'Processing completed with 0 errors' in cmd_out.splitlines()[-1]:
+    if cmd_out and 'Processing completed with 0 errors' in cmd_out.splitlines()[
+        -1]:
         success = True
     else:
         logger.error('bcl2fastq failed stdout/stderr: %s', cmd_out)
@@ -661,7 +706,8 @@ def run_bcl2fastq(runfolder_dir,
     return output_directory, cmd_out
 
 
-def get_bcl2fastq_extra_args(run_dir, filename='bcl2fastq_extra_args.txt'):
+def get_legcay_bcl2fastq_extra_args(run_dir,
+                                    filename='bcl2fastq_extra_args.txt'):
     extra_args_path = path.join(run_dir, filename)
     lines = []
     if path.isfile(extra_args_path):
@@ -674,7 +720,8 @@ def get_bcl2fastq_extra_args(run_dir, filename='bcl2fastq_extra_args.txt'):
 def run_create_checksum_manifest(base_dir,
                                  manifest_filename='manifest-%s.txt',
                                  hash_type='md5'):
-
+    # TODO: Optionally write hashdeep format here
+    #       https://gist.github.com/techtonik/5175896
 
     manifest_filename %= hash_type
     manifest_filepath = path.join(base_dir, manifest_filename)
@@ -684,6 +731,8 @@ def run_create_checksum_manifest(base_dir,
         base_dir=base_dir,
         hash_type=hash_type,
         manifest_filepath=manifest_filepath)
+
+    logger.info('Command: %s', cmd)
 
     cmd_out = None
     try:
@@ -698,7 +747,6 @@ def run_create_checksum_manifest(base_dir,
 
 
 def run_rsync(src, dst, sudo=False, chown=None, checksum=True, extra_args=''):
-
     if checksum:
         extra_args += ' --checksum '
     if chown:
@@ -711,9 +759,11 @@ def run_rsync(src, dst, sudo=False, chown=None, checksum=True, extra_args=''):
     cmd = '{sudo} rsync -av ' \
           ' {extra_args} ' \
           '{src} {dst}/'.format(sudo=sudo,
-                                 src=src,
-                                 dst=dst,
-                                 extra_args=extra_args)
+                                src=src,
+                                dst=dst,
+                                extra_args=extra_args)
+
+    logger.info("Command: %s", cmd)
 
     cmd_out = None
     try:
@@ -765,12 +815,12 @@ def process_all_runs(run_storage_base, options):
     if options.verbose:
         if errored_tasks:
             errorlist = ', '.join(['%s:%s' % (t.task_name, t.run_id)
-                                 for t in errored_tasks])
+                                   for t in errored_tasks])
             logger.error("Processing runs in %s completed with failures: %s",
-                          run_storage_base, errorlist)
+                         run_storage_base, errorlist)
         else:
             logger.info("Successfully completed processing of runs in: %s",
-                         run_storage_base)
+                        run_storage_base)
 
     return not errored_tasks
 
@@ -806,7 +856,7 @@ def watch_runs(run_storage_base, options, tight_loop_timer=1):
         pass
 
 
-def get_commandline_args(parser=None):
+def setup_commandline_args(parser=None):
     """
     Parses commandline options (extending an existing parser),
     returns argparse options object.
@@ -895,10 +945,21 @@ def _set_current_task_status_on_exit():
 def run_in_console():
     global logger
 
-    parser = get_commandline_args()
+    parser = setup_commandline_args()
     options = parser.parse_args()
     # options, argv = parser.parse_known_args()
 
+    # TODO: This part should be a simple function call like:
+    # try:
+    #     uploader_options = illumina_uploader.read_config(options.uploader_config)
+    # except IOError as e:
+    #     parser.error("Cannot read config file: %s" %
+    #                  options.uploader_config)
+    #     sys.exit(1)
+    # options.uploader = uploader_options
+
+    # If a config for illumina_uploader was provided, read it
+    # and assign it to options.uploader for use in the mytardis_upload task
     options.uploader = None
     if options.uploader_config and os.path.isfile(options.uploader_config):
         uploader_parser = ArgumentParser()
@@ -925,8 +986,6 @@ def run_in_console():
         #       inadvertedly allow typos in config file keys to be ignored ?
         options.uploader, argv = uploader_parser.parse_known_args()
         # options.uploader = uploader_parser.parse_args()
-
-    # options.uploader = uploader_options
 
     if len(sys.argv) <= 1:
         parser.print_help()

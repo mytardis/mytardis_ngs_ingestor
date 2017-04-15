@@ -66,8 +66,9 @@ Running
 
 To ingest a run:
 
+If the package is installed:
 ```sh
-python -m mytardis_uploader.illumina_uploader --path=/mnt/bigdisk/160915_FHT451_0119_AC6AMWACXZ/ \
+illumina_uploader --path=/mnt/bigdisk/160915_FHT451_0119_AC6AMWACXZ/ \
 --bcl2fastq-output-path="{run_path}/{run_id}.bcl2fastq"
 ```
 
@@ -88,9 +89,10 @@ QC (eg fastqc) on runs, prior to ingestion into MyTardis. It is intended to
 be executed by a cron job every few minutes to process any completed sequencing
 runs as they appear.
 
+If the package is installed:
+```sh
+illumina_autoprocess --runs /data/sequencing_runs
 ```
-python -m mytardis_uploader.autoprocess --
-
 
 How a 'run' is structured in the MyTardis data model
 ----------------------------------------------------
@@ -126,12 +128,11 @@ Here is a quick overview of how the project is structured.
 
 Instances of the `mytardis_uploader.MyTardisUploader` class handle 
 (most) REST requests to the MyTardis server.  `mytardis_uploader.py` 
-also contains basic config and commandline parsing functions 
-(`get_config`, `add_config_args` and `validate_config`). There is no 
+also contains basic config and commandline parsing functions. There is no 
 domain-specific code related NGS runs in `mytardis_uploader.py`.
 The ingestor script `illumina_uploader.py` adds additional 
-config/commandline options and instatiates MyTardisUploader instances
-for making REST requests (one per MyTardis StorageBox). It handles 
+config/commandline options and instatiates MyTardisUploader instances 
+(one per MyTardis StorageBox) for making REST requests. It handles 
 parsing of metadata from Illumina sequencing runs and registering/uploading 
 files to MyTardis in a structure suitable of multiplexed runs from 
 multi-user facilities. `mytardis_models.py` and `models.py` provide 
@@ -143,3 +144,17 @@ functions should be split out into their own library, and logic around
 different filenaming and directoty structures (eg bcl2fastq v1.8.4 vs. 
 2.17) should be abstracted behind an API to simplify some of the 
 conditionals in `illumina_uploader.py`.
+
+The ingestor and autoprocessing tools can be run without installation - use
+this Python module syntax to run them.
+
+Ingestor:
+```sh
+python -m mytardis_uploader.illumina_uploader --path=/mnt/bigdisk/160915_FHT451_0119_AC6AMWACXZ/ \
+--bcl2fastq-output-path="{run_path}/{run_id}.bcl2fastq"
+```
+
+Autoprocessing:
+```sh
+python -m mytardis_ngs_ingestor.autoprocess --runs /data/sequencing_runs
+```
