@@ -32,6 +32,13 @@ import backoff
 from time import strftime
 import datetime
 import csv
+from argparse import ArgumentParser
+from appsettings import SettingsParser
+import toml
+from attrdict import AttrDict
+from toolz.dicttoolz import merge as merge_dicts
+
+from mytardis_ngs_ingestor.utils import config_helper
 
 import urllib3
 logging.captureWarnings(True)
@@ -47,15 +54,16 @@ DEFAULT_STORAGE_MODE = 'upload'
 
 
 # http://stackoverflow.com/a/26853961
-def merge_dicts(*dict_args):
-    """
-    Given any number of dicts, shallow copy and merge into a new dict,
-    precedence goes to key value pairs in latter dicts.
-    """
-    result = {}
-    for dictionary in dict_args:
-        result.update(dictionary)
-    return result
+# Deprecated by use of toolz.dicttoolz.merge_dicts
+# def merge_dicts(*dict_args):
+#     """
+#     Given any number of dicts, shallow copy and merge into a new dict,
+#     precedence goes to key value pairs in latter dicts.
+#     """
+#     result = {}
+#     for dictionary in dict_args:
+#         result.update(dictionary)
+#     return result
 
 
 class TastyPieAuth(AuthBase):
@@ -830,13 +838,16 @@ def setup_logging(loglevel=logging.DEBUG):
     return logger
 
 
-def add_config_args(parser, add_extra_options_fn=None):
+def setup_commandline_args(parser=None):
     """
     Takes an argparse.ArgumentParser-like object and adds commandline
     parameters to detect and capture values from.
     :type parser: ArgumentParser
     :return:
     """
+    if parser is None:
+        parser = ArgumentParser()
+
     parser.add_argument('--config',
                         dest="config_file",
                         type=str,
@@ -954,12 +965,17 @@ def add_config_args(parser, add_extra_options_fn=None):
                              "of MITM attacks.",
                         metavar="CERTIFICATE")
 
-    if add_extra_options_fn:
-        add_extra_options_fn(parser)
+    return parser
 
 
-def get_config(default_config_filename='uploader_config.yaml',
-               add_extra_options_fn=None):
+def parse_settings_yaml(config_filepath):
+    with open(config_filepath, 'r') as f:
+        parser = SettingsParser(yaml_file=f)
+
+    return parser
+
+
+def get_config(preparser=None, default_config_filename='uploader_config.yaml'):
     """
     Parses a config file (default or commandline specified), then
     overrides any settings with those specified on the command line.
@@ -975,39 +991,32 @@ def get_config(default_config_filename='uploader_config.yaml',
     options specified.
 
     :type default_config_filename: str
-    :type add_extra_options_fn: types.FunctionType
-    :return:
-    :rtype: (argparse.ArgumentParser, object)
+    :return: The parser.
+    :rtype: argparse.ArgumentParser
     """
-    from argparse import ArgumentParser
-    from appsettings import SettingsParser
 
-    preparser = ArgumentParser()
-    add_config_args(preparser,
-                    add_extra_options_fn=add_extra_options_fn)
-    precheck_options = preparser.parse_args()
+    if preparser is None:
+        preparser = ArgumentParser()
+
+    setup_commandline_args(preparser)
+    precheck_options, argv = preparser.parse_known_args()
 
     parser = None
 
     if precheck_options.config_file:
         try:
-            with open(precheck_options.config_file, 'r') as f:
-                parser = SettingsParser(yaml_file=f)
+            parser = parse_settings_yaml(precheck_options.config_file)
         except IOError:
             preparser.error("Cannot read config file: %s" %
                             precheck_options.config_file)
     elif os.path.isfile(default_config_filename):
-        with open(default_config_filename, 'r') as f:
-            parser = SettingsParser(yaml_file=f)
+        parser = parse_settings_yaml(default_config_filename)
     else:
         parser = SettingsParser()
 
-    add_config_args(parser,
-                    add_extra_options_fn=add_extra_options_fn)
+    setup_commandline_args(parser)
 
-    options = parser.parse_args()
-
-    return parser, options
+    return parser
 
 
 def validate_config(parser, options):
@@ -1020,10 +1029,11 @@ def validate_config(parser, options):
     :type parser: argparse.ArgumentParser
     :return:
     """
+
     if not options.path:
         parser.error('File path not given (--path)')
 
-    if not os.path.isabs(options.path):
+    if options.path and not os.path.isabs(options.path):
         parser.error('Path must be an absolute path (--path)')
 
     if not options.url:
@@ -1113,7 +1123,22 @@ def run():
 
     setup_logging()
 
-    parser, options = get_config()
+    parser = ArgumentParser()
+    parser = setup_commandline_args(parser)
+    commandline_options = parser.parse_args()
+    config_file = commandline_options.config_file
+
+    try:
+        config_options = config_helper.get_config_toml(config_file)
+    except IOError as e:
+        parser.error("Cannot read config file: %s" % config_file)
+        sys.exit(1)
+
+    # Any option that is unset in the commandline args will
+    # receive a value from a config file option
+    parser.set_defaults(**config_options)
+
+    options = parser.parse_args()
 
     validate_config(parser, options)
 
@@ -1144,7 +1169,7 @@ def run():
         storage_mode=options.storage_mode,
         storage_box_location=options.storage_base_path,
         storage_box_name=options.storage_box_name,
-        verify_certificate=options.verify_certificate,
+        verify_certificate=getattr(options, 'verify_certificate', True),
         fast_mode=options.fast
     )
 

@@ -6,6 +6,11 @@ import subprocess
 import psutil
 import logging
 
+try:
+    from shutil import which
+except ImportError:
+    from backports.shutil_which import which
+
 from fs import open_fs
 # from fs.zipfs import ZipFS
 
@@ -22,6 +27,14 @@ def run_fastqc(fastq_paths,
                threads=None,
                extra_options=''):
     cmd_out = None
+
+    if not fastqc_bin:
+        # We will assume it's on path with the default name
+        fastqc_bin = 'fastqc'
+
+    if not which(fastqc_bin):
+        logger.error("FastQC - executable %s doesn't exist ?", fastqc_bin)
+        return None, cmd_out
 
     if threads is None:
         # We set threads to the number of cpus, or less if the RAM would be
@@ -47,10 +60,6 @@ def run_fastqc(fastq_paths,
         except OSError:
             logger.error('FastQC - failed to create temp directory.')
             return None, cmd_out
-
-    if not fastqc_bin:
-        # We will assume it's on path with the default name
-        fastqc_bin = 'fastqc'
 
     cmd = 'nice %s %s --noextract --threads %d --outdir %s %s' % \
           (fastqc_bin,

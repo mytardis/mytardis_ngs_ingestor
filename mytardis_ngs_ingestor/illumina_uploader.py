@@ -14,12 +14,17 @@ import subprocess
 
 import os
 from os.path import join, splitext, exists, isdir, isfile
+import glob2  # allows recursive glob in Python <3.5
 import json
 from collections import OrderedDict
+from argparse import ArgumentParser
 
 from semantic_version import Version as SemanticVersion
 from distutils.version import LooseVersion
 
+import mytardis_ngs_ingestor
+from mytardis_ngs_ingestor import mytardis_uploader
+from mytardis_ngs_ingestor.utils import config_helper
 from mytardis_ngs_ingestor.utils import tmp_dirs
 from mytardis_ngs_ingestor.utils import standalone_html
 
@@ -50,6 +55,7 @@ from mytardis_ngs_ingestor.illumina.run_info import (
     runinfo_parser,
     illumina_config_parser,
     get_run_id_from_path,
+    get_instrument_model_from_id,
     get_demultiplexer_info,
     get_sample_id_from_fastq_filename,
     get_sample_name_from_fastq_filename,
@@ -59,11 +65,6 @@ from mytardis_ngs_ingestor.illumina.run_info import (
     undetermined_reads_in_root,
     get_index_from_fastq_content)
 
-# we map names from *Effective.cfg to more recognisable names
-# (MiSeq seems to be called 'Shock' some places internally)
-INSTRUMENT_TYPE_NAMES = {
-    'Shock': 'MiSeq'
-}
 
 class DemultiplexedSamples(DemultiplexedSamplesBase):
     pass
@@ -113,10 +114,11 @@ def create_run_experiment_object(run_path):
     end_time, rta_version = rta_complete_parser(run_path)
 
     runinfo_parameters = runinfo_parser(run_path)
-    instrument_config = illumina_config_parser(run_path)
-    raw_model_name = instrument_config.get('system:instrumenttype', '')
-    instrument_model = INSTRUMENT_TYPE_NAMES.get(raw_model_name, raw_model_name)
     instrument_id = runinfo_parameters.get('instrument_id', '')
+    instrument_model = get_instrument_model_from_id(instrument_id)
+    if not instrument_model:
+        instrument_model = instrument_id
+
     samplesheet, chemistry = parse_samplesheet(join(run_path,
                                                     'SampleSheet.csv'))
 
@@ -1050,6 +1052,13 @@ def pre_ingest_checks_instrument_run(options):
                      bcl2fastq_output_dir)
         return False
 
+    fastqs = glob2.glob('%s/**/*.fastq.gz' % bcl2fastq_output_dir)
+    if not fastqs:
+        logger.error("Aborting - no .fastq.gz files found in bcl2fastq output "
+                     "directory tree (%s). Did demultiplexing run successfully "
+                     "?" % bcl2fastq_output_dir)
+        return False
+
     if not exists(join(run_path, 'RTAComplete.txt')):
         logger.error("Aborting - 'RTAComplete.txt' not found. "
                      "Is the run still in progress ?")
@@ -1171,12 +1180,19 @@ def pre_ingest_checks_fastq_only(options):
 
 
 def ingest_run(options, run_path=None):
+
+    global logger
+
+    options.path = options.path or run_path
+    run_path = run_path or options.path
+
     # Before creating any records on the server we first check that certain
     # prerequisite files exist, that the run is complete and is generally in a
     # 'sane' state suitable for ingestion.
     logger.info("Running pre-ingestion checks & validation.")
     if not pre_ingest_checks(options):
-        sys.exit(1)
+        raise ValueError("Pre ingestion checks failed.")
+        # sys.exit(1)
 
     # exclude_patterns = \
     #     get_exclude_patterns_as_regex_list(options.exclude)
@@ -1189,7 +1205,7 @@ def ingest_run(options, run_path=None):
         storage_mode=options.storage_mode,
         storage_box_location=options.storage_base_path,
         storage_box_name=options.storage_box_name,
-        verify_certificate=options.verify_certificate,
+        verify_certificate=getattr(options, 'verify_certificate', True),
         fast_mode=options.fast,
     )
 
@@ -1207,7 +1223,7 @@ def ingest_run(options, run_path=None):
         # storage_box_name='live',
         # storage_box_name='object_store',
         storage_box_name=options.live_storage_box_name,
-        verify_certificate=options.verify_certificate,
+        verify_certificate=getattr(options, 'verify_certificate', True),
         fast_mode=options.fast,
     )
 
@@ -1226,9 +1242,8 @@ def ingest_run(options, run_path=None):
                      (seqfac_app_version, ingestor_version))
         raise Exception("Version mismatch.")
 
+
     # Create an Experiment representing the overall sequencing run
-    if not run_path:
-        run_path = options.path
 
     # TODO: for fastq_only - create_run_experiment_object is where run specific
     #       files are read. We need to be able to optionally inject metadata
@@ -1515,76 +1530,104 @@ def ingest_run(options, run_path=None):
     logger.info("Ingestion of run %s complete !", run_id)
 
 
-def extra_config_options(argparser):
-    argparser.add_argument('--fastq-only',
-                           dest='fastq_only',
-                           action='store_true',
-                           help="Ingest just the FASTQ files and "
+def setup_commandline_args(parser):
+    """
+    Takes an argparse.ArgParser instance and adds extra options.
+    (Allows the parser generated by mytardis_uploader to be extended
+     with extra options specific to illumina_uploader)
+
+    :param parser: The parser to extend with additional options.
+    :type parser: argparse.ArgumentParser
+    :return: The extended parser.
+    :rtype: argparse.ArgumentParser
+    """
+    parser.add_argument('--fastq-only',
+                        dest='fastq_only',
+                        action='store_true',
+                        help="Ingest just the FASTQ files and "
                                 "ignore any instrument / run specific "
                                 "files or metadata extraction. FastQC "
                                 "reports are generated if the --run-fastqc"
                                 "flag is also given.")
-    argparser.add_argument('--threads',
-                           dest='threads',
-                           type=int,
-                           metavar='THREADS')
-    argparser.add_argument('--run-fastqc',
-                           dest='run_fastqc',
-                           type=bool,
-                           default=False,
-                           metavar='RUN_FASTQC')
-    argparser.add_argument('--fastqc-bin',
-                           dest='fastqc_bin',
-                           type=str,
-                           metavar='FASTQC_BIN')
-    argparser.add_argument('--bcl2fastq-output-path',
-                           dest='bcl2fastq_output_path',
-                           default='{run_path}/Data/Intensities/BaseCalls',
-                           type=str,
-                           metavar='BCL2FASTQ_OUTPUT_PATH',
-                           help='The path to the bcl2fastq output '
+    parser.add_argument('--threads',
+                        dest='threads',
+                        type=int,
+                        metavar='THREADS')
+    parser.add_argument('--run-fastqc',
+                        dest='run_fastqc',
+                        type=bool,
+                        default=False,
+                        metavar='RUN_FASTQC')
+    parser.add_argument('--fastqc-bin',
+                        dest='fastqc_bin',
+                        type=str,
+                        metavar='FASTQC_BIN')
+    parser.add_argument('--bcl2fastq-output-path',
+                        dest='bcl2fastq_output_path',
+                        default='{run_path}/Data/Intensities/BaseCalls',
+                        type=str,
+                        metavar='BCL2FASTQ_OUTPUT_PATH',
+                        help='The path to the bcl2fastq output '
                                 '(fastq.gz files in project/sample '
                                 'directories). The template strings '
                                 '{run_path} and {run_id} can be used to '
                                 'specify a path relative to the run '
                                 'folder, or another path that includes the '
                                 'run_id.')
-    argparser.add_argument('--dump-fixtures',
-                           dest='dump_fixtures',
-                           action='store_true')
-    argparser.add_argument('--live-storage-box-name',
-                           dest='live_storage_box_name',
-                           default='live',
-                           type=str,
-                           metavar='LIVE_STORAGE_BOX_NAME')
-    argparser.add_argument('--replace-duplicate-runs',
-                           dest='replace_duplicate_runs',
-                           type=bool,
-                           default=False,
-                           metavar='REPLACE_DUPLICATE_RUNS')
-    argparser.add_argument('--ignore-zero-sized-bcl-check',
-                           dest='ignore_zero_sized_bcl_check',
-                           type=bool,
-                           default=False,
-                           metavar='IGNORE_ZERO_SIZED_BCL_CHECK')
+    parser.add_argument('--dump-fixtures',
+                        dest='dump_fixtures',
+                        action='store_true')
+    parser.add_argument('--live-storage-box-name',
+                        dest='live_storage_box_name',
+                        default='live',
+                        type=str,
+                        metavar='LIVE_STORAGE_BOX_NAME')
+    parser.add_argument('--replace-duplicate-runs',
+                        dest='replace_duplicate_runs',
+                        type=bool,
+                        default=False,
+                        metavar='REPLACE_DUPLICATE_RUNS')
+    parser.add_argument('--ignore-zero-sized-bcl-check',
+                        dest='ignore_zero_sized_bcl_check',
+                        type=bool,
+                        default=False,
+                        metavar='IGNORE_ZERO_SIZED_BCL_CHECK')
+
+    return parser
 
 
 def run_in_console():
+    global logger
+    logger = setup_logging()
+    # set logger for these modules to our logger
+    run_info.logger = logger
+    fastqc.logger = logger
+
     MyTardisUploader.user_agent_name = os.path.basename(sys.argv[0])
 
-    parser, options = get_config(add_extra_options_fn=extra_config_options)
+    parser = ArgumentParser()
+    parser = mytardis_uploader.setup_commandline_args(parser)
+    parser = setup_commandline_args(parser)
+    commandline_options = parser.parse_args()
+    config_file = commandline_options.config_file
+
+    try:
+        config_options = config_helper.get_config_toml(config_file)
+    except IOError as e:
+        parser.error("Cannot read config file: %s" % config_file)
+        sys.exit(1)
+
+    # Any option that is unset in the commandline args will
+    # receive a value from a config file option
+    parser.set_defaults(**config_options)
+
+    options = parser.parse_args()
 
     if options.dump_fixtures:
         dump_schema_fixtures_as_json()
         sys.exit(1)
 
     validate_config(parser, options)
-
-    global logger
-    logger = setup_logging()
-    # set logger for these modules to our logger
-    run_info.logger = logger
-    fastqc.logger = logger
 
     try:
         ingest_run(options)

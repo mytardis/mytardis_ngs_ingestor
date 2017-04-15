@@ -1,9 +1,12 @@
 appsettings
+attrdict
 backoff
+backports.shutil_which
 beautifulsoup4
 colorlog
 crython
 # -e git+https://github.com/ahawker/crython.git#egg=crython
+glob2
 fs>=2.0,<3.0
 future
 jsondate
@@ -20,5 +23,7 @@ requests-toolbelt>=0.4.0
 semantic_version
 simplekv
 six
+toml
+toolz
 urllib3
 xmltodict

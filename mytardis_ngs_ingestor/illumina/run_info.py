@@ -279,6 +279,27 @@ def runinfo_parser(run_path):
     return info
 
 
+# Based on values from illuminate.metadata._get_model
+# In the future we should probably move to using illuminate
+# for all metadata parsing
+def get_instrument_model_from_id(instrument_id):
+    instrument_models = OrderedDict({
+        'NS':  'NextSeq500',
+        'M':   'MiSeq',
+        'D':   'HiSeq2500',
+        'SNL': 'HiSeq1500',
+        'SN':  'HiSeq2000',  # must be after SNL !
+        'J':   'HiSeq3000',
+        'K':   'HiSeq4000',
+        'ST':  'HiSeqX',
+    })
+
+    for prefix, model in instrument_models.items():
+        if instrument_id.startswith(prefix):
+            return model
+    return None
+
+
 def illumina_config_parser(run_path):
     """
     Extacts data from an Illumina run Config/*_Effective.cfg file.

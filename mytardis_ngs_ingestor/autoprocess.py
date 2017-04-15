@@ -4,6 +4,8 @@ import subprocess
 import jsondate as json
 from datetime import datetime
 import atexit
+import toml
+from toolz import dicttoolz
 
 from argparse import ArgumentParser
 
@@ -19,6 +21,8 @@ fastqc.logger = logger
 
 from simplekv.fs import FilesystemStore
 
+from mytardis_ngs_ingestor.utils import config_helper
+import mytardis_uploader
 from illumina.run_info import get_run_id_from_path, get_sample_project_mapping
 from illumina import fastqc
 import illumina_uploader
@@ -31,6 +35,7 @@ ERROR = 'error'
 
 current_task = None  # current task
 taskdb = None
+
 
 def first(l):
     """
@@ -230,6 +235,104 @@ def log_status(task, verbose=True):
                    taskdb.get_task_filepath(task))
 
 
+# def run_task(task_name, fn, check_success_fn, verbose=True, *args, **kwargs):
+#     current_task = taskdb.get_or_create(task_name)
+#     if current_task.is_failed():
+#         log_status(current_task, verbose)
+#         return current_task
+#
+#     try:
+#         current_task.status = RUNNING
+#         taskdb.update(current_task)
+#         if check_success_fn(*fn(*args, **kwargs)):
+#             current_task.status = COMPLETE
+#             taskdb.update(current_task)
+#         else:
+#             raise Exception('%s task failed.' % task_name)
+#     except Exception as e:
+#         logger.exception("%s task failed." % task_name)
+#         current_task.status = ERROR
+#         taskdb.update(current_task)
+#
+#     log_status(current_task, verbose)
+#
+#     if taskdb.is_pending(task_name):
+#         return current_task
+
+
+def do_create_checksum_manifest(run_dir, options):
+    global current_task
+    current_task = taskdb.get_or_create('create_checksum_manifest')
+
+    if current_task.is_failed():
+        log_status(current_task, options.verbose)
+        return current_task
+
+    cmd_out = None
+    try:
+        current_task.status = RUNNING
+        # current_task.info['command'] = cmd
+        taskdb.update(current_task)
+        success, cmd_out = run_create_checksum_manifest(run_dir)
+        current_task.status = COMPLETE
+        current_task.info['output'] = cmd_out
+        taskdb.update(current_task)
+    except Exception as e:
+        logger.exception("create_checksum_manifest task failed with an "
+                         "exception.")
+        current_task.status = ERROR
+        current_task.info['output'] = cmd_out
+        taskdb.update(current_task)
+
+    log_status(current_task, options.verbose)
+
+    return current_task
+
+
+def do_rsync_to_archive_task(run_dir, options):
+    task_name = 'rsync_to_archive'
+    global current_task
+    current_task = taskdb.get_or_create(task_name)
+
+    # archive_basepath = '/srv/sonas/mhtp/market/illumina/'
+    archive_basepath = '/data/illumina/archive_test'
+    rsync_extra = '--exclude="{run_dir}/Thumbnail_Images/" ' \
+                  '--include="*.xml" ' \
+                  '--include="*.csv" ' \
+                  '--include="*.log" ' \
+                  '--exclude="{run_dir}/Data/Intensities/BaseCalls/L00*/" '.format(
+        run_dir=run_dir)
+
+    if current_task.is_failed():
+        log_status(current_task, options.verbose)
+        return current_task
+
+    cmd_out = None
+    try:
+        current_task.status = RUNNING
+        # current_task.info['command'] = cmd
+        taskdb.update(current_task)
+        success, cmd_out = run_rsync(run_dir, archive_basepath,
+                                     sudo=True,
+                                     chown='root:root',
+                                     extra_args=rsync_extra)
+        if success:
+            current_task.status = COMPLETE
+            current_task.info['output'] = cmd_out
+            taskdb.update(current_task)
+        else:
+            raise Exception('%s task failed (non-zero exit code).' % task_name)
+    except Exception as e:
+        logger.exception("%s task failed." % task_name)
+        current_task.status = ERROR
+        current_task.info['output'] = cmd_out
+        taskdb.update(current_task)
+
+    log_status(current_task, options.verbose)
+
+    return current_task
+
+
 def try_autoprocessing(run_dir, options):
     global current_task
     global taskdb
@@ -258,7 +361,6 @@ def try_autoprocessing(run_dir, options):
 
     if options.verbose:
         logger.info('Starting autoprocessing on: %s', run_dir)
-
 
     ##
     # Check if run has finished transferring from the sequencer
@@ -362,29 +464,39 @@ def try_autoprocessing(run_dir, options):
 
 
     ##
+    # Create checksum manifest file
+    ##
+    """
+    current_task = do_create_checksum_manifest(run_dir, options)
+    if current_task.is_failed() or current_task.is_pending():
+        return current_task
+    """
+
+    ##
     # Custom scripts on run_dir / bcl2fastq_output_dir
     ##
+    # TODO: eg, Copy to archival storage
 
-    # TODO: Copy to archival storage
 
+    ##
+    # Rsync to archival storage
+    ##
+    """
+    current_task = do_rsync_to_archive_task(run_dir, options)
+    if current_task.is_failed() or current_task.is_pending():
+        return current_task
+    """
 
     ##
     # Ingest using illumina_uploader
     ##
-
-    # TODO: WIP, finish this
-    #       Need to call:
-    # parser, options = mytardis_uploader.get_config(
-    #     add_extra_options_fn=illumina_uploader.extra_config_options)
-    # and add support for extra_config_options to our get_commandline_args
-    # function here.
-    # Basically we want to take the autoprocess.get_commandline_args and extend
-    # it with the mytardis_uploader.get_config options, and then the
-    # illumina_uploader.extra_config_options.
-    # Decorators ?
-
-    """
     current_task = taskdb.get_or_create('mytardis_upload')
+    if not options.uploader:
+        logger.exception("mytardis_upload task failed - config %s not found",
+                         options.uploader_config)
+        current_task.status = ERROR
+        taskdb.update(current_task)
+
     if current_task.is_failed():
         log_status(current_task, options.verbose)
         return current_task
@@ -392,7 +504,8 @@ def try_autoprocessing(run_dir, options):
     try:
         current_task.status = RUNNING
         taskdb.update(current_task)
-        illumina_uploader.ingest_run(options, run_path=run_dir)
+        illumina_uploader.logger = logger
+        illumina_uploader.ingest_run(options.uploader, run_path=run_dir)
         current_task.status = COMPLETE
         taskdb.update(current_task)
     except Exception as e:
@@ -404,7 +517,6 @@ def try_autoprocessing(run_dir, options):
 
     if taskdb.is_pending('mytardis_upload'):
         return current_task
-    """
 
 
     ##
@@ -460,6 +572,7 @@ def run_bcl2fastq(runfolder_dir,
                   bcl2fastqc_bin=None,
                   stderr_file='',
                   nice=False,
+                  version='2.19',
                   extra_args=None):
     """
     Run bcl2fastq with commandline options.
@@ -510,6 +623,18 @@ def run_bcl2fastq(runfolder_dir,
                 stderr_file=stderr_file,
                 options=' '.join(options))
 
+    # eg, using a Docker container prepared like:
+    # https://gist.github.com/pansapiens/0e9b36cc1b11ce3c6e49dc81d09e30bf
+    # cmd = '{nice} docker run -it ' \
+    #       '-v {output_directory}:/output ' \
+    #       '-v {runfolder_dir}:/run bcl2fastq:{version} ' \
+    #       '/usr/local/bin/bcl2fastq -o /output -R /run'.format(
+    #     nice=nice,
+    #     version=version,
+    #     output_directory=output_directory,
+    #     runfolder_dir=runfolder_dir,
+    # )
+
     logger.info('Running bcl2fastq on: %s', runfolder_dir)
 
     cmd_out = None
@@ -536,7 +661,7 @@ def run_bcl2fastq(runfolder_dir,
     return output_directory, cmd_out
 
 
-def get_bcl2fastq_extra_args(run_dir, filename="bcl2fastq_extra_args.txt"):
+def get_bcl2fastq_extra_args(run_dir, filename='bcl2fastq_extra_args.txt'):
     extra_args_path = path.join(run_dir, filename)
     lines = []
     if path.isfile(extra_args_path):
@@ -546,20 +671,60 @@ def get_bcl2fastq_extra_args(run_dir, filename="bcl2fastq_extra_args.txt"):
     return lines
 
 
-@atexit.register
-def _set_current_task_status_on_exit():
-    """
-    Attempt to set current task status to 'error' if we have a premature
-    exit.
-    """
-    global current_task
-    global taskdb
+def run_create_checksum_manifest(base_dir,
+                                 manifest_filename='manifest-%s.txt',
+                                 hash_type='md5'):
 
-    if current_task is not None \
-            and taskdb is not None \
-            and current_task.status != COMPLETE:
-        current_task.status = ERROR
-        taskdb.put(current_task.task_name, current_task)
+
+    manifest_filename %= hash_type
+    manifest_filepath = path.join(base_dir, manifest_filename)
+    cmd = 'find {base_dir} ' \
+          '-type f ' \
+          '-exec {hash_type}sum "{{}}" + >{manifest_filepath}'.format(
+        base_dir=base_dir,
+        hash_type=hash_type,
+        manifest_filepath=manifest_filepath)
+
+    cmd_out = None
+    try:
+        cmd_out = subprocess.check_output(cmd,
+                                          shell=True,
+                                          stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        logger.error('create checksum failed: stdout/stderr: %s', cmd_out)
+        return None, cmd_out
+
+    return manifest_filepath, cmd_out
+
+
+def run_rsync(src, dst, sudo=False, chown=None, checksum=True, extra_args=''):
+
+    if checksum:
+        extra_args += ' --checksum '
+    if chown:
+        extra_args += ' --chown=%s ' % chown
+    if sudo:
+        sudo = 'sudo'
+    else:
+        sudo = ''
+
+    cmd = '{sudo} rsync -av ' \
+          ' {extra_args} ' \
+          '{src} {dst}/'.format(sudo=sudo,
+                                 src=src,
+                                 dst=dst,
+                                 extra_args=extra_args)
+
+    cmd_out = None
+    try:
+        cmd_out = subprocess.check_output(cmd,
+                                          shell=True,
+                                          stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        logger.error('rsync failed: stdout/stderr: %s', cmd_out)
+        return None, cmd_out
+
+    return dst, cmd_out
 
 
 def process_all_runs(run_storage_base, options):
@@ -641,14 +806,18 @@ def watch_runs(run_storage_base, options, tight_loop_timer=1):
         pass
 
 
-def get_commandline_args():
+def get_commandline_args(parser=None):
     """
-    Parses commandline options, returns argparse options object.
+    Parses commandline options (extending an existing parser),
+    returns argparse options object.
 
-    :type parser: ArgumentParser
-    :return: object
+    :param parser: The parser to extend.
+    :type parser: argparse.ArgumentParser
+    :return: The extended parser.
+    :rtype: argparse.ArgumentParser
     """
-    parser = ArgumentParser()
+    if not parser:
+        parser = ArgumentParser()
 
     parser.add_argument("--quiet",
                         action="store_false",
@@ -663,6 +832,14 @@ def get_commandline_args():
     #                     dest="config_file",
     #                     type=str,
     #                     metavar="AUTOPROCESSNG_CONFIG")
+
+    parser.add_argument("--uploader-config",
+                        dest="uploader_config",
+                        type=str,
+                        default="uploader_config.toml",
+                        help="The path to the uploader config file "
+                             "eg uploader_config.toml",
+                        metavar="UPLOADER_CONFIG")
 
     parser.add_argument("--runs",
                         dest="run_storage_base",
@@ -694,39 +871,91 @@ def get_commandline_args():
     #                     help="Dry run (don't actually process, just show "
     #                          "what the next task would be)")
 
-    options = parser.parse_args()
-    return parser, options
+    # options = parser.parse_args()
+    # return parser, options
+    return parser
+
+
+@atexit.register
+def _set_current_task_status_on_exit():
+    """
+    Attempt to set current task status to 'error' if we have a premature
+    exit.
+    """
+    global current_task
+    global taskdb
+
+    if current_task is not None \
+            and taskdb is not None \
+            and current_task.status != COMPLETE:
+        current_task.status = ERROR
+        taskdb.put(current_task.task_name, current_task)
 
 
 def run_in_console():
-    parser, options = get_commandline_args()
+    global logger
+
+    parser = get_commandline_args()
+    options = parser.parse_args()
+    # options, argv = parser.parse_known_args()
+
+    options.uploader = None
+    if options.uploader_config and os.path.isfile(options.uploader_config):
+        uploader_parser = ArgumentParser()
+        uploader_parser = mytardis_uploader.setup_commandline_args(
+            uploader_parser)
+        uploader_parser = illumina_uploader.setup_commandline_args(
+            uploader_parser)
+
+        uploader_default_options, argv = uploader_parser.parse_known_args()
+        # uploader_default_options = uploader_parser.parse_args()
+
+        try:
+            uploader_options = config_helper.get_config_toml(
+                options.uploader_config)
+        except IOError as e:
+            parser.error("Cannot read config file: %s" %
+                         options.uploader_config)
+            sys.exit(1)
+
+        # Any option that is unset in the commandline args will
+        # receive a value from a config file option
+        uploader_parser.set_defaults(**uploader_options)
+        # TODO: By using parse_known_args rather than parse_args, we might
+        #       inadvertedly allow typos in config file keys to be ignored ?
+        options.uploader, argv = uploader_parser.parse_known_args()
+        # options.uploader = uploader_parser.parse_args()
+
+    # options.uploader = uploader_options
 
     if len(sys.argv) <= 1:
         parser.print_help()
         sys.exit()
+    try:
+        if options.run_storage_base and options.run_path:
+            logger.error("Please use only --runs or --single-run, not both.")
 
-    if options.run_storage_base and options.run_path:
-        logger.error("Please use only --runs or --single-run, not both.")
+        if options.watch and not options.run_storage_base:
+            logger.error("You must specify the --runs option if using --watch.")
 
-    if options.watch and not options.run_storage_base:
-        logger.error("You must specify the --runs option if using --watch.")
+        if options.run_storage_base:
+            if options.watch:
+                watch_runs(options.run_storage_base, options)
+                sys.exit()
+            else:
+                logger.info('Running single autoprocess pass on: %s',
+                            options.run_storage_base)
+                exit_code = 0
+                ok = process_all_runs(options.run_storage_base, options)
+                if not ok:
+                    exit_code = 1
+                sys.exit(exit_code)
 
-    if options.run_storage_base:
-        if options.watch:
-            watch_runs(options.run_storage_base, options)
+        if options.run_path:
+            try_autoprocessing(options.run_path, options)
             sys.exit()
-        else:
-            logger.info('Running single autoprocess pass on: %s',
-                        options.run_storage_base)
-            exit_code = 0
-            ok = process_all_runs(options.run_storage_base, options)
-            if not ok:
-                exit_code = 1
-            sys.exit(exit_code)
-
-    if options.run_path:
-        try_autoprocessing(options.run_path, options)
-        sys.exit()
+    except KeyboardInterrupt as e:
+        _set_current_task_status_on_exit()
 
 
 if __name__ == '__main__':

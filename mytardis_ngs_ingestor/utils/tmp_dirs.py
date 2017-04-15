@@ -21,6 +21,6 @@ def create_tmp_dir(*args, **kwargs):
 @atexit.register
 def _cleanup_tmp():
     for tmpdir in TMPDIRS:
-        if os.exists(tmpdir):
+        if os.path.exists(tmpdir):
             shutil.rmtree(tmpdir)
             logger.info("Removed temp directory: %s", tmpdir)
