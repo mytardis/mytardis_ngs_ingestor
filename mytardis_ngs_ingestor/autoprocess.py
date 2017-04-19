@@ -669,6 +669,7 @@ def run_bcl2fastq(runfolder_dir,
     # eg, using a Docker container prepared like:
     # https://gist.github.com/pansapiens/0e9b36cc1b11ce3c6e49dc81d09e30bf
     # cmd = '{nice} docker run -it ' \
+    #       '--user `id -n -u`:`id -n -g`' \
     #       '-v {output_directory}:/output ' \
     #       '-v {runfolder_dir}:/run bcl2fastq:{version} ' \
     #       '/usr/local/bin/bcl2fastq -o /output -R /run'.format(
