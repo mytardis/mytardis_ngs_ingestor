@@ -1596,6 +1596,57 @@ def setup_commandline_args(parser):
     return parser
 
 
+def get_config_options(config_file_attr='config_file',
+                       default_config_filename='uploader_config.toml',
+                       parser=None,
+                       ignore_unknown_args=False):
+    """
+    Gets config options from commandline args and the config file.
+
+    :param config_file_attr:
+    :type config_file_attr:
+    :param parser:
+    :type parser:
+    :param ignore_unknown_args:
+    :type ignore_unknown_args:
+    :return:
+    :rtype:
+    """
+
+    if parser is None:
+        parser = ArgumentParser()
+    parser = mytardis_uploader.setup_commandline_args(parser)
+    parser = setup_commandline_args(parser)
+
+    if ignore_unknown_args:
+        commandline_options, argv = parser.parse_known_args()
+    else:
+        commandline_options = parser.parse_args()
+
+    config_file = getattr(commandline_options,
+                          config_file_attr,
+                          default_config_filename)
+
+    try:
+        config_options = config_helper.get_config_toml(
+            config_file,
+            default_config_filename=default_config_filename)
+    except IOError as e:
+        parser.error("Cannot read config file: %s" % config_file)
+        raise e
+
+    # Any option that is unset in the commandline args will
+    # receive a value from a config file option
+    parser.set_defaults(**config_options)
+
+    if ignore_unknown_args:
+        options, argv = parser.parse_known_args()
+    else:
+        options = parser.parse_args()
+
+    return options
+
+
 def run_in_console():
     global logger
     logger = setup_logging()
@@ -1606,22 +1657,11 @@ def run_in_console():
     MyTardisUploader.user_agent_name = os.path.basename(sys.argv[0])
 
     parser = ArgumentParser()
-    parser = mytardis_uploader.setup_commandline_args(parser)
-    parser = setup_commandline_args(parser)
-    commandline_options = parser.parse_args()
-    config_file = commandline_options.config_file
-
     try:
-        config_options = config_helper.get_config_toml(config_file)
+        options = get_config_options(config_file_attr='config_file',
+                                     parser=parser)
     except IOError as e:
-        parser.error("Cannot read config file: %s" % config_file)
         sys.exit(1)
-
-    # Any option that is unset in the commandline args will
-    # receive a value from a config file option
-    parser.set_defaults(**config_options)
-
-    options = parser.parse_args()
 
     if options.dump_fixtures:
         dump_schema_fixtures_as_json()

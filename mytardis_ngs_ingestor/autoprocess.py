@@ -6,6 +6,7 @@ from datetime import datetime
 import atexit
 import toml
 from toolz import dicttoolz
+from attrdict import AttrDict
 
 from argparse import ArgumentParser
 
@@ -182,25 +183,6 @@ class TaskDb(FilesystemStore):
         else:
             raise TypeError("task must be an instance of ProcessingTask")
 
-    # def get_or_create(self, key, value):
-    #     """
-    #     Get value by key, with optional default value to return if missing.
-    #
-    #     :param value:
-    #     :type value:
-    #     :param key:
-    #     :type key:
-    #     :param args:
-    #     :type args:
-    #     :return:
-    #     :rtype:
-    #     """
-    #     try:
-    #         return self.get(key)
-    #     except KeyError as e:
-    #         self.put(key, value)
-    #         return value
-
     def get_task_filepath(self, t):
         return path.join(self.dbpath, t.task_name)
 
@@ -240,6 +222,13 @@ def log_status(task, verbose=True):
                    taskdb.get_task_filepath(task))
 
 
+def log_retry(task, verbose=True):
+    if verbose:
+        logger.warning('Retrying - run_id: %s task: %s',
+                       task.run_id.ljust(24),
+                       task.task_name.ljust(24))
+
+
 # def run_task(task_name, fn, check_success_fn, verbose=True, *args, **kwargs):
 #     current_task = taskdb.get_or_create(task_name)
 #     if current_task.is_failed():
@@ -269,6 +258,10 @@ def do_rta_complete(run_dir, options):
     global current_task
     current_task = taskdb.get_or_create('rta_complete')
 
+    if options.retry and current_task.is_failed():
+        current_task.status = CREATED
+        log_retry(current_task, options.verbose)
+
     if current_task.is_failed() or current_task.is_running():
         log_status(current_task, options.verbose)
         return current_task
@@ -288,6 +281,10 @@ def do_rta_complete(run_dir, options):
 def do_bcl2fastq(run_dir, options):
     global current_task
     current_task = taskdb.get_or_create('bcl2fastq')
+
+    if options.retry and current_task.is_failed():
+        current_task.status = CREATED
+        log_retry(current_task, options.verbose)
 
     if current_task.is_failed() or current_task.is_running():
         log_status(current_task, options.verbose)
@@ -319,6 +316,10 @@ def do_bcl2fastq(run_dir, options):
 def do_fastqc(run_dir, options):
     global current_task
     current_task = taskdb.get_or_create('fastqc')
+
+    if options.retry and current_task.is_failed():
+        current_task.status = CREATED
+        log_retry(current_task, options.verbose)
 
     if current_task.is_failed() or current_task.is_running():
         log_status(current_task, options.verbose)
@@ -370,25 +371,30 @@ def do_create_checksum_manifest(run_dir, options):
     global current_task
     current_task = taskdb.get_or_create('create_checksum_manifest')
 
+    if options.retry and current_task.is_failed():
+        current_task.status = CREATED
+        log_retry(current_task, options.verbose)
+
     if current_task.is_failed() or current_task.is_running():
         log_status(current_task, options.verbose)
         return current_task
 
-    cmd_out = None
-    try:
-        current_task.status = RUNNING
-        # current_task.info['command'] = cmd
-        taskdb.update(current_task)
-        success, cmd_out = run_create_checksum_manifest(run_dir)
-        current_task.status = COMPLETE
-        current_task.info['output'] = cmd_out
-        taskdb.update(current_task)
-    except Exception as e:
-        logger.exception("create_checksum_manifest task failed with an "
-                         "exception.")
-        current_task.status = ERROR
-        current_task.info['output'] = cmd_out
-        taskdb.update(current_task)
+    if current_task.is_pending():
+        cmd_out = None
+        try:
+            current_task.status = RUNNING
+            # current_task.info['command'] = cmd
+            taskdb.update(current_task)
+            success, cmd_out = run_create_checksum_manifest(run_dir)
+            current_task.status = COMPLETE
+            current_task.info['output'] = cmd_out
+            taskdb.update(current_task)
+        except Exception as e:
+            logger.exception("create_checksum_manifest task failed with an "
+                             "exception.")
+            current_task.status = ERROR
+            current_task.info['output'] = cmd_out
+            taskdb.update(current_task)
 
     log_status(current_task, options.verbose)
     return current_task
@@ -398,6 +404,10 @@ def do_rsync_to_archive(run_dir, options):
     task_name = 'rsync_to_archive'
     global current_task
     current_task = taskdb.get_or_create(task_name)
+
+    if options.retry and current_task.is_failed():
+        current_task.status = CREATED
+        log_retry(current_task, options.verbose)
 
     if current_task.is_failed() or current_task.is_running():
         log_status(current_task, options.verbose)
@@ -441,21 +451,29 @@ def do_mytardis_upload(run_dir, options):
     global current_task
     current_task = taskdb.get_or_create('mytardis_upload')
 
+    if options.retry and current_task.is_failed():
+        current_task.status = CREATED
+        log_retry(current_task, options.verbose)
+
     if current_task.is_failed() or current_task.is_running():
         log_status(current_task, options.verbose)
         return current_task
 
-    if not options.uploader:
-        logger.exception("mytardis_upload task failed - config %s not found",
+    if not options.config.get('mytardis_uploader', None):
+        logger.exception("mytardis_upload task failed - config file %s not "
+                         "found",
                          options.uploader_config)
         current_task.status = ERROR
         taskdb.update(current_task)
+        return current_task
 
     try:
         current_task.status = RUNNING
         taskdb.update(current_task)
         illumina_uploader.logger = logger
-        illumina_uploader.ingest_run(options.uploader, run_path=run_dir)
+        options.config['mytardis_uploader']['path'] = run_dir
+        illumina_uploader.ingest_run(options.config.mytardis_uploader,
+                                     run_path=run_dir)
         current_task.status = COMPLETE
         taskdb.update(current_task)
     except Exception as e:
@@ -721,7 +739,9 @@ def get_legcay_bcl2fastq_extra_args(run_dir,
 def run_create_checksum_manifest(base_dir,
                                  manifest_filename='manifest-%s.txt',
                                  hash_type='md5'):
-    # TODO: Optionally write hashdeep format here
+    # TODO: Make an equivalent task that uses hashdeep instead
+    #       (you can sudo apt install hashdeep in 16.04)
+    #       Or optionally write hashdeep format here
     #       https://gist.github.com/techtonik/5175896
 
     manifest_filename %= hash_type
@@ -807,6 +827,8 @@ def process_all_runs(run_storage_base, options):
                 errored_tasks.append(ProcessingTask(run_id,
                                                     'try_autoprocessing',
                                                     ERROR))
+                logger.exception(e)
+
             current_task = None
 
             # Stop on error in any task, don't continue with the other runs
@@ -873,25 +895,44 @@ def setup_commandline_args(parser=None):
     parser.add_argument("--quiet",
                         action="store_false",
                         dest="verbose",
-                        default=True,
+                        # default=True,  # don't use
                         help="Less verbose logging. When set, a subsequent "
                              "successful walk over a set of processed runs "
                              "where not additional processing occurred will"
                              "be silent.")
 
-    # parser.add_argument('--config',
-    #                     dest="config_file",
-    #                     type=str,
-    #                     metavar="AUTOPROCESSNG_CONFIG")
+    parser.add_argument("--retry",
+                        action="store_true",
+                        dest="retry",
+                        help="Removes any failed tasks from previous "
+                             "invocations and allows them to be retried.")
+
+    parser.add_argument('--config',
+                        dest="config_file",
+                        type=str,
+                        default='autoprocess_config.toml',
+                        help="The global config file to use for autoprocessing "
+                             "settings. A config file "
+                             "'autoprocessing_config.toml' in individual run "
+                             "directories overrides settings in this file."
+                             "Commandline options override all config file"
+                             "settings.",
+                        metavar="AUTOPROCESSNG_CONFIG")
 
     parser.add_argument("--uploader-config",
                         dest="uploader_config",
                         type=str,
-                        default="uploader_config.toml",
+                        # default="uploader_config.toml",  # don't use
                         help="The path to the uploader config file "
                              "eg uploader_config.toml",
                         metavar="UPLOADER_CONFIG")
 
+    # TODO: It might be better to make these subparser modes like:
+    #       autoprocess process --run-dir /data/runs
+    #       autoprocess process --single-run /data/runs/blabla
+    #       autoprocess watch --run-dir /data/runs
+    #       # Wait for a single run to become complete, process then exit
+    #       autoprocess watch --single-run /data/runs/blabla
     parser.add_argument("--runs",
                         dest="run_storage_base",
                         type=str,
@@ -910,7 +951,7 @@ def setup_commandline_args(parser=None):
     parser.add_argument("--watch",
                         action="store_true",
                         dest="watch",
-                        default=False,
+                        # default=False, # don't use
                         help="An alternative to running under cron - remain "
                              "running and watch for new runs. "
                              "Stop with Ctrl-C.")
@@ -925,6 +966,60 @@ def setup_commandline_args(parser=None):
     # options = parser.parse_args()
     # return parser, options
     return parser
+
+
+def _set_commandline_and_default_options(options):
+    """
+    Set any options missing from the commandline or config file
+    to their defaults.
+
+    Override any config file option with the value specified on the
+    commandline.
+
+    Options read from the config file are initially in the dictionary
+    options.config. We move any 'commandline settable' key/value pairs
+    from options.config to the options. There are also keys in options.config
+    that can only be set via the config file - these aren't moved, but may be
+    set to default values if they are missing and required.
+
+    :param options: A dict-like object containing commandline and config file
+                    options.
+    :type options: dict | attrdict.AttrDict
+    :return: The modified dict-like with defaults and overrides.
+    :rtype: dict | attrdict.AttrDict
+    """
+    cmdline_values = {
+        'run_storage_base': options.run_storage_base,
+        'watch': options.watch,
+        'verbose': options.verbose,
+        'uploader_config': options.uploader_config,
+    }
+    options_defaults = {
+        'run_storage_base': None,
+        'watch': False,
+        'verbose': True,
+        'uploader_config': "uploader_config.toml",
+    }
+
+    for k, v in options_defaults.items():
+        # Tranfer any known values set in options.config to the top level
+        # options.
+        # Any key not present in the config file gets set to the default value.
+        if k not in options.config:
+            options[k] = v
+        else:
+            options[k] = options.config[k]
+            del options.config[k]
+
+        if options[k] is None:
+            options[k] = v
+
+    # Commandline options override any value in the config file.
+    for k, v in cmdline_values.items():
+        if v is not None:
+            options[k] = v
+
+    return options
 
 
 @atexit.register
@@ -950,43 +1045,29 @@ def run_in_console():
     options = parser.parse_args()
     # options, argv = parser.parse_known_args()
 
-    # TODO: This part should be a simple function call like:
-    # try:
-    #     uploader_options = illumina_uploader.read_config(options.uploader_config)
-    # except IOError as e:
-    #     parser.error("Cannot read config file: %s" %
-    #                  options.uploader_config)
-    #     sys.exit(1)
-    # options.uploader = uploader_options
+    options.config = AttrDict()
+    if options.config_file and os.path.isfile(options.config_file):
+        try:
+            options.config = config_helper.get_config_toml(
+                options.config_file,
+                default_config_filename='autoprocess_config.toml')
+            options = AttrDict(vars(options))
+            options = _set_commandline_and_default_options(options)
+        except IOError as e:
+            parser.error("Cannot read config file: %s" %
+                         options.config_file)
+            sys.exit(1)
 
     # If a config for illumina_uploader was provided, read it
     # and assign it to options.uploader for use in the mytardis_upload task
-    options.uploader = None
+    options['config']['mytardis_uploader'] = None
     if options.uploader_config and os.path.isfile(options.uploader_config):
-        uploader_parser = ArgumentParser()
-        uploader_parser = mytardis_uploader.setup_commandline_args(
-            uploader_parser)
-        uploader_parser = illumina_uploader.setup_commandline_args(
-            uploader_parser)
-
-        uploader_default_options, argv = uploader_parser.parse_known_args()
-        # uploader_default_options = uploader_parser.parse_args()
-
-        try:
-            uploader_options = config_helper.get_config_toml(
-                options.uploader_config)
-        except IOError as e:
-            parser.error("Cannot read config file: %s" %
-                         options.uploader_config)
-            sys.exit(1)
-
-        # Any option that is unset in the commandline args will
-        # receive a value from a config file option
-        uploader_parser.set_defaults(**uploader_options)
-        # TODO: By using parse_known_args rather than parse_args, we might
-        #       inadvertedly allow typos in config file keys to be ignored ?
-        options.uploader, argv = uploader_parser.parse_known_args()
-        # options.uploader = uploader_parser.parse_args()
+        uploader_config = AttrDict(vars(
+            illumina_uploader.get_config_options(
+                config_file_attr='uploader_config',
+                ignore_unknown_args=True)
+        ))
+        options['config']['mytardis_uploader'] = uploader_config
 
     if len(sys.argv) <= 1:
         parser.print_help()

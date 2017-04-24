@@ -1,0 +1,32 @@
+tasks = [
+  "rta_complete",
+  "bcl2fastq",
+  "fastqc",
+  "create_checksum_manifest",
+  "rsync_to_archive",
+  "mytardis_upload"
+]
+
+run_storage_base = "/data/illumina"
+
+[bcl2fastq]
+#runfolder-dir                 = /data/illumina/my_run
+#output-dir                    = "{run_path}/{run_id}.bcl2fastq"
+barcode-mistmatches           = 1
+no-lane-splitting             = true
+minimum-trimmed-read-length   = 0
+mask-short-adapter-reads      = 0
+fastq-compression-level       = 9
+nice                          = true
+# extra_args = ["--tiles s_1_1101", "--no-lane-splitting"]
+
+[fastqc]
+nice                          = true
+
+# [rta_complete]
+# flag-file                     = "{run_path}/RTAComplete.txt"
+
+# [create_checksum_manifest]
+# algorithms                    = ['md5', 'sha512', 'xxhash']
+# manifest-style                = 'sum'
+# manifest-style                = 'hashdeep'
