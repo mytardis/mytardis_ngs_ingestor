@@ -1,4 +1,5 @@
 import sys, os
+import types
 from os import path
 import subprocess
 import jsondate as json
@@ -521,64 +522,20 @@ def try_autoprocessing(run_dir, options):
     if options.verbose:
         logger.info('Starting autoprocessing on: %s', run_dir)
 
-    # TODO: Run tasks like this
-    # tasks = ['rta_complete', 'bcl2fastq', 'fastqc',
-    #          'create_checksum_manifest', 'rsync_to_archive']
-    # for task_name in tasks:
-    #     fn_name = 'do_%s' % task_name
-    #     current_task = globals()[fn_name](run_dir, options)
-    #     if current_task.is_failed() or current_task.is_pending():
-    #         return current_task
+    # Only execute tasks in options.config.tasks
+    # Pre-check that all task names map to valid functions
+    task_fns = []
+    for task_name in options.config.tasks:
+        task_func = globals().get('do_%s' % task_name, None)
+        if not task_func or not type(task_func) is types.FunctionType:
+            logger.error("Task name '%s' is invalid.", task_name)
+            raise ValueError("Task name '%s' is invalid.", task_name)
+        task_fns.append(task_func)
 
-    ##
-    # Check if run has finished transferring from the sequencer
-    ##
-    current_task = do_rta_complete(run_dir, options)
-    if current_task.is_failed() or current_task.is_pending():
-        return current_task
-
-    ##
-    # Demultiplex with bcl2fastq
-    ##
-    current_task = do_bcl2fastq(run_dir, options)
-    if current_task.is_failed() or current_task.is_pending():
-        return current_task
-
-    ##
-    # Run FastQC on each Project in the run
-    ##
-    current_task = do_fastqc(run_dir, options)
-    if current_task.is_failed() or current_task.is_pending():
-        return current_task
-
-    ##
-    # Create checksum manifest file
-    ##
-    current_task = do_create_checksum_manifest(run_dir, options)
-    if current_task.is_failed() or current_task.is_pending():
-        return current_task
-
-    ##
-    # Custom scripts on run_dir / bcl2fastq_output_dir
-    ##
-    # TODO: eg, Copy to archival storage
-
-
-    ##
-    # Rsync to archival storage
-    ##
-    """
-    current_task = do_rsync_to_archive(run_dir, options)
-    if current_task.is_failed() or current_task.is_pending():
-        return current_task
-    """
-
-    ##
-    # Ingest using illumina_uploader
-    ##
-    current_task = do_mytardis_upload(run_dir, options)
-    if current_task.is_failed() or current_task.is_pending():
-        return current_task
+    for task_fn in task_fns:
+        current_task = task_fn(run_dir, options)
+        if current_task.is_failed() or current_task.is_pending():
+            return current_task
 
     ##
     # Create an 'all_complete' task that allows us to silently skip
@@ -827,7 +784,8 @@ def process_all_runs(run_storage_base, options):
                 errored_tasks.append(ProcessingTask(run_id,
                                                     'try_autoprocessing',
                                                     ERROR))
-                logger.exception(e)
+                if options.verbose:
+                    logger.exception(e)
 
             current_task = None
 
@@ -1045,6 +1003,8 @@ def run_in_console():
     options = parser.parse_args()
     # options, argv = parser.parse_known_args()
 
+    # Read the autoprocessing config file, add values to
+    # options.config dictionary
     options.config = AttrDict()
     if options.config_file and os.path.isfile(options.config_file):
         try:
