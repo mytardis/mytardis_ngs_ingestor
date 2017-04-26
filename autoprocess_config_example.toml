@@ -32,13 +32,25 @@ nice                          = true
   fastq-compression-level       = 9
   # tiles                         = "s_1_1101"
 
-[fastqc]
-nice                          = true
-
+# TODO: Not implemented
 # [rta_complete]
 # flag-file                     = "{run_path}/RTAComplete.txt"
 
+# TODO: Not implemented
 # [create_checksum_manifest]
 # algorithms                    = ['md5', 'sha512', 'xxhash']
 # manifest-style                = 'sum'
 # manifest-style                = 'hashdeep'
+
+[rsync_to_archive]
+target_basepath                 = "/data/illumina/archive_test"
+# sudo                            = true
+# chown                           = "root:root"
+args = [
+ '--exclude="{run_dir}/Thumbnail_Images/"',
+ '--include="*.xml"',
+ '--include="*.csv"',
+ '--include="*.log"',
+ # This linke excludes BCL files
+ '--exclude="{run_dir}/Data/Intensities/BaseCalls/L0*/"',
+]

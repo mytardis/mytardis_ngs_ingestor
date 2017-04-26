@@ -1,7 +1,8 @@
 import os
 from argparse import ArgumentParser
 
-import toml
+import pytoml as toml
+
 from attrdict import AttrDict
 from toolz.dicttoolz import merge as merge_dicts
 

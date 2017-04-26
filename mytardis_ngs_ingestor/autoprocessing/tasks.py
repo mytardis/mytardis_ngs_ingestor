@@ -552,24 +552,33 @@ def do_rsync_to_archive(taskdb, current, run_dir, options):
         log_status(current.task, options.verbose)
         return current.task
 
-    # archive_basepath = '/srv/sonas/mhtp/market/illumina/'
-    archive_basepath = '/data/illumina/archive_test'
-    rsync_extra = '--exclude="{run_dir}/Thumbnail_Images/" ' \
-                  '--include="*.xml" ' \
-                  '--include="*.csv" ' \
-                  '--include="*.log" ' \
-                  '--exclude="{run_dir}/Data/Intensities/BaseCalls/L00*/" '.format(
-        run_dir=run_dir)
+    opts = options.config.get(task_name, {})
+    target_basepath = opts.get('target_basepath', None)
+
+    if not target_basepath:
+        logger.exception("%s task failed - target_basepath not specified" %
+                         task_name)
+        current.task.status = ERROR
+        taskdb.update(current.task)
+
+        log_status(current.task, options.verbose)
+        return current.task
+
+    rsync_extra = opts.get('args', [])
+    extra_args = ' '.join(rsync_extra)
+    extra_args = extra_args.format(run_dir=run_dir)
+    sudo = opts.get('sudo', False)
+    chown = opts.get('chown', None)
 
     cmd_out = None
     try:
         current.task.status = RUNNING
         # current.task.info['command'] = cmd
         taskdb.update(current.task)
-        success, cmd_out = run_rsync(run_dir, archive_basepath,
-                                     sudo=True,
-                                     chown='root:root',
-                                     extra_args=rsync_extra)
+        success, cmd_out = run_rsync(run_dir, target_basepath,
+                                     sudo=sudo,
+                                     chown=chown,
+                                     extra_args=extra_args)
         if success:
             current.task.status = COMPLETE
             current.task.info['output'] = cmd_out
