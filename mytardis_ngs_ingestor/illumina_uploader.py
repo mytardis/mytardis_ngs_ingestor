@@ -880,14 +880,11 @@ def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
     return project_summary
 
 
-def get_bcl2fastq_output_dir(options, run_id, run_path):
-    if not options.fastq_only:
-        return options.bcl2fastq_output_path.format(
-            run_id=run_id,
-            run_path=run_path
-        )
-    else:
-        return run_path
+def get_bcl2fastq_output_dir(outpath_fmt_str, run_id, run_path):
+    return outpath_fmt_str.format(
+        run_id=run_id,
+        run_path=run_path
+    )
 
 
 def get_fastqc_zip_files(fastqc_out_path):
@@ -1042,9 +1039,12 @@ def pre_ingest_checks_instrument_run(options):
     run_path = options.path
     run_id = get_run_id_from_path(run_path)
 
-    bcl2fastq_output_dir = get_bcl2fastq_output_dir(options,
-                                                    run_id,
-                                                    run_path)
+    bcl2fastq_output_dir = run_path
+    if not options.fastq_only:
+        bcl2fastq_output_dir = get_bcl2fastq_output_dir(
+            options.bcl2fastq_output_path,
+            run_id,
+            run_path)
 
     if not exists(bcl2fastq_output_dir):
         logger.error("Aborting - bcl2fastq output directory (%s) not found. "
@@ -1159,9 +1159,13 @@ def pre_ingest_checks_fastq_only(options):
     run_path = options.path
     run_id = get_run_id_from_path(run_path)
 
-    bcl2fastq_output_dir = get_bcl2fastq_output_dir(options,
-                                                    run_id,
-                                                    run_path)
+    bcl2fastq_output_dir = run_path
+    if not options.fastq_only:
+        bcl2fastq_output_dir = get_bcl2fastq_output_dir(
+            options.bcl2fastq_output_path,
+            run_id,
+            run_path)
+
 
     if not exists(bcl2fastq_output_dir):
         if options.fastq_only:
@@ -1277,9 +1281,12 @@ def ingest_run(options, run_path=None):
 
     # The directory where bcl2fastq puts its output,
     # in Project_* directories
-    bcl2fastq_output_dir = get_bcl2fastq_output_dir(options,
-                                                    run_id,
-                                                    run_path)
+    bcl2fastq_output_dir = run_path
+    if not options.fastq_only:
+        bcl2fastq_output_dir = get_bcl2fastq_output_dir(
+            options.bcl2fastq_output_path,
+            run_id,
+            run_path)
 
     run_expt.institution_name = options.institute
     run_expt.description = options.description

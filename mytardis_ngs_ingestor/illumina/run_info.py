@@ -17,6 +17,40 @@ import xmltodict
 logger = logging.getLogger()
 
 
+def is_illumina_run(run_dir):
+    """
+    Detects signature files in the run directory (eg RunInfo.xml) to detemine
+    if it's likely to be an Illumina sequencing run or not.
+
+    :param run_dir: The path to the run.
+    :type run_dir: str
+    :return: True if it looks like an Illumina run.
+    :rtype: bool
+    """
+
+    # Ideas: Detecting RunInfo.xml is probably good enough, but we could
+    #        look for other files, and analyse the directory name for the
+    #        {date}_{instrument_id}_{run_number}_{flowcell_id} pattern too
+
+    if exists(join(run_dir, 'RunInfo.xml')):
+        return True
+    return False
+
+
+def run_is_complete(runfolder_dir, complete_file='RTAComplete.txt'):
+    """
+    Detect when a run is complete.
+
+    :param runfolder_dir:
+    :type runfolder_dir:
+    :param complete_file:
+    :type complete_file:
+    :return:
+    :rtype:
+    """
+    return exists(join(runfolder_dir, complete_file))
+
+
 def parse_samplesheet(file_path, standardize_keys=True):
 
     # Old plain CSV format, IEM v3:

@@ -128,7 +128,7 @@ setup(
             'illumina_uploader='
             'mytardis_ngs_ingestor.illumina_uploader:run_in_console',
             'illumina_autoprocess='
-            'mytardis_ngs_ingestor.autoprocess:run_in_console',
+            'mytardis_ngs_ingestor.autoprocessing.autoprocess:run_in_console',
         ],
     },
     test_suite='tests',

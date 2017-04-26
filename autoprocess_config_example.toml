@@ -1,24 +1,36 @@
+# This file is in TOML format.
+# See: https://github.com/toml-lang/toml
+
 tasks = [
   "rta_complete",
   "bcl2fastq",
   "fastqc",
   "create_checksum_manifest",
-  "rsync_to_archive",
+#  "rsync_to_archive",
   "mytardis_upload"
 ]
 
 run_storage_base = "/data/illumina"
 
 [bcl2fastq]
-#runfolder-dir                 = /data/illumina/my_run
-#output-dir                    = "{run_path}/{run_id}.bcl2fastq"
-barcode-mistmatches           = 1
-no-lane-splitting             = true
-minimum-trimmed-read-length   = 0
-mask-short-adapter-reads      = 0
-fastq-compression-level       = 9
 nice                          = true
-# extra_args = ["--tiles s_1_1101", "--no-lane-splitting"]
+# runfolder-dir                 = /data/illumina/my_run
+# output-dir                    = "{run_path}/{run_id}.bcl2fastq"
+# docker_image                  = "bcl2fastq:2.19"
+# binary_path                   = "/usr/local/bin/bcl2fastq"
+
+  [bcl2fastq.args]
+  # These options map directly to bcl2fastq commandline options, eg:
+  #   barcode-mismatches = 1
+  #     becomes
+  #   --barcode-mismatches 1
+  # Boolean values of true/false just add the --flag without a value
+  barcode-mismatches           = 1
+  no-lane-splitting             = true
+  minimum-trimmed-read-length   = 0
+  mask-short-adapter-reads      = 0
+  fastq-compression-level       = 9
+  # tiles                         = "s_1_1101"
 
 [fastqc]
 nice                          = true
