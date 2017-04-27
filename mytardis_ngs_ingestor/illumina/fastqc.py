@@ -16,8 +16,6 @@ from fs import open_fs
 
 from mytardis_ngs_ingestor.utils import tmp_dirs
 
-logger = logging.getLogger()
-
 _fastqc_jvm_Xmx_memory = 250  # MB
 
 
@@ -33,7 +31,7 @@ def run_fastqc(fastq_paths,
         fastqc_bin = 'fastqc'
 
     if not which(fastqc_bin):
-        logger.error("FastQC - executable %s doesn't exist ?", fastqc_bin)
+        logging.error("FastQC - executable %s doesn't exist ?", fastqc_bin)
         return None, cmd_out
 
     if threads is None:
@@ -48,7 +46,7 @@ def run_fastqc(fastq_paths,
             threads = int(max_threads_for_mem) - 1
 
     if not fastq_paths:
-        logger.warning('FastQC - called with no FASTQ file paths provided, '
+        logging.warning('FastQC - called with no FASTQ file paths provided, '
                        'skipping.')
         return None, cmd_out
 
@@ -58,7 +56,7 @@ def run_fastqc(fastq_paths,
             tmp_dir = tmp_dirs.create_tmp_dir()
             output_directory = tmp_dir
         except OSError:
-            logger.error('FastQC - failed to create temp directory.')
+            logging.error('FastQC - failed to create temp directory.')
             return None, cmd_out
 
     cmd = 'nice %s %s --noextract --threads %d --outdir %s %s' % \
@@ -68,8 +66,8 @@ def run_fastqc(fastq_paths,
            output_directory,
            ' '.join(fastq_paths))
 
-    logger.info('Running FastQC on: %s', ', '.join(fastq_paths))
-    logger.info('Command: %s', cmd)
+    logging.info('Running FastQC on: %s', ', '.join(fastq_paths))
+    logging.info('Command: %s', cmd)
 
     try:
         # Unfortunately FastQC doesn't always return sensible
@@ -78,14 +76,14 @@ def run_fastqc(fastq_paths,
                                           shell=True,
                                           stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError:
-        logger.error('FastQC stdout: %s', cmd_out)
+        logging.error('FastQC stdout: %s', cmd_out)
         return None, cmd_out
 
     success = False
     if 'Analysis complete' in cmd_out.splitlines()[-1]:
         success = True
     else:
-        logger.error('FastQC stdout: %s', cmd_out)
+        logging.error('FastQC stdout: %s', cmd_out)
 
     if not success:
         if tmp_dir is not None:
@@ -111,24 +109,24 @@ def run_fastqc_on_project(fastq_files,
         output_directory = get_fastqc_output_directory(proj_path)
         if exists(output_directory):
             if clobber:
-                logger.warning("Removing old FastQC output directory: %s",
+                logging.warning("Removing old FastQC output directory: %s",
                              output_directory)
                 shutil.rmtree(output_directory)
             else:
-                logger.error("FastQC - output directory already exists: %s",
+                logging.error("FastQC - output directory already exists: %s",
                              output_directory)
                 return None, cmd_out
         try:
             # os.mkdir(output_directory)
             Path(str(output_directory)).mkdir(parents=True, exist_ok=True)
         except OSError:
-            logger.error("FastQC - couldn't create output directory: %s",
+            logging.error("FastQC - couldn't create output directory: %s",
                          output_directory)
             return None, cmd_out
 
     if not exists(output_directory) or \
             not isdir(output_directory):
-        logger.error("FastQC - output path %s isn't a directory "
+        logging.error("FastQC - output path %s isn't a directory "
                      "or doesn't exist.",
                      output_directory)
         return None, cmd_out

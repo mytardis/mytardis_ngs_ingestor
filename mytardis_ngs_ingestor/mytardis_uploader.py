@@ -18,8 +18,6 @@ except ImportError:
 
 import logging
 
-logger = logging.getLogger('mytardis_ngs_uploader')
-
 import six
 from six.moves.urllib.parse import urlparse, urljoin
 import os
@@ -160,7 +158,7 @@ class MyTardisUploader:
 
         title = title or os.path.basename(os.path.abspath(file_path))
 
-        logger.info('Creating experiment: %s', title)
+        logging.info('Creating experiment: %s', title)
 
         created = False
         exp_url = "/test/"
@@ -189,15 +187,15 @@ class MyTardisUploader:
                 continue  # filter files/dirs starting with .
 
             if any(regex.search(full_path) for regex in exclude_patterns):
-                logger.info('Skipping excluded directory: %s', full_path)
+                logging.info('Skipping excluded directory: %s', full_path)
                 continue
 
             if os.path.isfile(full_path):
-                logger.info('Skipping root-level file: %s', item)
+                logging.info('Skipping root-level file: %s', item)
             else:
-                logger.info('Found directory: %s', item)
+                logging.info('Found directory: %s', item)
 
-                logger.info('Creating dataset: %s', item)
+                logging.info('Creating dataset: %s', item)
 
                 parameter_sets_list = \
                     self._get_dataset_parametersets_from_json(file_path,
@@ -205,7 +203,7 @@ class MyTardisUploader:
                     self._get_dataset_parametersets_from_csv(file_path, item)
 
                 if parameter_sets_list:
-                    logger.info("Found parameters for %s", item)
+                    logging.info("Found parameters for %s", item)
 
                 dataset_url = "/__dry_run__/"
                 if not test_run:
@@ -226,10 +224,10 @@ class MyTardisUploader:
 
                         if any(regex.search(full_path)
                                for regex in exclude_patterns):
-                            logger.info('Skipping excluded file: %s', full_path)
+                            logging.info('Skipping excluded file: %s', full_path)
                             continue
 
-                        logger.info("Uploading file: '%s' (dataset='%s')",
+                        logging.info("Uploading file: '%s' (dataset='%s')",
                                     full_path, item)
 
                         parameter_sets_list = \
@@ -238,7 +236,7 @@ class MyTardisUploader:
                                                                       filename)
 
                         if parameter_sets_list:
-                            logger.info("Found parameters for %s", filename)
+                            logging.info("Found parameters for %s", filename)
 
                         if not test_run:
                             # the replica_url should be the relative path
@@ -272,11 +270,11 @@ class MyTardisUploader:
         if created:
             exp_id = exp_url.rsplit('/')[-2]
             new_exp_url = "%s/experiment/view/%s/" % (self.mytardis_url, exp_id)
-            logger.info("Experiment created: %s", new_exp_url)
+            logging.info("Experiment created: %s", new_exp_url)
             return new_exp_url
 
         else:
-            logger.info("Dry run complete.")
+            logging.info("Dry run complete.")
             return "http://example.com/test/success"
 
     def _get_parametersets_from_csv(self, entity_type, file_path, filename):
@@ -404,7 +402,7 @@ class MyTardisUploader:
     #             self._raise_502(response)
     #
     #     except requests.exceptions.RequestException, e:
-    #         logger.error("Request failed : %s : %s", e.message, url)
+    #         logging.error("Request failed : %s : %s", e.message, url)
     #         raise e
     #
     #     return response
@@ -452,7 +450,7 @@ class MyTardisUploader:
                 self._raise_request_exception(response)
 
         except requests.exceptions.RequestException as e:
-            logger.error("Request failed : %s : %s", e.message, url)
+            logging.error("Request failed : %s : %s", e.message, url)
             raise e
 
         return response
@@ -539,12 +537,12 @@ class MyTardisUploader:
 
         expt_json = self.dict_to_json(expt_dict)
 
-        # logger.debug("Experiment JSON: %s", expt_json)
+        # logging.debug("Experiment JSON: %s", expt_json)
 
         data = self.do_post_request('experiment', expt_json)
 
         if not data.ok or 'Location' not in data.headers:
-            logger.error("Creating experiment failed: %s (%s) - %s",
+            logging.error("Creating experiment failed: %s (%s) - %s",
                          data.reason,
                          data.status_code,
                          data.content)
@@ -599,7 +597,7 @@ class MyTardisUploader:
                 instrument_resource_uri = instruments_returned[0]['resource_uri']
                 dataset['instrument'] = instrument_resource_uri
             else:
-                logger.warning('Querying instrument definition %s failed - is '
+                logging.warning('Querying instrument definition %s failed - is '
                                'the Instrument record defined on the server ?'
                                % instrument)
 
@@ -607,7 +605,7 @@ class MyTardisUploader:
         data = self.do_post_request('dataset', dataset_json)
 
         if not data.ok or 'Location' not in data.headers:
-            logger.error("Creating dataset failed: %s", data.text)
+            logging.error("Creating dataset failed: %s", data.text)
             sys.exit(1)
 
         return data.headers.get('Location', None)
@@ -669,7 +667,7 @@ class MyTardisUploader:
             raise Exception("Invalid storage mode: " + self.storage_mode)
 
         if not data.ok or 'Location' not in data.headers:
-            logger.error("Registration of data file failed: %s", data.text)
+            logging.error("Registration of data file failed: %s", data.text)
             sys.exit(1)
 
         return data.headers.get('Location', None)
@@ -788,7 +786,9 @@ class MyTardisUploader:
         self.do_get_request('objectacl', {})
 
 
-def setup_logging(loglevel=logging.DEBUG):
+def setup_logging(loglevel=logging.INFO):
+    logger = logging.getLogger()
+
     logger.setLevel(loglevel)
 
     console_handler = logging.StreamHandler(sys.stderr)
@@ -821,8 +821,8 @@ def setup_logging(loglevel=logging.DEBUG):
 
     logger.addHandler(console_handler)
 
-    low_level_request_logging = False
-    if low_level_request_logging:
+    low_level_request_logger = False
+    if low_level_request_logger:
         try:
             import http.client as http_client
         except ImportError:
@@ -835,7 +835,7 @@ def setup_logging(loglevel=logging.DEBUG):
         requests_log.setLevel(logging.DEBUG)
         requests_log.propagate = True
 
-    return logger
+    return logging.getLogger()
 
 
 def setup_commandline_args(parser=None):
@@ -1089,7 +1089,7 @@ def get_exclude_patterns_as_regex_list(exclude_patterns=None):
                 regex = regex[1:-1]
             exclude_regexes.append(re.compile(regex))
 
-        logger.info("Ignoring files that match: %s\n",
+        logging.info("Ignoring files that match: %s\n",
                     ' | '.join(exclude_patterns))
 
     return exclude_regexes
@@ -1150,7 +1150,7 @@ def run():
         password = getpass.getpass()
 
     if password:
-        logger.warning("Using 'password' rather than 'api_key' - this is less "
+        logging.warning("Using 'password' rather than 'api_key' - this is less "
                        "secure and not encouraged.")
 
     file_path = options.path

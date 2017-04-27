@@ -7,15 +7,8 @@ import jsondate as json
 from simplekv.fs import FilesystemStore
 
 import logging
-logger = logging.getLogger()
-# from mytardis_ngs_ingestor.mytardis_uploader import setup_logging
-# logger = setup_logging()
 
 from mytardis_ngs_ingestor.illumina import run_info
-# from mytardis_ngs_ingestor.illumina import fastqc
-
-# run_info.logger = logger
-# fastqc.logger = logger
 
 from mytardis_ngs_ingestor.illumina.run_info import get_run_id_from_path, get_sample_project_mapping
 from mytardis_ngs_ingestor.illumina import fastqc
@@ -181,9 +174,9 @@ class TaskDb(FilesystemStore):
 
 
 def log_status(task, verbose=True):
-    log_fn = logger.info
+    log_fn = logging.info
     if task.status == ERROR:
-        log_fn = logger.error
+        log_fn = logging.error
 
     if verbose:
         log_fn('run_id: %s task: %s status: %s',
@@ -201,7 +194,7 @@ def log_status(task, verbose=True):
 
 def log_retry(task, verbose=True):
     if verbose:
-        logger.warning('Retrying - run_id: %s task: %s',
+        logging.warning('Retrying - run_id: %s task: %s',
                        task.run_id.ljust(24),
                        task.task_name.ljust(24))
 
@@ -275,8 +268,8 @@ def run_bcl2fastq(runfolder_dir,
     #     runfolder_dir=runfolder_dir,
     # )
 
-    logger.info('Running bcl2fastq on: %s', runfolder_dir)
-    logger.info('Command: %s', cmd)
+    logging.info('Running bcl2fastq on: %s', runfolder_dir)
+    logging.info('Command: %s', cmd)
 
     cmd_out = None
     try:
@@ -285,7 +278,7 @@ def run_bcl2fastq(runfolder_dir,
                                           shell=True,
                                           stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError:
-        logger.error('bcl2fastq failed: stdout/stderr: %s', cmd_out)
+        logging.error('bcl2fastq failed: stdout/stderr: %s', cmd_out)
         return None, cmd_out
 
     success = False
@@ -295,7 +288,7 @@ def run_bcl2fastq(runfolder_dir,
         -1]:
         success = True
     else:
-        logger.error('bcl2fastq failed stdout/stderr: %s', cmd_out)
+        logging.error('bcl2fastq failed stdout/stderr: %s', cmd_out)
 
     if not success:
         return None, cmd_out
@@ -331,7 +324,7 @@ def run_create_checksum_manifest(base_dir,
         hash_type=hash_type,
         manifest_filepath=manifest_filepath)
 
-    logger.info('Command: %s', cmd)
+    logging.info('Command: %s', cmd)
 
     cmd_out = None
     try:
@@ -339,7 +332,7 @@ def run_create_checksum_manifest(base_dir,
                                           shell=True,
                                           stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError:
-        logger.error('create checksum failed: stdout/stderr: %s', cmd_out)
+        logging.error('create checksum failed: stdout/stderr: %s', cmd_out)
         return None, cmd_out
 
     return manifest_filepath, cmd_out
@@ -362,7 +355,7 @@ def run_rsync(src, dst, sudo=False, chown=None, checksum=True, extra_args=''):
                                 dst=dst,
                                 extra_args=extra_args)
 
-    logger.info("Command: %s", cmd)
+    logging.info("Command: %s", cmd)
 
     cmd_out = None
     try:
@@ -370,7 +363,7 @@ def run_rsync(src, dst, sudo=False, chown=None, checksum=True, extra_args=''):
                                           shell=True,
                                           stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError:
-        logger.error('rsync failed: stdout/stderr: %s', cmd_out)
+        logging.error('rsync failed: stdout/stderr: %s', cmd_out)
         return None, cmd_out
 
     return dst, cmd_out
@@ -501,7 +494,7 @@ def do_fastqc(taskdb, current, run_dir, options):
             current.task.status = ERROR
             taskdb.update(current.task)
             log_status(current.task, options.verbose)
-            logger.exception('FastQC task on %s raised an exception.' % run_dir)
+            logging.exception('FastQC task on %s raised an exception.' % run_dir)
             return current.task
 
     log_status(current.task, options.verbose)
@@ -530,7 +523,7 @@ def do_create_checksum_manifest(taskdb, current, run_dir, options):
             current.task.info['output'] = cmd_out
             taskdb.update(current.task)
         except Exception as e:
-            logger.exception("create_checksum_manifest task failed with an "
+            logging.exception("create_checksum_manifest task failed with an "
                              "exception.")
             current.task.status = ERROR
             current.task.info['output'] = cmd_out
@@ -556,7 +549,7 @@ def do_rsync_to_archive(taskdb, current, run_dir, options):
     target_basepath = opts.get('target_basepath', None)
 
     if not target_basepath:
-        logger.exception("%s task failed - target_basepath not specified" %
+        logging.exception("%s task failed - target_basepath not specified" %
                          task_name)
         current.task.status = ERROR
         taskdb.update(current.task)
@@ -586,7 +579,7 @@ def do_rsync_to_archive(taskdb, current, run_dir, options):
         else:
             raise Exception('%s task failed (non-zero exit code).' % task_name)
     except Exception as e:
-        logger.exception("%s task failed." % task_name)
+        logging.exception("%s task failed." % task_name)
         current.task.status = ERROR
         current.task.info['output'] = cmd_out
         taskdb.update(current.task)
@@ -607,7 +600,7 @@ def do_mytardis_upload(taskdb, current, run_dir, options):
         return current.task
 
     if not options.config.get('mytardis_uploader', None):
-        logger.exception("mytardis_upload task failed - config file %s not "
+        logging.exception("mytardis_upload task failed - config file %s not "
                          "found",
                          options.uploader_config)
         current.task.status = ERROR
@@ -617,14 +610,13 @@ def do_mytardis_upload(taskdb, current, run_dir, options):
     try:
         current.task.status = RUNNING
         taskdb.update(current.task)
-        illumina_uploader.logger = logger
         options.config['mytardis_uploader']['path'] = run_dir
         illumina_uploader.ingest_run(options.config.mytardis_uploader,
                                      run_path=run_dir)
         current.task.status = COMPLETE
         taskdb.update(current.task)
     except Exception as e:
-        logger.exception("mytardis_upload task failed with an exception.")
+        logging.exception("mytardis_upload task failed with an exception.")
         current.task.status = ERROR
         taskdb.update(current.task)
 
@@ -668,7 +660,7 @@ def do_mytardis_upload(taskdb, current, run_dir, options):
 #         else:
 #             raise Exception('%s task failed.' % task_name)
 #     except Exception as e:
-#         logger.exception("%s task failed." % task_name)
+#         logging.exception("%s task failed." % task_name)
 #         current.task.status = ERROR
 #         taskdb.update(current.task)
 #

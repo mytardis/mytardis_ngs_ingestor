@@ -14,9 +14,6 @@ from collections import OrderedDict
 from dateutil import parser as dateparser
 import xmltodict
 
-logger = logging.getLogger()
-
-
 def is_illumina_run(run_dir):
     """
     Detects signature files in the run directory (eg RunInfo.xml) to detemine
@@ -354,7 +351,7 @@ def illumina_config_parser(run_path):
         if "Effective.cfg" in filename:
             config_filename = filename
     if not config_filename:
-        logger.error("Cannot find Config/*Effective.cfg file")
+        logging.error("Cannot find Config/*Effective.cfg file")
         return
 
     # we don't use ConfigParser since for whatever reason it can't handle

@@ -1,4 +1,5 @@
 import sys, os
+import logging
 import types
 from os import path
 import atexit
@@ -6,26 +7,15 @@ from attrdict import AttrDict
 
 from argparse import ArgumentParser
 
-# import logging
 from mytardis_ngs_ingestor.mytardis_uploader import setup_logging
-
-logger = setup_logging()
 from mytardis_ngs_ingestor import illumina_uploader
 from mytardis_ngs_ingestor.illumina import run_info
 from mytardis_ngs_ingestor.illumina import fastqc
-
-run_info.logger = logger
-fastqc.logger = logger
-
-# logger = logging.getLogger()
-
 from mytardis_ngs_ingestor.utils import config_helper
 from mytardis_ngs_ingestor.illumina.run_info import (get_run_id_from_path,
                                                      get_sample_project_mapping)
-
 import tasks
 from tasks import TaskDb, ProcessingTask
-tasks.logger = logger
 
 current = tasks.Current()  # current task 'pseudo-singleton'
 taskdb = None
@@ -58,7 +48,7 @@ def get_task_functions(tasknames):
         # task_func = globals().get('do_%s' % task_name, None)
         task_func = getattr(tasks, 'do_%s' % task_name, None)
         if not task_func or not type(task_func) is types.FunctionType:
-            logger.error("Task name '%s' is invalid.", task_name)
+            logging.error("Task name '%s' is invalid.", task_name)
             raise ValueError("Task name '%s' is invalid.", task_name)
         task_fns.append(task_func)
 
@@ -80,7 +70,7 @@ def try_autoprocessing(run_dir, options):
     ##
     if taskdb.exists('ignore'):
         if options.verbose:
-            logger.info("Skipping %s, set to ignore.", run_id)
+            logging.info("Skipping %s, set to ignore.", run_id)
         return taskdb.get_as('ignore')
 
     ##
@@ -94,7 +84,7 @@ def try_autoprocessing(run_dir, options):
         return current.task
 
     if options.verbose:
-        logger.info('Starting autoprocessing on: %s', run_dir)
+        logging.info('Starting autoprocessing on: %s', run_dir)
 
     # Only execute tasks in options.config.tasks
     # Pre-check that all task names map to valid functions
@@ -105,7 +95,7 @@ def try_autoprocessing(run_dir, options):
         raise e
 
     if not task_fns:
-        logger.warning("No tasks specified in config.")
+        logging.warning("No tasks specified in config.")
 
     # Now actually run the tasks
     for task_fn in task_fns:
@@ -122,7 +112,7 @@ def try_autoprocessing(run_dir, options):
     taskdb.update(current.task)
     tasks.log_status(current.task, options.verbose)
 
-    logger.info('Autoprocessing completed for: %s', run_dir)
+    logging.info('Autoprocessing completed for: %s', run_dir)
 
     return current.task
 
@@ -139,7 +129,6 @@ def process_all_runs(run_storage_base, options):
     :return:
     :rtype:
     """
-    global logging
     global current
 
     errored_tasks = []
@@ -157,7 +146,7 @@ def process_all_runs(run_storage_base, options):
                                                     'try_autoprocessing',
                                                     tasks.ERROR))
                 if options.verbose:
-                    logger.exception(e)
+                    logging.exception(e)
 
             current.task = None
 
@@ -169,10 +158,10 @@ def process_all_runs(run_storage_base, options):
         if errored_tasks:
             errorlist = ', '.join(['%s:%s' % (t.task_name, t.run_id)
                                    for t in errored_tasks])
-            logger.error("Processing runs in %s completed with failures: %s",
+            logging.error("Processing runs in %s completed with failures: %s",
                          run_storage_base, errorlist)
         else:
-            logger.info("Successfully completed processing of runs in: %s",
+            logging.info("Successfully completed processing of runs in: %s",
                         run_storage_base)
 
     return not errored_tasks
@@ -196,7 +185,7 @@ def watch_runs(run_storage_base, options, tight_loop_timer=1):
     # @crython.job(second=range(0, 60, 5))  # once every 5 seconds
     @crython.job(minute=range(0, 60, 15))  # once every 15 mins
     def _process_all_cron():
-        logger.info('Running scheduled autoprocessing on: %s', run_storage_base)
+        logging.info('Running scheduled autoprocessing on: %s', run_storage_base)
         process_all_runs(run_storage_base, options)
 
     crython.start()
@@ -369,8 +358,7 @@ def _set_current_task_status_on_exit():
 
 
 def run_in_console():
-    global logger
-
+    setup_logging()
     parser = setup_commandline_args()
     options = parser.parse_args()
     # options, argv = parser.parse_known_args()
@@ -415,17 +403,17 @@ def run_in_console():
     try:
         if options.run_storage_base and options.run_path:
             options.run_storage_base = None
-            logger.warning("Please use only --runs or --single-run, not both.")
+            logging.warning("Please use only --runs or --single-run, not both.")
 
         if options.watch and not options.run_storage_base:
-            logger.error("You must specify the --runs option if using --watch.")
+            logging.error("You must specify the --runs option if using --watch.")
 
         if options.run_storage_base:
             if options.watch:
                 watch_runs(options.run_storage_base, options)
                 sys.exit()
             else:
-                logger.info('Running single autoprocess pass on: %s',
+                logging.info('Running single autoprocess pass on: %s',
                             options.run_storage_base)
                 exit_code = 0
                 ok = process_all_runs(options.run_storage_base, options)

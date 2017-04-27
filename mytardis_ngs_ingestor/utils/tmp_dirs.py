@@ -4,7 +4,6 @@ from tempfile import mkdtemp
 import atexit
 
 import logging
-logger = logging.getLogger()
 
 # a module level list of temporary directories that have been
 # created, so these can be cleaned up upon premature exit
@@ -23,4 +22,4 @@ def _cleanup_tmp():
     for tmpdir in TMPDIRS:
         if os.path.exists(tmpdir):
             shutil.rmtree(tmpdir)
-            logger.info("Removed temp directory: %s", tmpdir)
+            logging.info("Removed temp directory: %s", tmpdir)

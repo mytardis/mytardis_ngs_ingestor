@@ -7,6 +7,7 @@ from future.builtins import (bytes, str, open, super, range,
                              zip, round, input, int, pow, object)
 import six
 from six.moves.urllib.parse import urlparse, urljoin
+import logging
 import sys
 import shutil
 from datetime import datetime
@@ -362,9 +363,9 @@ def trash_experiments_server(uploader, experiment_ids):
         response = uploader._do_request('PUT', 'trash_experiment/%s' % expt,
                                         api_url_template=url_template)
         if response.ok:
-            logger.info('Moved experiment %s to trash' % expt)
+            logging.info('Moved experiment %s to trash' % expt)
         else:
-            logger.info('Error trying to move experiment %s to trash' % expt)
+            logging.info('Error trying to move experiment %s to trash' % expt)
             raise response.raise_for_status()
 
 
@@ -491,7 +492,7 @@ def register_project_fastq_datafiles(run_id,
                 read = info_from_fn.get('read', None)
                 sample_name = info_from_fn.get('sample_name', None)
             else:
-                logger.warning("Unrecognized FASTQ filename pattern - "
+                logging.warning("Unrecognized FASTQ filename pattern - "
                                "skipping: %s", fastq_path)
                 continue
 
@@ -542,11 +543,11 @@ def register_project_fastq_datafiles(run_id,
                 # If there is no FastQC data with read counts etc for
                 # this sample (eg for Undetermined_indicies) we calculate
                 # our own
-                logger.info("Calculating number of reads for: %s",
+                logging.info("Calculating number of reads for: %s",
                             fastq_path)
                 parameters['number_of_reads'] = \
                     get_number_of_reads_fastq(fastq_path)
-                logger.info("Calculating read length for: %s", fastq_path)
+                logging.info("Calculating read length for: %s", fastq_path)
                 parameters['read_length'] = \
                     get_read_length_fastq(fastq_path)
 
@@ -576,12 +577,12 @@ def register_project_fastq_datafiles(run_id,
                     md5_checksum=md5_checksum,
                 )
             except Exception as ex:
-                logger.error("Failed to register Datafile: "
+                logging.error("Failed to register Datafile: "
                              "%s", fastq_path)
-                logger.debug("Exception: %s", ex)
+                logging.debug("Exception: %s", ex)
                 raise ex
 
-            logger.info("Added Datafile: %s (%s)",
+            logging.info("Added Datafile: %s (%s)",
                         fastq_path,
                         dataset_url)
 
@@ -663,12 +664,12 @@ def register_project_fastqc_datafiles(run_id,
                     md5_checksum=md5_checksum,
                 )
             except Exception as ex:
-                logger.error("Failed to register Datafile: "
+                logging.error("Failed to register Datafile: "
                              "%s", fastqc_zip_path)
-                logger.debug("Exception: %s", ex)
+                logging.debug("Exception: %s", ex)
                 raise ex
 
-            logger.info("Added Datafile: %s (%s)",
+            logging.info("Added Datafile: %s (%s)",
                         fastqc_zip_path,
                         dataset_url)
 
@@ -724,7 +725,7 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, uploader):
                 os.rename(report_file, inline_report_abspath)
 
             uploader.upload_file(inline_report_abspath, dataset_url)
-            logger.info("Added Datafile (FastQC report): %s (%s)",
+            logging.info("Added Datafile (FastQC report): %s (%s)",
                         inline_report_abspath,
                         dataset_url)
 
@@ -966,7 +967,7 @@ def get_mytardis_seqfac_app_version(uploader):
     try:
         d = response.json()
     except ValueError as ex:  # JSONDecodeError inherits from ValueError
-        logger.error("Invalid response when querying server version.")
+        logging.error("Invalid response when querying server version.")
         raise ex
 
     version = d.get('version', None)
@@ -1047,25 +1048,25 @@ def pre_ingest_checks_instrument_run(options):
             run_path)
 
     if not exists(bcl2fastq_output_dir):
-        logger.error("Aborting - bcl2fastq output directory (%s) not found. "
+        logging.error("Aborting - bcl2fastq output directory (%s) not found. "
                      "Is your setting for --bcl2fastq-output-path correct ?" %
                      bcl2fastq_output_dir)
         return False
 
     fastqs = glob2.glob('%s/**/*.fastq.gz' % bcl2fastq_output_dir)
     if not fastqs:
-        logger.error("Aborting - no .fastq.gz files found in bcl2fastq output "
+        logging.error("Aborting - no .fastq.gz files found in bcl2fastq output "
                      "directory tree (%s). Did demultiplexing run successfully "
                      "?" % bcl2fastq_output_dir)
         return False
 
     if not exists(join(run_path, 'RTAComplete.txt')):
-        logger.error("Aborting - 'RTAComplete.txt' not found. "
+        logging.error("Aborting - 'RTAComplete.txt' not found. "
                      "Is the run still in progress ?")
         return False
 
     if not exists(join(run_path, 'RunInfo.xml')):
-        logger.error("Aborting - 'RunInfo.xml' not found.")
+        logging.error("Aborting - 'RunInfo.xml' not found.")
         return False
 
     config_filename = None
@@ -1073,28 +1074,28 @@ def pre_ingest_checks_instrument_run(options):
         if "Effective.cfg" in filename:
             config_filename = filename
     if not config_filename:
-        logger.error("Aborting - cannot find Config/*Effective.cfg file.")
+        logging.error("Aborting - cannot find Config/*Effective.cfg file.")
         return False
 
     if not exists(join(run_path, 'SampleSheet.csv')):
-        logger.error("Aborting - 'SampleSheet.csv' not found.")
+        logging.error("Aborting - 'SampleSheet.csv' not found.")
         return False
 
     try:
         samplesheet, chemistry = parse_samplesheet(join(run_path,
                                                         'SampleSheet.csv'))
     except IOError:
-        logger.error("Aborting - unable to parse SampleSheet.csv file.")
+        logging.error("Aborting - unable to parse SampleSheet.csv file.")
         return False
 
     if not exists(join(bcl2fastq_output_dir, 'DemultiplexConfig.xml')):
-        logger.warning("'DemultiplexConfig.xml' not found.")
+        logging.warning("'DemultiplexConfig.xml' not found.")
 
     demultiplexer_info = get_demultiplexer_info(bcl2fastq_output_dir)
     demultiplexer_version = demultiplexer_info.get('version', '')
 
     if not demultiplexer_version:
-        logger.warning("Can't determine demultiplexer version")
+        logging.warning("Can't determine demultiplexer version")
         # return False
 
     demultiplexer_version_num = demultiplexer_info.get('version_number', '')
@@ -1110,7 +1111,7 @@ def pre_ingest_checks_instrument_run(options):
             p_path = bcl2fastq_output_dir
 
         if not exists(p_path):
-            logger.error("Aborting - project directory '%s' is missing.",
+            logging.error("Aborting - project directory '%s' is missing.",
                          p_path)
             return False
             # sys.exit(1)
@@ -1123,11 +1124,11 @@ def pre_ingest_checks_instrument_run(options):
             zero_size_files = run_command(
                 'find %s -size 0 -print | grep ".bcl(.gz)?"' % bcl_path)
         else:
-            logger.warning('No Data/Intensities/BaseCalls directory found. '
+            logging.warning('No Data/Intensities/BaseCalls directory found. '
                            'Skipping zero-sized bcl sanity check.')
 
     if zero_size_files.strip():
-        logger.error("Aborting - some BCL files in %s are zero size."
+        logging.error("Aborting - some BCL files in %s are zero size."
                      "As a result, there may be issues with the demultiplexed "
                      "FASTQ files. Use the flag --ignore-zero-sized-bcl-check "
                      "if you really want to proceed.")
@@ -1145,11 +1146,11 @@ def pre_ingest_checks_instrument_run(options):
             'grep [fF]ail %s/*' % rtalogs_path)
 
         if fail_logs.strip():
-            logger.warn("WARNING - logs in Data/RTALogs contain failure "
+            logging.warn("WARNING - logs in Data/RTALogs contain failure "
                         "messages: %s", p_path)
             # return False
     else:
-        logger.warn("WARNING - RTALogs or Data/RTALogs directory not found.")
+        logging.warn("WARNING - RTALogs or Data/RTALogs directory not found.")
 
     return True
 
@@ -1169,7 +1170,7 @@ def pre_ingest_checks_fastq_only(options):
 
     if not exists(bcl2fastq_output_dir):
         if options.fastq_only:
-            logger.error("Directory containing FASTQs not found: %s",
+            logging.error("Directory containing FASTQs not found: %s",
                          bcl2fastq_output_dir)
             return False
 
@@ -1178,14 +1179,12 @@ def pre_ingest_checks_fastq_only(options):
             bcl2fastq_output_dir)
 
     if zero_size_fastqs.strip():
-        logger.warning("Some .fastq(.gz) files are zero size.")
+        logging.warning("Some .fastq(.gz) files are zero size.")
 
     return True
 
 
 def ingest_run(options, run_path=None):
-
-    global logger
 
     options.path = options.path or run_path
     run_path = run_path or options.path
@@ -1193,7 +1192,7 @@ def ingest_run(options, run_path=None):
     # Before creating any records on the server we first check that certain
     # prerequisite files exist, that the run is complete and is generally in a
     # 'sane' state suitable for ingestion.
-    logger.info("Running pre-ingestion checks & validation.")
+    logging.info("Running pre-ingestion checks & validation.")
     if not pre_ingest_checks(options):
         raise ValueError("Pre ingestion checks failed.")
         # sys.exit(1)
@@ -1238,11 +1237,11 @@ def ingest_run(options, run_path=None):
 
     ingestor_version = mytardis_ngs_ingestor.mytardis_uploader.__version__
     seqfac_app_version = get_mytardis_seqfac_app_version(uploader)
-    logger.info("Verifying MyTardis server app '%s' matches the ingestor "
+    logging.info("Verifying MyTardis server app '%s' matches the ingestor "
                 "version (%s)." % (uploader.tardis_app_name,
                                    ingestor_version))
     if not is_server_version_compatible(ingestor_version, seqfac_app_version):
-        logger.error("Ingestor (%s) / server (%s) version mismatch." %
+        logging.error("Ingestor (%s) / server (%s) version mismatch." %
                      (seqfac_app_version, ingestor_version))
         raise Exception("Version mismatch.")
 
@@ -1269,12 +1268,12 @@ def ingest_run(options, run_path=None):
     if duplicate_runs or duplicate_projects:
         matching = [str(i) for i in duplicate_runs]
         matching += [str(i) for i in duplicate_projects]
-        logger.warn("Duplicate runs/projects already exist on server: %s (%s)",
+        logging.warn("Duplicate runs/projects already exist on server: %s (%s)",
                     run_id, ', '.join(matching))
         if options.replace_duplicate_runs:
             trash_experiments_server(uploader, matching)
         else:
-            logger.error("Please manually remove existing run before "
+            logging.error("Please manually remove existing run before "
                          "ingesting, or set the --replace-duplicate-runs=True "
                          "option: %s (%s)", run_id, ', '.join(matching))
             raise Exception()
@@ -1312,12 +1311,12 @@ def ingest_run(options, run_path=None):
             uploader.share_experiment_with_group(run_expt_url, group)
 
     except Exception as e:
-        logger.error("Failed to create Experiment for sequencing run: %s",
+        logging.error("Failed to create Experiment for sequencing run: %s",
                      run_path)
-        logger.error("Exception: %s: %s", type(e).__name__, e)
+        logging.error("Exception: %s: %s", type(e).__name__, e)
         raise e
 
-    logger.info("Created Run Experiment: %s (%s)",
+    logging.info("Created Run Experiment: %s (%s)",
                 run_id,
                 run_expt_url)
 
@@ -1334,17 +1333,17 @@ def ingest_run(options, run_path=None):
                                                                  uploader)
         config_dataset_url = urlparse(config_dataset_url).path
         uploader.upload_file(samplesheet_path, config_dataset_url)
-        logger.info("Created config & logs dataset for sequencing run: %s",
+        logging.info("Created config & logs dataset for sequencing run: %s",
                     config_dataset_url)
     except Exception as e:
-        logger.error("Failed to create config & logs dataset for sequencing "
+        logging.error("Failed to create config & logs dataset for sequencing "
                      "run: %s",
                      run_path)
-        logger.error("Exception: %s: %s", type(e).__name__, e)
+        logging.error("Exception: %s: %s", type(e).__name__, e)
         raise e
 
     if not demultiplexer_info.get('version', None):
-        logger.error("Can't determine demultiplexer version - aborting")
+        logging.error("Can't determine demultiplexer version - aborting")
         raise Exception()
 
     demultiplexer_version_num = demultiplexer_info.get('version_number', '')
@@ -1406,12 +1405,12 @@ def ingest_run(options, run_path=None):
                     uploader.share_experiment_with_group(project_url, group)
 
             except Exception as e:
-                logger.error("Failed to create Experiment for project: %s",
+                logging.error("Failed to create Experiment for project: %s",
                              proj_id)
-                logger.debug("Exception: %s", e)
+                logging.debug("Exception: %s", e)
                 raise e
 
-            logger.info("Created Project Experiment: %s (%s)",
+            logging.info("Created Project Experiment: %s (%s)",
                         project_url,
                         proj_id)
 
@@ -1458,12 +1457,12 @@ def ingest_run(options, run_path=None):
                 proj_expt.parameters.fastqc_dataset = fqc_dataset_url
 
             except Exception as e:
-                logger.error("Failed to create FastQC Dataset for Project: %s",
+                logging.error("Failed to create FastQC Dataset for Project: %s",
                              proj_id)
-                logger.debug("Exception: %s", e)
+                logging.debug("Exception: %s", e)
                 raise e
 
-            logger.info("Created FastQC Dataset: %s (%s)",
+            logging.info("Created FastQC Dataset: %s (%s)",
                         fqc_dataset_url,
                         proj_id)
 
@@ -1493,15 +1492,15 @@ def ingest_run(options, run_path=None):
                 uploader,
                 fastqc_summary=fqc_summary)
         except Exception as e:
-            logger.error("Failed to create Dataset for Project: %s",
+            logging.error("Failed to create Dataset for Project: %s",
                          proj_id)
-            logger.debug("Exception: %s", e)
+            logging.debug("Exception: %s", e)
             raise e
 
         # Take just the path, eg: /api/v1/dataset/363
         fq_dataset_url = urlparse(fq_dataset_url).path
 
-        logger.info("Created FASTQ Dataset: %s (%s)", fq_dataset_url, proj_id)
+        logging.info("Created FASTQ Dataset: %s (%s)", fq_dataset_url, proj_id)
 
         try:
             # Create a temporary SampleSheet.csv containing only lines for the
@@ -1518,11 +1517,11 @@ def ingest_run(options, run_path=None):
             if exists(tmp_dir):
                 shutil.rmtree(tmp_dir)
 
-            logger.info("Uploaded SampleSheet.csv for Project: %s (%s)",
+            logging.info("Uploaded SampleSheet.csv for Project: %s (%s)",
                         fq_dataset_url,
                         proj_id)
         except Exception as e:
-            logger.error("Uploading SampleSheet.csv for Project failed: "
+            logging.error("Uploading SampleSheet.csv for Project failed: "
                          "%s (%s)", fq_dataset_url, proj_id)
 
         register_project_fastq_datafiles(
@@ -1534,7 +1533,7 @@ def ingest_run(options, run_path=None):
             fastqc_data=fqc_summary,
             fast_mode=options.fast)
 
-    logger.info("Ingestion of run %s complete !", run_id)
+    logging.info("Ingestion of run %s complete !", run_id)
 
 
 def setup_commandline_args(parser):
@@ -1655,11 +1654,7 @@ def get_config_options(config_file_attr='config_file',
 
 
 def run_in_console():
-    global logger
-    logger = setup_logging()
-    # set logger for these modules to our logger
-    run_info.logger = logger
-    fastqc.logger = logger
+    setup_logging()
 
     MyTardisUploader.user_agent_name = os.path.basename(sys.argv[0])
 
@@ -1682,9 +1677,9 @@ def run_in_console():
         if e != SystemExit:
             import traceback
             # traceback.print_exc(file=sys.stdout)
-            logger.debug((traceback.format_exc()))
+            logging.debug((traceback.format_exc()))
         tmp_dirs._cleanup_tmp()
-        logger.error("Ingestion failed.")
+        logging.error("Ingestion failed.")
         sys.exit(1)
 
     # since atexit doesn't seem to always work
