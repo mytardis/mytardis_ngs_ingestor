@@ -1,0 +1,87 @@
+# This TOML format config is consumed by Python's logger.config.dictConfig
+# after being serialized to a dict.
+#
+# Another example: http://intelledger.github.io/sysadmin_guide/log_configuration.html#configure-specific-logger
+#
+
+# This logging configuration:
+#
+# * Logs verbosely to stderr in color
+# * Sends emails via Mailgun upon errors and special 'autoprocess_notify' events
+#   (eg , when autoprocessing for a run completes successfully, or fails)
+# * Sends logs to Loggly
+
+version                   = 1
+disable_existing_loggers  = false
+
+[root]
+level           = "DEBUG"
+# level           = "INFO"
+handlers        = ["colorstream", "mailgun", "loggly"]
+
+[loggers."requests.packages.urllib3"]
+# level           = "DEBUG"
+level           = "ERROR"
+propagate       = true
+
+[loggers.autoprocess_notify]
+level           = "ERROR"
+handlers        = ["mailgun_notify"]
+
+# See: https://github.com/borntyping/python-colorlog#with-dictconfig
+[handlers.colorstream]
+level           = "DEBUG"
+class           = "logging.StreamHandler"
+stream          = "ext://sys.stderr"
+formatter       = "color"
+
+[handlers.mailgun]
+level          = "ERROR"
+formatter      = "email"
+class          = "mytardis_ngs_ingestor.utils.mailgun_handler.MailgunHandler"
+api_url        = "https://api.mailgun.net/v3/example.com/messages"
+api_key        = "_secret_key_"
+sender         = "name@example.com"
+recipients     = ["admin@example.com"]
+subject_prefix = "autoprocessing"
+
+[handlers.mailgun_notify]
+formatter      = "email"
+class          = "mytardis_ngs_ingestor.utils.mailgun_handler.MailgunHandler"
+api_url        = "https://api.mailgun.net/v3/example.com/messages"
+api_key        = "_secret_key_"
+sender         = "name@example.com"
+recipients     = ["admin@example.com"]
+subject_prefix = "autoprocessing"
+
+[handlers.loggly]
+level         = "INFO"
+class         = "loggly.handlers.HTTPSHandler"
+formatter     = "logglyJsonFormat"
+# TOKEN here must be your loggly token
+url           = "https://logs-01.loggly.com/inputs/TOKEN/tag/python"
+
+#[handlers.debugstream]
+#level           = "DEBUG"
+#class           = "logging.StreamHandler"
+#stream          = "ext://sys.stderr"
+
+[formatters.color]
+"()"           = "colorlog.ColoredFormatter"
+format          = "%(bg_white)s%(fg_black)s%(asctime)-8s%(reset)s\t%(log_color)s%(levelname)-8s%(reset)s\t%(white)s%(message)s"
+# datefmt         = "%H:%M:%S"
+
+[formatters.email]
+format = '''
+%(asctime)s - %(message)s
+
+----
+Log level:          %(levelname)s
+Location:           %(pathname)s:%(lineno)d
+Module:             %(module)s
+Function:           %(funcName)s
+'''
+
+[formatters.logglyJsonFormat]
+format        = '{"loggerName": "%(name)s", "asciTime": "%(asctime)s", "fileName": "%(filename)s", "logRecordCreationTime": "%(created)f",  "functionName": "%(funcName)s",  "levelNo": "%(levelno)s",  "lineNo": "%(lineno)d",  "time": "%(msecs)d",  "levelName": "%(levelname)s",  "message": "%(message)s"}'
+# datefmt       = "%H:%M:%S"

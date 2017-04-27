@@ -32,8 +32,6 @@ import datetime
 import csv
 from argparse import ArgumentParser
 from appsettings import SettingsParser
-import toml
-from attrdict import AttrDict
 from toolz.dicttoolz import merge as merge_dicts
 
 from mytardis_ngs_ingestor.utils import config_helper
@@ -786,56 +784,67 @@ class MyTardisUploader:
         self.do_get_request('objectacl', {})
 
 
-def setup_logging(loglevel=logging.INFO):
-    logger = logging.getLogger()
+def setup_logging(logging_config_file='logging_config.toml'):
+    import logging
 
-    logger.setLevel(loglevel)
+    if logging_config_file and os.path.exists(logging_config_file):
+        import logging.config
 
-    console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setLevel(logging.DEBUG)
+        # logging.config.fileConfig(logging_config_file)
 
-    try:
-        from colorlog import ColoredFormatter
+        import pytoml as toml
+        with open(logging_config_file) as f:
+            logging_config = toml.load(f)
+        logging.config.dictConfig(logging_config)
 
-        color_formatter = ColoredFormatter(
-            '%(bg_white)s%(fg_black)s%(asctime)-8s%(reset)s\t'
-            '%(log_color)s%(levelname)-8s%(reset)s\t'
-            '%(white)s%(message)s',
-            reset=True,
-            log_colors={
-                'DEBUG':    'cyan',
-                'INFO':     'green',
-                'WARNING':  'yellow',
-                'ERROR':    'red',
-                'CRITICAL': 'red,bg_white',
-            },
-            secondary_log_colors={},
-            style='%'
-        )
-        console_handler.setFormatter(color_formatter)
-    except ImportError:
-        logging.basicConfig(format='%(asctime)s\t'
-                                   # '%(name)-12s\t'
-                                   '%(levelname)-8s\t'
-                                   '%(message)s')
+    else:
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)
 
-    logger.addHandler(console_handler)
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setLevel(logging.DEBUG)
 
-    low_level_request_logger = False
-    if low_level_request_logger:
         try:
-            import http.client as http_client
+            from colorlog import ColoredFormatter
+            color_formatter = ColoredFormatter(
+                '%(bg_white)s%(fg_black)s%(asctime)-8s%(reset)s\t'
+                '%(log_color)s%(levelname)-8s%(reset)s\t'
+                '%(white)s%(message)s',
+                reset=True,
+                log_colors={
+                    'DEBUG':    'cyan',
+                    'INFO':     'green',
+                    'WARNING':  'yellow',
+                    'ERROR':    'red',
+                    'CRITICAL': 'red,bg_white',
+                },
+                secondary_log_colors={},
+                style='%'
+            )
+            console_handler.setFormatter(color_formatter)
         except ImportError:
-            # Python 2
-            import httplib as http_client
+            logging.basicConfig(format='%(asctime)s\t'
+                                       # '%(name)-12s\t'
+                                       '%(levelname)-8s\t'
+                                       '%(message)s')
 
-        http_client.HTTPConnection.debuglevel = 1
+        logger.addHandler(console_handler)
 
-        requests_log = logging.getLogger("requests.packages.urllib3")
-        requests_log.setLevel(logging.DEBUG)
-        requests_log.propagate = True
+        low_level_request_logger = False
+        if low_level_request_logger:
+            try:
+                import http.client as http_client
+            except ImportError:
+                # Python 2
+                import httplib as http_client
 
-    return logging.getLogger()
+            http_client.HTTPConnection.debuglevel = 1
+
+            requests_log = logging.getLogger("requests.packages.urllib3")
+            requests_log.setLevel(logging.DEBUG)
+            requests_log.propagate = True
+
+        return logging.getLogger()
 
 
 def setup_commandline_args(parser=None):
@@ -852,6 +861,13 @@ def setup_commandline_args(parser=None):
                         dest="config_file",
                         type=str,
                         metavar="MYTARDIS_UPLOADER_CONFIG")
+    parser.add_argument("--logging-config",
+                        dest="logging_config",
+                        type=str,
+                        default="logging_config.toml",
+                        help="The path to the logging config file "
+                             "eg logging_config.toml",
+                        metavar="LOGGING_CONFIG")
     parser.add_argument("-f", "--path",
                         dest="path",
                         type=str,
@@ -1121,8 +1137,6 @@ def run():
 
     """)
 
-    setup_logging()
-
     parser = ArgumentParser()
     parser = setup_commandline_args(parser)
     commandline_options = parser.parse_args()
@@ -1139,6 +1153,8 @@ def run():
     parser.set_defaults(**config_options)
 
     options = parser.parse_args()
+
+    setup_logging(logging_config_file=options.logging_config)
 
     validate_config(parser, options)
 

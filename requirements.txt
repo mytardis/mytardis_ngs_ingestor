@@ -10,6 +10,7 @@ glob2
 fs>=2.0,<3.0
 future
 jsondate
+loggly-python-handler
 ndg-httpsclient
 pathlib2
 psutil

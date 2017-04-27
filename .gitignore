@@ -40,3 +40,4 @@ nosetests.xml
 uploader_config.yaml
 uploader_config.toml
 autoprocess_config.toml
+logging_config.toml

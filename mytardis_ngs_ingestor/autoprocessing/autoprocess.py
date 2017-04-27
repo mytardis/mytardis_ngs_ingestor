@@ -113,6 +113,8 @@ def try_autoprocessing(run_dir, options):
     tasks.log_status(current.task, options.verbose)
 
     logging.info('Autoprocessing completed for: %s', run_dir)
+    logging.getLogger('autoprocess_notify').info(
+        'Autoprocessing completed for: %s', run_dir)
 
     return current.task
 
@@ -132,6 +134,7 @@ def process_all_runs(run_storage_base, options):
     global current
 
     errored_tasks = []
+    running_tasks = []
     for name in os.listdir(run_storage_base):
         run_dir = path.join(run_storage_base, name)
         run_id = get_run_id_from_path(run_dir)
@@ -140,6 +143,8 @@ def process_all_runs(run_storage_base, options):
                 emitted_task = try_autoprocessing(run_dir, options)
                 if emitted_task and emitted_task.status == tasks.ERROR:
                     errored_tasks.append(emitted_task)
+                if emitted_task and emitted_task.status == tasks.RUNNING:
+                    running_tasks.append(emitted_task)
             except Exception as e:
                 # Dummy catchall task to signal exceptional failure
                 errored_tasks.append(ProcessingTask(run_id,
@@ -154,15 +159,26 @@ def process_all_runs(run_storage_base, options):
             # if emitted_task and emitted_task.status != COMPLETE:
             #     break
 
+    errorlist = ', '.join(['%s:%s' % (t.task_name, t.run_id)
+                           for t in errored_tasks])
+    runninglist = ', '.join(['%s:%s' % (t.task_name, t.run_id)
+                           for t in running_tasks])
     if options.verbose:
         if errored_tasks:
-            errorlist = ', '.join(['%s:%s' % (t.task_name, t.run_id)
-                                   for t in errored_tasks])
             logging.error("Processing runs in %s completed with failures: %s",
-                         run_storage_base, errorlist)
+                          run_storage_base, errorlist)
+        elif running_tasks:
+            logging.info("%s task(s) are currently running (%s): %s",
+                         len(running_tasks), run_storage_base, runninglist)
         else:
             logging.info("Successfully completed processing of runs in: %s",
-                        run_storage_base)
+                         run_storage_base)
+
+    if errored_tasks:
+        logging.getLogger('autoprocess_notify').error(
+            "Processing runs in %s completed with failures: %s",
+            run_storage_base,
+            errorlist)
 
     return not errored_tasks
 
@@ -246,6 +262,14 @@ def setup_commandline_args(parser=None):
                              "eg uploader_config.toml",
                         metavar="UPLOADER_CONFIG")
 
+    parser.add_argument("--logging-config",
+                        dest="logging_config",
+                        type=str,
+                        # default="logging_config.toml",
+                        help="The path to the logging config file "
+                             "eg logging_config.toml",
+                        metavar="LOGGING_CONFIG")
+
     # TODO: It might be better to make these subparser modes like:
     #       autoprocess process --run-dir /data/runs
     #       autoprocess process --single-run /data/runs/blabla
@@ -312,12 +336,14 @@ def _set_commandline_and_default_options(options):
         'watch': options.watch,
         'verbose': options.verbose,
         'uploader_config': options.uploader_config,
+        'logging_config': options.logging_config,
     }
     options_defaults = {
         'run_storage_base': None,
         'watch': False,
         'verbose': True,
         'uploader_config': 'uploader_config.toml',
+        'logging_config': 'logging_config.toml',
     }
 
     for k, v in options_defaults.items():
@@ -358,7 +384,6 @@ def _set_current_task_status_on_exit():
 
 
 def run_in_console():
-    setup_logging()
     parser = setup_commandline_args()
     options = parser.parse_args()
     # options, argv = parser.parse_known_args()
@@ -386,9 +411,11 @@ def run_in_console():
                          options.config_file)
             sys.exit(1)
 
+    setup_logging(logging_config_file=options.logging_config)
+
     # If a config for illumina_uploader was provided, read it
     # and assign it to options.uploader for use in the mytardis_upload task
-    options['config']['mytardis_uploader'] = None
+    # options['config']['mytardis_uploader'] = None
     if options.uploader_config and os.path.isfile(options.uploader_config):
         uploader_config = AttrDict(vars(
             illumina_uploader.get_config_options(
