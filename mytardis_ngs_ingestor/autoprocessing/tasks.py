@@ -36,8 +36,12 @@ class Current(object):
 
 class ProcessingTask(object):
     def __init__(self, run_id, task_name, status,
-                 db=None, timestamp=None, info=None):
+                 db=None,
+                 timestamp=None,
+                 last_failure_notify_time=None,
+                 info=None):
         self.timestamp = timestamp or datetime.now()
+        self.last_failure_notify_time = last_failure_notify_time
         self.run_id = run_id
         self.task_name = task_name
         self.status = status  # running / complete / error
@@ -284,8 +288,8 @@ def run_bcl2fastq(runfolder_dir,
     success = False
     # A successful outcome has something like this as the last line in stderr
     # "2017-04-02 15:56:32 [1bbb880] Processing completed with 0 errors and 0 warnings."
-    if cmd_out and 'Processing completed with 0 errors' in cmd_out.splitlines()[
-        -1]:
+    if cmd_out and \
+            'Processing completed with 0 errors' in cmd_out.splitlines().pop():
         success = True
     else:
         logging.error('bcl2fastq failed stdout/stderr: %s', cmd_out)

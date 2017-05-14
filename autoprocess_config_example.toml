@@ -11,6 +11,8 @@ tasks = [
 ]
 
 run_storage_base = "/data/illumina"
+# Failure notification frequency, minutes (1440 min = daily)
+notify_frequency = 1440
 
 [bcl2fastq]
 nice                          = true
@@ -34,13 +36,13 @@ nice                          = true
 
 # TODO: Not implemented
 # [rta_complete]
-# flag-file                     = "{run_path}/RTAComplete.txt"
+# flag_file                     = "{run_path}/RTAComplete.txt"
 
 # TODO: Not implemented
 # [create_checksum_manifest]
 # algorithms                    = ['md5', 'sha512', 'xxhash']
-# manifest-style                = 'sum'
-# manifest-style                = 'hashdeep'
+# manifest_style                = 'sum'
+# manifest_style                = 'hashdeep'
 
 [rsync_to_archive]
 target_basepath                 = "/data/illumina/archive_test"
@@ -51,6 +53,6 @@ args = [
  '--include="*.xml"',
  '--include="*.csv"',
  '--include="*.log"',
- # This linke excludes BCL files
+ # This line excludes BCL files
  '--exclude="{run_dir}/Data/Intensities/BaseCalls/L0*/"',
 ]

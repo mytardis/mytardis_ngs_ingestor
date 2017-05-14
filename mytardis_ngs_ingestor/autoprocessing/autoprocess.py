@@ -2,6 +2,7 @@ import sys, os
 import logging
 import types
 from os import path
+from datetime import datetime, timedelta
 import atexit
 from attrdict import AttrDict
 
@@ -112,9 +113,9 @@ def try_autoprocessing(run_dir, options):
     taskdb.update(current.task)
     tasks.log_status(current.task, options.verbose)
 
-    logging.info('Autoprocessing completed for: %s', run_dir)
-    logging.getLogger('autoprocess_notify').info(
-        'Autoprocessing completed for: %s', run_dir)
+    done_msg = 'Autoprocessing completed for: %s' % run_dir
+    logging.info(done_msg)
+    logging.getLogger('autoprocess_notify').info(done_msg)
 
     return current.task
 
@@ -162,12 +163,9 @@ def process_all_runs(run_storage_base, options):
     errorlist = ', '.join(['%s:%s' % (t.task_name, t.run_id)
                            for t in errored_tasks])
     runninglist = ', '.join(['%s:%s' % (t.task_name, t.run_id)
-                           for t in running_tasks])
+                             for t in running_tasks])
     if options.verbose:
-        if errored_tasks:
-            logging.error("Processing runs in %s completed with failures: %s",
-                          run_storage_base, errorlist)
-        elif running_tasks:
+        if running_tasks:
             logging.info("%s task(s) are currently running (%s): %s",
                          len(running_tasks), run_storage_base, runninglist)
         else:
@@ -175,10 +173,30 @@ def process_all_runs(run_storage_base, options):
                          run_storage_base)
 
     if errored_tasks:
-        logging.getLogger('autoprocess_notify').error(
-            "Processing runs in %s completed with failures: %s",
-            run_storage_base,
-            errorlist)
+        if options.verbose:
+            logging.error("Processing runs in %s completed with failures: %s",
+                          run_storage_base, errorlist)
+            logging.getLogger('autoprocess_notify').error(
+                "Processing runs in %s completed with failures: %s",
+                run_storage_base,
+                errorlist)
+        else:
+            # Throttle notification log if in --quiet mode
+            notify_every = timedelta(minutes=options.notify_frequency)
+            for t in errored_tasks:
+                if t.last_failure_notify_time is None or \
+                        (t.last_failure_notify_time +
+                            notify_every < datetime.now()):
+                    logging.getLogger('autoprocess_notify').error(
+                        "Processing runs in %s completed with failures: %s",
+                        run_storage_base,
+                        errorlist)
+                    t.last_failure_notify_time = datetime.now()
+                    taskdb = TaskDb(path.join(run_storage_base, t.run_id),
+                                    ProcessingTask, t.run_id)
+                    taskdb.update(t)
+                    # t._db.update(t)
+                    break
 
     return not errored_tasks
 
@@ -344,6 +362,7 @@ def _set_commandline_and_default_options(options):
         'verbose': True,
         'uploader_config': 'uploader_config.toml',
         'logging_config': 'logging_config.toml',
+        'notify_frequency': 60*24,  # daily
     }
 
     for k, v in options_defaults.items():

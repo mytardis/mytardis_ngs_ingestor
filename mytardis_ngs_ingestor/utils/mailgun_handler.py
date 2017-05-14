@@ -17,16 +17,16 @@ class MailgunHandler(logging.Handler):
         self.subject_prefix = subject_prefix
 
     def _format_subject(self, message):
-        return
+        return "%s (%s): %s" % (self.subject_prefix,
+                                self.hostname,
+                                message)
 
     def emit(self, record):
         # record.message is the log message (only created after self.format is
         # called)
         for recipient in self.recipients:
             text = self.format(record)
-            subject = "%s (%s): %s" % (self.subject_prefix,
-                                       self.hostname,
-                                       record.message)
+            subject = self._format_subject(record.message)
             data = {
                 "from": self.sender,
                 "to": recipient,
