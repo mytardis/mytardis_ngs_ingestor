@@ -77,22 +77,7 @@ setup(
     # your project is installed. For an analysis of "install_requires" vs pip's
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    # install_requires=get_requirements(),
-    install_requires=['appsettings',
-                      'backoff',
-                      'colorlog',
-                      'fs',
-                      'ndg-httpsclient',
-                      'pyasn1',
-                      'pyopenssl',
-                      'python-dateutil',
-                      'pyyaml',  # apt: libyaml-dev python-dev
-                      'requests >= 2.7.0',
-                      'requests-toolbelt >= 0.4.0',
-                      'urllib3',
-                      'xmltodict',
-                      'semantic_version',
-                      ],
+    install_requires=get_requirements(),
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
