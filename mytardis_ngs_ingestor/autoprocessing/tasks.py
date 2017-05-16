@@ -466,16 +466,21 @@ def do_fastqc(taskdb, current, run_dir, options):
         taskdb.update(current.task)
 
         try:
-            outdir = options.config.get('bcl2fastq', {}).get(
-                'output_dir',
-                '%s/Data/Intensities/BaseCalls/' % run_dir)
+            outdir = '%s/Data/Intensities/BaseCalls/' % run_dir
+            bcl2fastq_opts = options.config.get('bcl2fastq', {})
+            outdir_fmt_str = bcl2fastq_opts.get('output-dir', None)
+            if outdir_fmt_str:
+                outdir = illumina_uploader.get_bcl2fastq_output_dir(
+                    outdir_fmt_str,
+                    options.run_id,
+                    run_dir)
             fastqs_per_project = get_sample_project_mapping(outdir)
             ok = []
             failing_project = None
             for project, fastqs in fastqs_per_project.items():
-                fastqs = [path.join(options.bcl2fastq['output_dir'], fq)
+                fastqs = [path.join(outdir, fq)
                           for fq in fastqs]
-                proj_path = path.join(options.bcl2fastq['output_dir'], project)
+                proj_path = path.join(outdir, project)
                 result, output = fastqc.run_fastqc_on_project(fastqs,
                                                               proj_path,
                                                               clobber=True)
