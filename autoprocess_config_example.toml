@@ -11,7 +11,12 @@ tasks = [
 ]
 
 run_storage_base = "/data/illumina"
+
 # Failure notification frequency, minutes (1440 min = daily)
+# When in --quiet mode, ERROR messages for failed runs
+# will only be output to the `autoprocess_notify` logger
+# every `notify_frequency` minutes. This is particularly useful
+# for email handlers when running under cron.
 notify_frequency = 1440
 
 [bcl2fastq]

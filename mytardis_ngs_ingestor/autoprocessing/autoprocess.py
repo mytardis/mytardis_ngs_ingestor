@@ -245,6 +245,8 @@ def setup_commandline_args(parser=None):
     if not parser:
         parser = ArgumentParser()
 
+    parser = _add_uploader_config_argparser(parser=parser)
+
     parser.add_argument("--quiet",
                         action="store_false",
                         dest="verbose",
@@ -271,14 +273,6 @@ def setup_commandline_args(parser=None):
                              "Commandline options override all config file"
                              "settings.",
                         metavar="AUTOPROCESSNG_CONFIG")
-
-    parser.add_argument("--uploader-config",
-                        dest="uploader_config",
-                        type=str,
-                        # default="uploader_config.toml",  # don't use
-                        help="The path to the uploader config file "
-                             "eg uploader_config.toml",
-                        metavar="UPLOADER_CONFIG")
 
     parser.add_argument("--logging-config",
                         dest="logging_config",
@@ -326,6 +320,33 @@ def setup_commandline_args(parser=None):
 
     # options = parser.parse_args()
     # return parser, options
+    return parser
+
+
+def _add_uploader_config_argparser(parser=None):
+    """
+    We use this to add the --uploader-config argument to an ArgParser instance.
+    It exists as a way to create an ArguementParser that ONLY recognises this
+    option, to be passed to illumina_uploader.get_config_options.
+
+    Feel like an ugly hack. Sorry :/
+
+    :param parser: The parser to extend.
+    :type parser: argparse.ArgumentParser
+    :return: The extended parser.
+    :rtype: argparse.ArgumentParser
+    """
+    if not parser:
+        parser = ArgumentParser()
+
+    parser.add_argument("--uploader-config",
+                        dest="uploader_config",
+                        type=str,
+                        # default="uploader_config.toml",  # don't use
+                        help="The path to the uploader config file "
+                             "eg uploader_config.toml",
+                        metavar="UPLOADER_CONFIG")
+
     return parser
 
 
@@ -432,14 +453,17 @@ def run_in_console():
 
     setup_logging(logging_config_file=options.logging_config)
 
-    # If a config for illumina_uploader was provided, read it
-    # and assign it to options.uploader for use in the mytardis_upload task
+    # If a config for illumina_uploader was provided, read it and assign it to
+    # options.mytardis_uploader for use in the mytardis_upload task
     # options['config']['mytardis_uploader'] = None
     if options.uploader_config and os.path.isfile(options.uploader_config):
+        uploader_only_parser = _add_uploader_config_argparser()
         uploader_config = AttrDict(vars(
             illumina_uploader.get_config_options(
                 config_file_attr='uploader_config',
-                ignore_unknown_args=True)
+                ignore_unknown_args=True,
+                parser=uploader_only_parser,
+            )
         ))
         options['config']['mytardis_uploader'] = uploader_config
 
