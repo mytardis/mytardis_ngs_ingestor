@@ -484,11 +484,13 @@ def do_fastqc(taskdb, current, run_dir, options):
                 fastqs = [path.join(outdir, fq)
                           for fq in fastqs]
                 proj_path = path.join(outdir, project)
+
                 result, output = fastqc.run_fastqc_on_project(
                     fastqs,
                     proj_path,
                     fastqc_bin=fastqc_bin,
-                    clobber = True)
+                    clobber=True)
+
                 if 'Failed to process' in output:
                     result = None
                 ok.append(result)
