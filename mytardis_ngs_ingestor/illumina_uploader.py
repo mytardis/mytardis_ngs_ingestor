@@ -493,7 +493,7 @@ def register_project_fastq_datafiles(run_id,
                 sample_name = info_from_fn.get('sample_name', None)
             else:
                 logging.warning("Unrecognized FASTQ filename pattern - "
-                               "skipping: %s", fastq_path)
+                                "skipping: %s", fastq_path)
                 continue
 
             sampleinfo = sample_dict.get(sample_name, {})
@@ -1518,8 +1518,8 @@ def ingest_run(options, run_path=None):
                 shutil.rmtree(tmp_dir)
 
             logging.info("Uploaded SampleSheet.csv for Project: %s (%s)",
-                        fq_dataset_url,
-                        proj_id)
+                         fq_dataset_url,
+                         proj_id)
         except Exception as e:
             logging.error("Uploading SampleSheet.csv for Project failed: "
                          "%s (%s)", fq_dataset_url, proj_id)

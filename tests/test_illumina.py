@@ -272,6 +272,7 @@ Lane,Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,Sample_Pro
     def test_parse_sample_info_from_filename(self):
         fq_info = parse_sample_info_from_filename(
             'DMSO-7_S7_L008_I2_001.fastq.gz')
+        self.assertIsNotNone(fq_info)
         self.assertEqual(fq_info.get('sample_name', None), 'DMSO-7')
         self.assertEqual(fq_info.get('sample_number', None), 7)
         self.assertEqual(fq_info.get('lane', None), 8)
@@ -281,10 +282,25 @@ Lane,Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,Sample_Pro
 
         fq_info = parse_sample_info_from_filename(
             '16-04333_TGACCA_L007_R3_001.fastq.gz')
+        self.assertIsNotNone(fq_info)
         self.assertEqual(fq_info.get('sample_name', None), '16-04333')
         self.assertEqual(fq_info.get('sample_number', None), None)
         self.assertEqual(fq_info.get('lane', None), 7)
         self.assertEqual(fq_info.get('read', None), 3)
+        self.assertEqual(fq_info.get('read_type', None), 'R')
+        self.assertEqual(fq_info.get('set_number', None), 1)
+
+        fq_info = parse_sample_info_from_filename(
+            '//srv/ceph/abcd/ABCD/instrument_runs/nextseq/'
+            '170508_NS500295_0103_AHW2JVBGX2_testing/'
+            '170508_NS500295_0103_AHW2JVBGX2_testing.bcl2fastq/'
+            'SonnyJim/'
+            'R10_S10_R1_001.fastq.gz')
+        self.assertIsNotNone(fq_info)
+        self.assertEqual(fq_info.get('sample_name', None), 'R10')
+        self.assertEqual(fq_info.get('sample_number', None), 10)
+        self.assertEqual(fq_info.get('lane', None), None)
+        self.assertEqual(fq_info.get('read', None), 1)
         self.assertEqual(fq_info.get('read_type', None), 'R')
         self.assertEqual(fq_info.get('set_number', None), 1)
 

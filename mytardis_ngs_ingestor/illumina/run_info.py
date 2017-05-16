@@ -533,10 +533,14 @@ def parse_sample_info_from_filename(filepath, suffix='.fastq.gz'):
         # lane1_Undetermined_L001_R1_001.fastq.gz
         r'_'.join([undetermined_sample_name_re, lane_re, read_re, set_number_re]),
 
-        # bcl2fastq 2.x style filenames:
+        # bcl2fastq 2.x (<2.18) style filenames:
         # {sample_name}_{sample_number}_L00{lane}_R{read}_001.fastq.gz
         r'_'.join([sample_name_re, sample_number_re, lane_re, read_re,
                    set_number_re]),
+
+        # bcl2fastq 2.18 (NextSeq?) style filenames:
+        # {sample_name}_{sample_number}_R{read}_001.fastq.gz
+        r'_'.join([sample_name_re, sample_number_re, read_re, set_number_re]),
 
         # bcl2fastq 1.8.4 style filenames:
         # {sample_name}_{index}_L00{lane}_R{read}_001.fastq.gz
