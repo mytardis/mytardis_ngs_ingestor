@@ -10,10 +10,10 @@ import logging
 
 from mytardis_ngs_ingestor.illumina import run_info
 
-from mytardis_ngs_ingestor.illumina.run_info import get_run_id_from_path, get_sample_project_mapping
+from mytardis_ngs_ingestor.illumina.run_info import get_run_id_from_path, \
+    get_sample_project_mapping
 from mytardis_ngs_ingestor.illumina import fastqc
 from mytardis_ngs_ingestor import illumina_uploader
-
 
 # status enum
 CREATED = 'created'  # record created, no action taken on task yet
@@ -199,8 +199,8 @@ def log_status(task, verbose=True):
 def log_retry(task, verbose=True):
     if verbose:
         logging.warning('Retrying - run_id: %s task: %s',
-                       task.run_id.ljust(24),
-                       task.task_name.ljust(24))
+                        task.run_id.ljust(24),
+                        task.task_name.ljust(24))
 
 
 def run_bcl2fastq(runfolder_dir,
@@ -289,7 +289,7 @@ def run_bcl2fastq(runfolder_dir,
     # A successful outcome has something like this as the last line in stderr
     # "2017-04-02 15:56:32 [1bbb880] Processing completed with 0 errors and 0 warnings."
     if cmd_out and \
-            'Processing completed with 0 errors' in cmd_out.splitlines().pop():
+                    'Processing completed with 0 errors' in cmd_out.splitlines().pop():
         success = True
     else:
         logging.error('bcl2fastq failed stdout/stderr: %s', cmd_out)
@@ -474,6 +474,9 @@ def do_fastqc(taskdb, current, run_dir, options):
                     outdir_fmt_str,
                     options.run_id,
                     run_dir)
+
+            fastqc_opts = options.config.get('fastqc', {})
+            fastqc_bin = fastqc_opts.get('binary_path', None)
             fastqs_per_project = get_sample_project_mapping(outdir)
             ok = []
             failing_project = None
@@ -481,9 +484,13 @@ def do_fastqc(taskdb, current, run_dir, options):
                 fastqs = [path.join(outdir, fq)
                           for fq in fastqs]
                 proj_path = path.join(outdir, project)
-                result, output = fastqc.run_fastqc_on_project(fastqs,
-                                                              proj_path,
-                                                              clobber=True)
+
+                result, output = fastqc.run_fastqc_on_project(
+                    fastqs,
+                    proj_path,
+                    fastqc_bin=fastqc_bin,
+                    clobber = True)
+
                 if 'Failed to process' in output:
                     result = None
                 ok.append(result)
@@ -499,14 +506,15 @@ def do_fastqc(taskdb, current, run_dir, options):
                 current.task.status = ERROR
                 current.task.info = {'project': failing_project}
                 taskdb.update(current.task)
-                #log_status(current.task, options.verbose)
-                #return current.task
+                # log_status(current.task, options.verbose)
+                # return current.task
 
         except Exception as e:
             current.task.status = ERROR
             taskdb.update(current.task)
             log_status(current.task, options.verbose)
-            logging.exception('FastQC task on %s raised an exception.' % run_dir)
+            logging.exception(
+                'FastQC task on %s raised an exception.' % run_dir)
             return current.task
 
     log_status(current.task, options.verbose)
@@ -536,7 +544,7 @@ def do_create_checksum_manifest(taskdb, current, run_dir, options):
             taskdb.update(current.task)
         except Exception as e:
             logging.exception("create_checksum_manifest task failed with an "
-                             "exception.")
+                              "exception.")
             current.task.status = ERROR
             current.task.info['output'] = cmd_out
             taskdb.update(current.task)
@@ -562,7 +570,7 @@ def do_rsync_to_archive(taskdb, current, run_dir, options):
 
     if not target_basepath:
         logging.exception("%s task failed - target_basepath not specified" %
-                         task_name)
+                          task_name)
         current.task.status = ERROR
         taskdb.update(current.task)
 
@@ -613,8 +621,8 @@ def do_mytardis_upload(taskdb, current, run_dir, options):
 
     if not options.config.get('mytardis_uploader', None):
         logging.exception("mytardis_upload task failed - config file %s not "
-                         "found",
-                         options.uploader_config)
+                          "found",
+                          options.uploader_config)
         current.task.status = ERROR
         taskdb.update(current.task)
         return current.task
@@ -634,7 +642,6 @@ def do_mytardis_upload(taskdb, current, run_dir, options):
 
     log_status(current.task, options.verbose)
     return current.task
-
 
 # def to_json(d):
 #     """
