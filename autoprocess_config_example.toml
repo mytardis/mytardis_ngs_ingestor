@@ -39,6 +39,9 @@ nice                          = true
   fastq-compression-level       = 9
   # tiles                         = "s_1_1101"
 
+# [fastqc]
+# binary_path = "/software/apps/FastQC/fastqc"
+
 # TODO: Not implemented
 # [rta_complete]
 # flag_file                     = "{run_path}/RTAComplete.txt"
