@@ -480,7 +480,6 @@ def do_fastqc(taskdb, current, run_dir, options):
                 fastqs = [path.join(outdir, fq)
                           for fq in fastqs]
                 proj_path = path.join(outdir, project)
-
                 result, output = fastqc.run_fastqc_on_project(
                     fastqs,
                     proj_path,
@@ -502,8 +501,6 @@ def do_fastqc(taskdb, current, run_dir, options):
                 current.task.status = ERROR
                 current.task.info = {'project': failing_project}
                 taskdb.update(current.task)
-                # log_status(current.task, options.verbose)
-                # return current.task
 
         except Exception as e:
             current.task.status = ERROR
