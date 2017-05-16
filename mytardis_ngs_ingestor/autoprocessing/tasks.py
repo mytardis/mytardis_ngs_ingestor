@@ -489,7 +489,7 @@ def do_fastqc(taskdb, current, run_dir, options):
                     fastqs,
                     proj_path,
                     fastqc_bin=fastqc_bin,
-                    clobber=True)
+                    clobber = True)
 
                 if 'Failed to process' in output:
                     result = None
