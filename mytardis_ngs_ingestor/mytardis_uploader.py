@@ -752,8 +752,12 @@ class MyTardisUploader:
         :return: A requests Response object
         :rtype: Response
         """
+        q = self.query_group(group_name)['objects']
+        if q:
+            group_id = q.pop()['id']
+        else:
+            raise ValueError("Group not found: %s" % group_name)
 
-        group_id = self.query_group(group_name)['objects'][0]['id']
         return self._share_experiment(experiment,
                                       'django_group',
                                       group_id,

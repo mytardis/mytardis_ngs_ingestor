@@ -1312,13 +1312,13 @@ def ingest_run(options, run_path=None):
 
     except Exception as e:
         logging.error("Failed to create Experiment for sequencing run: %s",
-                     run_path)
+                      run_path)
         logging.error("Exception: %s: %s", type(e).__name__, e)
         raise e
 
     logging.info("Created Run Experiment: %s (%s)",
-                run_id,
-                run_expt_url)
+                 run_id,
+                 run_expt_url)
 
     samplesheet_path = join(run_path, 'SampleSheet.csv')
     samplesheet, chemistry = parse_samplesheet(samplesheet_path,
