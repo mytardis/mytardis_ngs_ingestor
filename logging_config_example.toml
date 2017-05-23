@@ -25,7 +25,7 @@ level           = "ERROR"
 propagate       = true
 
 [loggers.autoprocess_notify]
-level           = "ERROR"
+level           = "INFO"
 handlers        = ["mailgun_notify"]
 
 # See: https://github.com/borntyping/python-colorlog#with-dictconfig

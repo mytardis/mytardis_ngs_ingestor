@@ -588,7 +588,7 @@ def get_sample_project_mapping(basepath,
                      output directory
     :type basepath: str
     :param catch_undetermined: Map any FASTQ files with 'Undetermined' in the
-                               name to a projects 'Undetermined_indices'
+                               name to a project 'Undetermined_indices'
     :type catch_undetermined: bool
     :return: Dictionary lists, {project_id : [relative fastq.gz paths]}
     :rtype: OrderedDict
