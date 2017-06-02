@@ -5,6 +5,7 @@ from os import path
 from datetime import datetime, timedelta
 import atexit
 from attrdict import AttrDict
+import collections
 
 from argparse import ArgumentParser
 
@@ -60,6 +61,8 @@ def try_autoprocessing(run_dir, options):
     global current
     global taskdb
 
+    options = parse_run_specific_config(run_dir, options)
+
     run_id = get_run_id_from_path(run_dir)
     options.run_id = run_id
 
@@ -69,7 +72,8 @@ def try_autoprocessing(run_dir, options):
     # Check if the run should be ignored.
     # If so, silently skip it (unless we are being verbose)
     ##
-    if taskdb.exists('ignore'):
+    # if taskdb.exists('ignore'):
+    if path.exists(path.join(taskdb.dbpath, 'ignore')):
         if options.verbose:
             logging.info("Skipping %s, set to ignore.", run_id)
         return taskdb.get_as('ignore')
@@ -350,13 +354,9 @@ def _add_uploader_config_argparser(parser=None):
     return parser
 
 
-def _set_commandline_and_default_options(options):
+def _set_default_options(options):
     """
-    Set any options missing from the commandline or config file
-    to their defaults.
-
-    Override any config file option with the value specified on the
-    commandline.
+    Set any options missing from the config file to their defaults.
 
     Options read from the config file are initially in the dictionary
     options.config. We move any 'commandline settable' key/value pairs
@@ -370,13 +370,7 @@ def _set_commandline_and_default_options(options):
     :return: The modified dict-like with defaults and overrides.
     :rtype: dict | attrdict.AttrDict
     """
-    cmdline_values = {
-        'run_storage_base': options.run_storage_base,
-        'watch': options.watch,
-        'verbose': options.verbose,
-        'uploader_config': options.uploader_config,
-        'logging_config': options.logging_config,
-    }
+
     options_defaults = {
         'run_storage_base': None,
         'watch': False,
@@ -399,12 +393,52 @@ def _set_commandline_and_default_options(options):
         if options[k] is None:
             options[k] = v
 
+    return options
+
+
+def _options_commandline_overrides(options):
+    """
+    Override any config file option with the value specified on the
+    commandline.
+
+    This is typically called after
+
+    :param options: A dict-like object containing commandline and config file
+                    options.
+    :type options: dict | attrdict.AttrDict
+    :return: The modified dict-like with defaults and overrides.
+    :rtype: dict | attrdict.AttrDict
+    """
+    cmdline_values = {
+        'run_storage_base': options.run_storage_base,
+        'watch': options.watch,
+        'verbose': options.verbose,
+        'uploader_config': options.uploader_config,
+        'logging_config': options.logging_config,
+    }
+
     # Commandline options override any value in the config file.
     for k, v in cmdline_values.items():
         if v is not None:
             options[k] = v
 
     return options
+
+
+def _attrdict_copy(d):
+    """
+    Copy an AttrDict (or create an AttrDict from a dict or argparse Namespace
+    object.
+
+    :param d:
+    :type d:
+    :return:
+    :rtype:
+    """
+    if isinstance(d, collections.Iterable):
+        return AttrDict(dict(d))
+    else:
+        return AttrDict(vars(d))
 
 
 @atexit.register
@@ -423,6 +457,35 @@ def _set_current_task_status_on_exit():
         taskdb.put(current.task.task_name, current.task)
 
 
+def parse_run_specific_config(run_dir, options):
+    """
+    Override any options in options.config with values found in
+    an autoprocess_config.toml file in the run directory.
+
+    options.global_config is used as the set of initial default values.
+
+    :param run_dir: The sequencing run directory.
+    :type run_dir: str
+    :param options: The options, containing a global_options attribute.
+    :type options: AttrDict
+    :return: A options object where options.config has value overridden by
+             those found in the run directory config, if present.
+    :rtype: AttrDict
+    """
+    run_config_path = path.join(run_dir, 'autoprocess_config.toml')
+    if os.path.isfile(run_config_path):
+        options.config = config_helper.get_config_toml(
+            config_file=run_config_path,
+            defaults=options.global_config)
+        options.config = _attrdict_copy(options.config)
+        logging.info("Applied run specific configuration from: %s",
+                     run_config_path)
+    else:
+        options.config = _attrdict_copy(options.global_config)
+
+    return options
+
+
 def run_in_console():
     parser = setup_commandline_args()
     options = parser.parse_args()
@@ -436,7 +499,7 @@ def run_in_console():
     #       (so we can compose a commandline with a global and run-local config
     #        and not require use of default locations)
 
-    # Read the autoprocessing config file, add values to
+    # Read the global autoprocessing config file, add values to
     # options.config dictionary
     options.config = AttrDict()
     if options.config_file and os.path.isfile(options.config_file):
@@ -444,8 +507,16 @@ def run_in_console():
             options.config = config_helper.get_config_toml(
                 options.config_file,
                 default_config_filename='autoprocess_config.toml')
-            options = AttrDict(vars(options))
-            options = _set_commandline_and_default_options(options)
+            # options.config = _attrdict_copy(options.config)
+            options = _attrdict_copy(options)
+            options = _set_default_options(options)
+            options = _options_commandline_overrides(options)
+            # options.global_config is a static copy of the config based
+            # on the initial 'global' config file (default or --config)
+            # and the commandline options. options.config may be
+            # overridden by values in a run-specific config file, using
+            # options.global_config as initial values.
+            options.global_config = _attrdict_copy(options.config)
         except IOError as e:
             parser.error("Cannot read config file: %s" %
                          options.config_file)
@@ -458,13 +529,13 @@ def run_in_console():
     # options['config']['mytardis_uploader'] = None
     if options.uploader_config and os.path.isfile(options.uploader_config):
         uploader_only_parser = _add_uploader_config_argparser()
-        uploader_config = AttrDict(vars(
+        uploader_config = _attrdict_copy(
             illumina_uploader.get_config_options(
                 config_file_attr='uploader_config',
                 ignore_unknown_args=True,
                 parser=uploader_only_parser,
             )
-        ))
+        )
         options['config']['mytardis_uploader'] = uploader_config
 
     if len(sys.argv) <= 1:

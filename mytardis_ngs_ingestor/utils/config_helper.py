@@ -65,7 +65,7 @@ def get_config_toml(config_file=None,
     if not defaults:
         defaults = dict()
 
-    config_options = dict()
+    config_options = AttrDict()
     if config_file:
         config_options = parse_settings_toml(config_file, defaults=defaults)
     elif os.path.isfile(default_config_filename):
