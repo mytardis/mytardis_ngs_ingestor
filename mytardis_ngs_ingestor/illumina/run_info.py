@@ -14,6 +14,7 @@ from collections import OrderedDict
 from dateutil import parser as dateparser
 import xmltodict
 
+
 def is_illumina_run(run_dir):
     """
     Detects signature files in the run directory (eg RunInfo.xml) to detemine

@@ -34,7 +34,7 @@ from argparse import ArgumentParser
 from appsettings import SettingsParser
 from toolz.dicttoolz import merge as merge_dicts
 
-from mytardis_ngs_ingestor.utils import config_helper
+from mytardis_ngs_ingestor.utils import config_helper, is_in_tree
 
 import urllib3
 logging.captureWarnings(True)
@@ -78,6 +78,7 @@ class MyTardisUploader:
                  storage_box_name='default',
                  verify_certificate=True,
                  fast_mode=False,
+                 exclude_patterns=None,
                  ):
 
         self.mytardis_url = mytardis_url
@@ -95,6 +96,10 @@ class MyTardisUploader:
         # True, False, or the path to the certificate (.pem)
         self.verify_certificate = verify_certificate
         self.fast_mode = fast_mode
+        self.exclude_patterns = \
+            get_exclude_patterns_as_regex_list(exclude_patterns)
+        if exclude_patterns is None:
+            self.exclude_pattens = []
 
         if self.api_key is not None:
             self.auth = TastyPieAuth(self.username, self.api_key)
@@ -133,15 +138,13 @@ class MyTardisUploader:
         return json.dumps(d, default=date_handler)
 
     def upload_directory(self,
-                         file_path,
+                         base_path,
                          title='',
                          institute='',
                          description='',
-                         test_run=False,
-                         exclude_patterns=None,
-                         ):
+                         test_run=False):
 
-        title = title or os.path.basename(os.path.abspath(file_path))
+        title = title or os.path.basename(os.path.abspath(base_path))
 
         logging.info('Creating experiment: %s', title)
 
@@ -165,13 +168,13 @@ class MyTardisUploader:
             exp_url = self.create_experiment(expt_dict)
             created = True
 
-        for item in os.listdir(file_path):
-            full_path = os.path.join(file_path, item)
+        for item in os.listdir(base_path):
+            full_path = os.path.join(base_path, item)
 
             if item.startswith('.') or item == 'metadata':
                 continue  # filter files/dirs starting with .
 
-            if any(regex.search(full_path) for regex in exclude_patterns):
+            if any(regex.search(full_path) for regex in self.exclude_patterns):
                 logging.info('Skipping excluded directory: %s', full_path)
                 continue
 
@@ -183,9 +186,9 @@ class MyTardisUploader:
                 logging.info('Creating dataset: %s', item)
 
                 parameter_sets_list = \
-                    self._get_dataset_parametersets_from_json(file_path,
+                    self._get_dataset_parametersets_from_json(base_path,
                                                               item) or \
-                    self._get_dataset_parametersets_from_csv(file_path, item)
+                    self._get_dataset_parametersets_from_csv(base_path, item)
 
                 if parameter_sets_list:
                     logging.info("Found parameters for %s", item)
@@ -208,7 +211,7 @@ class MyTardisUploader:
                             continue  # filter files/dirs starting with .
 
                         if any(regex.search(full_path)
-                               for regex in exclude_patterns):
+                               for regex in self.exclude_patterns):
                             logging.info('Skipping excluded file: %s', full_path)
                             continue
 
@@ -583,7 +586,7 @@ class MyTardisUploader:
                 dataset['instrument'] = instrument_resource_uri
             else:
                 logging.warning('Querying instrument definition %s failed - is '
-                               'the Instrument record defined on the server ?'
+                                'the Instrument record defined on the server ?'
                                % instrument)
 
         dataset_json = MyTardisUploader.dict_to_json(dataset)
@@ -595,20 +598,40 @@ class MyTardisUploader:
 
         return data.headers.get('Location', None)
 
-    def upload_file(self, file_path, dataset_url_path,
-                    parameter_sets_list=None,
-                    replica_url='',
-                    md5_checksum=None):
+    def should_exclude(self, filepath):
+        """
+        Returns True if the file path matches one of the patterns to exclude.
+
+        :param filepath:
+        :type filepath: str
+        :return:
+        :rtype: bool
+        """
+        for p in self.exclude_patterns:
+            if p.match(filepath):
+                return True
+        return False
+
+    def _prepare_file_upload_object(self, file_path, dataset_url_path,
+                                    parameter_sets_list=None,
+                                    replica_url='',
+                                    md5_checksum=None,
+                                    base_dir=None):
 
         if not parameter_sets_list:
             parameter_sets_list = []
 
         filename = os.path.basename(file_path)
         file_path = os.path.normpath(file_path)
+
+        if base_dir is None:
+            base_dir = os.path.dirname(file_path)
+
         if not replica_url and self.storage_mode == 'shared':
-            replica_url = os.path.relpath(file_path,
-                                          self.storage_box_location)
-            # replica_url = file_path.lstrip(self.storage_box_location)
+            # replica_url = os.path.normpath(os.path.relpath(file_path,
+            #                                start=self.storage_box_location))
+            replica_url = file_path.lstrip(self.storage_box_location)
+            replica_url = replica_url.lstrip(os.sep)
 
         replica_list = [{u'url': replica_url,
                          u'location': self.storage_box_name,
@@ -623,9 +646,18 @@ class MyTardisUploader:
         else:
             md5_checksum = '__undetermined__'
 
+        directory = os.path.dirname(file_path).lstrip(os.sep)
+        if is_in_tree(file_path, base_dir):
+            directory = os.path.normpath(
+                os.path.relpath(
+                    os.path.dirname(file_path), start=base_dir)).lstrip(os.sep)
+        if directory == '.':
+            directory = ''
+
         file_dict = {
             u'dataset': dataset_url_path,
             u'filename': filename,
+            u'directory': directory,
             u'md5sum': md5_checksum,
             u'mimetype': mimetypes.guess_type(file_path)[0],
             u'size': file_size,
@@ -633,29 +665,47 @@ class MyTardisUploader:
             u'replicas': replica_list,
         }
 
+        return file_dict
+
+    def upload_file(self, file_path, dataset_url_path,
+                    parameter_sets_list=None,
+                    replica_url='',
+                    md5_checksum=None,
+                    base_dir=None):
+
+        if self.should_exclude(file_path):
+            logging.debug("Skipping %s, matches an exclude pattern.", file_path)
+            return None
+
+        file_dict = self._prepare_file_upload_object(
+            file_path,
+            dataset_url_path,
+            parameter_sets_list=parameter_sets_list,
+            replica_url=replica_url,
+            md5_checksum=md5_checksum,
+            base_dir=base_dir)
+
         if self.storage_mode == 'shared':
-            data = self._register_datafile_shared_storage(
-                self.dict_to_json(file_dict)
-            )
+            resp_data = self._register_datafile_shared_storage(
+                self.dict_to_json(file_dict))
         elif self.storage_mode == 'staging':
-            data = self._register_datafile_staging(
-                self.dict_to_json(file_dict)
-            )
+            resp_data = self._register_datafile_staging(
+                self.dict_to_json(file_dict))
         elif self.storage_mode == 'upload':
             # file_dict.pop(u'replicas', None)
-            data = self._send_datafile(
+            resp_data = self._send_datafile(
                 self.dict_to_json(file_dict),
-                filename=file_path
-            )
+                filename=file_path)
         else:
             # we should never get here
             raise Exception("Invalid storage mode: " + self.storage_mode)
 
-        if not data.ok or 'Location' not in data.headers:
-            logging.error("Registration of data file failed: %s", data.text)
+        if not resp_data.ok or 'Location' not in resp_data.headers:
+            logging.error("Registration of data file failed: %s",
+                          resp_data.text)
             sys.exit(1)
 
-        return data.headers.get('Location', None)
+        return resp_data.headers.get('Location', None)
 
     def _resource_uri_to_id(self, uri):
         """
@@ -665,7 +715,7 @@ class MyTardisUploader:
         :type uri: str
         :rtype: int
         """
-        resource_id = int(urlparse(uri).path.rstrip('/').split('/')[-1:][0])
+        resource_id = int(urlparse(uri).path.rstrip(os.sep).split(os.sep).pop())
         return resource_id
 
     def _get_ownership_int(self, ownership_type):
@@ -1056,12 +1106,18 @@ def validate_config(parser, options):
                      ', '.join(valid_storage_modes))
 
     if options.storage_mode == 'shared' and not options.storage_base_path:
-        parser.error("--storage-base-path (storage_base_path) must be"
+        parser.error("--storage-base-path (storage_base_path) must be "
                      "specified when using 'shared' storage mode.")
 
     if options.storage_mode == 'shared' and \
             not os.path.isabs(options.storage_base_path):
-        parser.error('--storage-base-path must be an absolute path')
+        parser.error("--storage-base-path must be an absolute path "
+                     "when using 'shared' storage mode.")
+
+    # if options.storage_mode == 'shared' and \
+    #     not is_in_tree(options.storage_base_path, options.path):
+    #     parser.error("--path must be in --storage-base-path when using "
+    #                  "'shared' storage mode.")
 
     # We want to force certificate verification if this value is unset.
     # We set options.verify_certificate (a bool OR str) based on the
@@ -1095,9 +1151,6 @@ def get_exclude_patterns_as_regex_list(exclude_patterns=None):
             elif regex.startswith("'") and regex.endswith("'"):
                 regex = regex[1:-1]
             exclude_regexes.append(re.compile(regex))
-
-        logging.info("Ignoring files that match: %s\n",
-                    ' | '.join(exclude_patterns))
 
     return exclude_regexes
 
@@ -1149,16 +1202,13 @@ def run():
 
     validate_config(parser, options)
 
-    exclude_patterns = \
-        get_exclude_patterns_as_regex_list(options.exclude)
-
     password = options.password
     if not password and not options.api_key:
         password = getpass.getpass()
 
     if password:
         logging.warning("Using 'password' rather than 'api_key' - this is less "
-                       "secure and not encouraged.")
+                        "secure and not encouraged.")
 
     file_path = options.path
     if file_path is '.':
@@ -1167,6 +1217,10 @@ def run():
     institute = options.institute
     description = options.description
     test_run = options.dry_run
+
+    if options.exclude:
+        logging.info("Ignoring files that match: %s\n",
+                     ' | '.join(options.exclude))
 
     mytardis_uploader = MyTardisUploader(
         options.url,
@@ -1177,16 +1231,15 @@ def run():
         storage_box_location=options.storage_base_path,
         storage_box_name=options.storage_box_name,
         verify_certificate=getattr(options, 'verify_certificate', True),
-        fast_mode=options.fast
-    )
+        fast_mode=options.fast,
+        exclude_patterns=options.exclude)
 
     mytardis_uploader.upload_directory(
         file_path,
         title=title,
         description=description,
         institute=institute,
-        test_run=test_run,
-        exclude_patterns=exclude_patterns)
+        test_run=test_run)
 
 if __name__ == "__main__":
     run()

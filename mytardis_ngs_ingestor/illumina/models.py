@@ -984,3 +984,71 @@ class IlluminaRunConfigBase(MyTardisParameterSet):
         self._hidden__schema = False  # type: bool
         self._namespace__schema = "http://www.tardis.edu.au/schemas/ngs/run/illumina/config"  # type: unicode
         self._immutable__schema = True  # type: bool
+
+
+class IlluminaRunInstrumentFilesBase(MyTardisParameterSet):
+    """
+
+
+    :type run_id: unicode
+    """
+
+    def __init__(self):
+        super(IlluminaRunInstrumentFilesBase, self).__init__()
+        # the run ID
+        self.run_id = None  # type: unicode
+
+
+        # Dictionaries to allow reconstitution of the schema for each parameter
+
+        # fastqc_version fixture
+        self._run_id__attr_schema = {u'pk': None, u'model':
+        u'tardis_portal.parametername', u'fields': {u'name':
+        u'run_id', u'data_type': 2, u'immutable': True,
+        u'is_searchable': True, u'choices': u'', u'comparison_type': 1,
+        u'full_name': u'Run ID', u'units': u'', u'order':
+        9999, u'schema':
+        [u'http://www.tardis.edu.au/schemas/ngs/run/illumina/files']}}  # type: dict
+
+        self._subtype__schema = "illumina-run-instrument-files"  # type: unicode
+        self._model__schema = "tardis_portal.schema"  # type: unicode
+        self._name__schema = "Illumia run instrument files"  # type: unicode
+        self._pk__schema = None  # type: NoneType
+        self._type__schema = 2  # type: int
+        self._hidden__schema = False  # type: bool
+        self._namespace__schema = "http://www.tardis.edu.au/schemas/ngs/run/illumina/files"  # type: unicode
+        self._immutable__schema = True  # type: bool
+
+
+class IlluminaRunInstrumentFileBase(MyTardisParameterSet):
+    """
+
+
+    :type run_id: unicode
+    """
+
+    def __init__(self):
+        super(IlluminaRunInstrumentFileBase, self).__init__()
+        # the run ID
+        self.run_id = None  # type: unicode
+
+
+        # Dictionaries to allow reconstitution of the schema for each parameter
+
+        # fastqc_version fixture
+        self._run_id__attr_schema = {u'pk': None, u'model':
+        u'tardis_portal.parametername', u'fields': {u'name':
+        u'run_id', u'data_type': 2, u'immutable': True,
+        u'is_searchable': True, u'choices': u'', u'comparison_type': 1,
+        u'full_name': u'Run ID', u'units': u'', u'order':
+        9999, u'schema':
+        [u'http://www.tardis.edu.au/schemas/ngs/run/illumina/files']}}  # type: dict
+
+        self._subtype__schema = "illumina-run-instrument-file"  # type: unicode
+        self._model__schema = "tardis_portal.schema"  # type: unicode
+        self._name__schema = "Illumina instrument run file"  # type: unicode
+        self._pk__schema = None  # type: NoneType
+        self._type__schema = 3  # type: int
+        self._hidden__schema = False  # type: bool
+        self._namespace__schema = "http://www.tardis.edu.au/schemas/ngs/run/file"  # type: unicode
+        self._immutable__schema = True  # type: bool
