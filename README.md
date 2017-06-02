@@ -91,7 +91,15 @@ runs as they appear.
 
 If the package is installed:
 ```sh
-illumina_autoprocess --runs /data/sequencing_runs
+illumina_autoprocess --config autoprocess_config.toml --runs /data/sequencing_runs
+```
+
+Autoprocessing will ignore any run folders containing the file `tasks/ignore`.
+You can create this for existing processed runs by running something like:
+
+```bash
+cd /data/illumina/  # base directory for runs
+for d in $(ls -d */); do mkdir -p ${d}tasks/; touch ${d}tasks/ignore; done
 ```
 
 How a 'run' is structured in the MyTardis data model

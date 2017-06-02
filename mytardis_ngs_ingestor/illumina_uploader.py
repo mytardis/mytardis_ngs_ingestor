@@ -9,12 +9,14 @@ import six
 from six.moves.urllib.parse import urlparse, urljoin
 import logging
 import sys
+import re
 import shutil
 from datetime import datetime
 import subprocess
 
 import os
 from os.path import join, splitext, exists, isdir, isfile
+from fs import open_fs
 import glob2  # allows recursive glob in Python <3.5
 import json
 from collections import OrderedDict
@@ -25,16 +27,20 @@ from distutils.version import LooseVersion
 
 import mytardis_ngs_ingestor
 from mytardis_ngs_ingestor import mytardis_uploader
-from mytardis_ngs_ingestor.utils import config_helper
-from mytardis_ngs_ingestor.utils import tmp_dirs
-from mytardis_ngs_ingestor.utils import standalone_html
+from mytardis_ngs_ingestor.utils import (config_helper,
+                                         is_in_tree,
+                                         tmp_dirs,
+                                         standalone_html)
 
 import mytardis_ngs_ingestor.mytardis_uploader
 from mytardis_ngs_ingestor.mytardis_uploader import MyTardisUploader
 from mytardis_ngs_ingestor.mytardis_uploader import (setup_logging, get_config, validate_config)
-# from mytardis_ngs_ingestor import get_exclude_patterns_as_regex_list
 
-from mytardis_ngs_ingestor.mytardis_models import Experiment, Dataset, DataFile
+from mytardis_ngs_ingestor.mytardis_models import (Experiment,
+                                                   Dataset,
+                                                   DataFile,
+                                                   MyTardisParameterSet)
+
 from mytardis_ngs_ingestor.illumina.models import (
     DemultiplexedSamplesBase,
     FastqcOutputBase,
@@ -43,7 +49,9 @@ from mytardis_ngs_ingestor.illumina.models import (
     HiddenFastqcProjectSummaryBase,
     IlluminaSequencingRunBase,
     NucleotideRawReadsDatasetBase,
-    IlluminaRunConfigBase)
+    IlluminaRunConfigBase,
+    IlluminaRunInstrumentFilesBase,
+    IlluminaRunInstrumentFileBase)
 
 from mytardis_ngs_ingestor.illumina import run_info, fastqc
 from mytardis_ngs_ingestor.illumina.run_info import (
@@ -66,6 +74,8 @@ from mytardis_ngs_ingestor.illumina.run_info import (
     undetermined_reads_in_root,
     get_index_from_fastq_content)
 
+
+UPLOADED_FILES = []
 
 class DemultiplexedSamples(DemultiplexedSamplesBase):
     pass
@@ -99,8 +109,23 @@ class IlluminaRunConfig(IlluminaRunConfigBase):
     pass
 
 
+class IlluminaRunInstrumentFiles(IlluminaRunInstrumentFilesBase):
+    pass
+
+
+class IlluminaRunInstrumentFile(IlluminaRunInstrumentFileBase):
+    pass
+
+
 def _format_day(dt):
     return dt.strftime("%d-%b-%Y")
+
+
+def log_datafile_added(filepath, dataset_url, df_url):
+    logging.info("Added Datafile: %s (%s) (%s)",
+                 filepath,
+                 urlparse(dataset_url).path,
+                 urlparse(df_url).path)
 
 
 def create_run_experiment_object(run_path):
@@ -458,7 +483,36 @@ def create_run_config_dataset_on_server(run_expt, run_expt_url, uploader):
                                    instrument=instrument_name)
 
 
+def create_run_instrument_files_dataset_on_server(run_expt, run_expt_url, uploader):
+    """
+    Creates the dataset that holds EVERY file in the run directory, excluding
+    any files registered as part of another dataset.
+
+    :param run_expt: The 'run' experiment object.
+    :type run_expt: illumina.models.IlluminaSequencingRun
+    :param run_expt_url: The URL to the existing 'run' experiment
+    :type run_expt_url: str
+    :param uploader: The uploader object instance.
+    :type uploader: mytardis_uploader.MyTardisUploader
+    :return: The url path of the experiment created.
+    :rtype: str
+    """
+    run_id = run_expt.parameters.run_id
+    config_dataset = Dataset()
+    config_dataset.experiments = [run_expt_url]
+    config_dataset.description = 'Instrument files for %s' % run_id
+    config_params = IlluminaRunInstrumentFiles()
+    config_params.run_id = run_id
+    config_dataset.parameters = config_params
+    instrument_name = format_instrument_name(
+        run_expt.parameters.instrument_model,
+        run_expt.parameters.instrument_id)
+    return uploader.create_dataset(config_dataset.package(),
+                                   instrument=instrument_name)
+
+
 def register_project_fastq_datafiles(run_id,
+                                     base_dir,
                                      fastq_files,
                                      samplesheet,
                                      dataset_url,
@@ -569,22 +623,23 @@ def register_project_fastq_datafiles(run_id,
                 md5_checksum = None  # will be calculated
 
             try:
-                uploader.upload_file(
+                df_url = uploader.upload_file(
                     fastq_path,
                     dataset_url,
                     parameter_sets_list=datafile_parameter_sets,
                     replica_url=replica_url,
                     md5_checksum=md5_checksum,
+                    base_dir=base_dir,
+                    # TODO: Make this an uploader attribute (eg. base_dir = '/data/illumina')
                 )
+                UPLOADED_FILES.append(fastq_path)
             except Exception as ex:
                 logging.error("Failed to register Datafile: "
-                             "%s", fastq_path)
+                              "%s", fastq_path)
                 logging.debug("Exception: %s", ex)
                 raise ex
 
-            logging.info("Added Datafile: %s (%s)",
-                        fastq_path,
-                        dataset_url)
+            log_datafile_added(fastq_path, dataset_url, df_url)
 
 
 def get_sample_id_from_fastqc_zip_filename(filepath):
@@ -592,7 +647,7 @@ def get_sample_id_from_fastqc_zip_filename(filepath):
 
 
 def get_sample_name_from_fastqc_filename(fastqc_zip_path):
-    return os.path.basename(fastqc_zip_path).split('_')[:1]
+    return os.path.basename(fastqc_zip_path).split('_')[0]
 
 
 def generate_fastqc_report_filename(sample_id):
@@ -621,6 +676,7 @@ def proj_id_to_proj_dir(proj_id, demultiplexer_version_num='1.8.4'):
 
 
 def register_project_fastqc_datafiles(run_id,
+                                      base_dir,
                                       proj_id,
                                       fastqc_out_dir,
                                       dataset_url,
@@ -650,31 +706,90 @@ def register_project_fastqc_datafiles(run_id,
                     uploader.storage_box_location,
                     fastqc_zip_path)
 
+            md5_checksum = None  # will be calculated
             if fast_mode:
                 md5_checksum = '__undetermined__'
-            else:
-                md5_checksum = None  # will be calculated
 
             try:
-                uploader.upload_file(
+                df_url = uploader.upload_file(
                     fastqc_zip_path,
                     dataset_url,
                     parameter_sets_list=datafile_parameter_sets,
                     replica_url=replica_url,
                     md5_checksum=md5_checksum,
+                    base_dir=base_dir,
                 )
+                UPLOADED_FILES.append(fastqc_zip_path)
             except Exception as ex:
-                logging.error("Failed to register Datafile: "
-                             "%s", fastqc_zip_path)
+                logging.error("Failed to register Datafile: %s",
+                              fastqc_zip_path)
                 logging.debug("Exception: %s", ex)
                 raise ex
 
-            logging.info("Added Datafile: %s (%s)",
-                        fastqc_zip_path,
-                        dataset_url)
+            log_datafile_added(fastqc_zip_path, dataset_url, df_url)
 
 
-def upload_fastqc_reports(fastqc_out_dir, dataset_url, uploader):
+def register_instrument_datafiles(run_id,
+                                  base_dir,
+                                  run_path,
+                                  dataset_url,
+                                  uploader,
+                                  ignore_files=None,
+                                  fast_mode=False):
+
+    if ignore_files is None:
+        ignore_files = []
+
+    files = []
+    with open_fs(run_path) as vfs:
+        for fn in vfs.walk.files():
+            fn = fn.lstrip(os.sep)
+            abspath = join(run_path, fn)
+            abspath = os.path.abspath(os.path.normpath(abspath))
+            if abspath not in ignore_files:
+                files.append(abspath)
+
+        for f in files:
+            replica_url = f
+            if uploader.storage_mode == 'shared':
+                replica_url = get_shared_storage_replica_url(
+                    uploader.storage_box_location, f)
+
+            md5_checksum = None  # will be calculated
+            if fast_mode:
+                md5_checksum = '__undetermined__'
+
+            datafile = DataFile()
+            parameters = {'run_id': run_id}
+            parameter_set = IlluminaRunInstrumentFile()
+            parameter_set.from_dict(parameters)
+            datafile.parameters = parameter_set
+            datafile_parameter_sets = datafile.package_parameter_sets()
+
+            try:
+                df_url = uploader.upload_file(
+                    f,
+                    dataset_url,
+                    parameter_sets_list=datafile_parameter_sets,
+                    replica_url=replica_url,
+                    md5_checksum=md5_checksum,
+                    base_dir=base_dir)
+
+                UPLOADED_FILES.append(f)
+
+                if df_url is not None:
+                    log_datafile_added(f, dataset_url, df_url)
+
+            except Exception as ex:
+                logging.error("Failed to register Datafile: %s", f)
+                logging.debug("Exception: %s", ex)
+                raise ex
+
+    # TODO: Try adding all in single request via:
+    # POST { 'objects': [ {'file':'bla'}, {'file':'foo'}] }
+
+
+def upload_fastqc_reports(fastqc_out_dir, base_dir, dataset_url, uploader):
     """
     Uploads the HTML reports generated by FastQC, after extracting them
     from the zipped output produced by the program. Converts reports to be
@@ -686,6 +801,8 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, uploader):
     the provided uploader should be writable, and a location that doesn't get
     archived to 'offline' tape storage with delayed access.
 
+    :param base_dir:
+    :type base_dir:
     :param fastqc_out_dir:
     :type fastqc_out_dir:
     :param dataset_url:
@@ -724,10 +841,10 @@ def upload_fastqc_reports(fastqc_out_dir, dataset_url, uploader):
             else:
                 os.rename(report_file, inline_report_abspath)
 
-            uploader.upload_file(inline_report_abspath, dataset_url)
-            logging.info("Added Datafile (FastQC report): %s (%s)",
-                        inline_report_abspath,
-                        dataset_url)
+            df_url = uploader.upload_file(inline_report_abspath, dataset_url,
+                                          base_dir=base_dir)
+            UPLOADED_FILES.append(inline_report_abspath)
+            log_datafile_added(inline_report_abspath, dataset_url, df_url)
 
 
 def get_fastqc_summary_for_project(fastqc_out_dir, samplesheet):
@@ -932,20 +1049,42 @@ def get_shared_storage_replica_url(storage_box_location, file_path):
     Generates a 'replica_url' for a storage box location when
     using 'shared' storage mode.
 
-    eg, if storage box base path is:
+    Examples:
+
+    If storage box base path is:
         /data/bigstorage/
     and absolute file path is
         /data/bigstorage/expt1/dataset1/file.txt
     then replica_url will be:
         expt1/dataset1/file.txt
 
+    If the file_path is not a relative subpath of the storage_box_location,
+    the file_path is made relative by removing the leading slash (os.sep).
+
+    If storage box base path is:
+        /data/bigstorage/
+    and absolute file path is
+        /tmp/expt1/dataset1/file.txt
+    then replica_url will be:
+        /data/bigstorage/tmp/expt1/dataset1/file.txt
+
     :type storage_box_location: str
     :type file_path: str
     :rtype: str
     """
+
     if storage_box_location:
-        replica_url = os.path.relpath(os.path.normpath(file_path),
-                                      storage_box_location)
+        replica_url = file_path.lstrip(storage_box_location)
+        replica_url = replica_url.lstrip(os.sep)
+
+        # if is_in_tree(file_path, storage_box_location):
+        #     replica_url = os.path.relpath(os.path.normpath(file_path),
+        #                                   storage_box_location)
+        # else:
+        #     # now it's not an absolute path
+        #     file_path = file_path.lstrip(os.sep)
+        #     replica_url = os.path.join(storage_box_location, file_path)
+
         return replica_url
 
 
@@ -979,8 +1118,8 @@ def is_server_version_compatible(ingestor_version, server_version):
 
 
 def dump_schema_fixtures_as_json():
-    import illumina
-    import mytardis_models
+    from mytardis_ngs_ingestor import illumina
+    from mytardis_ngs_ingestor import mytardis_models
     fixtures = []
     for name, klass in illumina.models.__dict__.items():
         if (not name.startswith('__') and
@@ -1088,8 +1227,10 @@ def pre_ingest_checks_instrument_run(options):
         logging.error("Aborting - unable to parse SampleSheet.csv file.")
         return False
 
-    if not exists(join(bcl2fastq_output_dir, 'DemultiplexConfig.xml')):
-        logging.warning("'DemultiplexConfig.xml' not found.")
+    # Newer versions of bcl2fastq don't seem to generate this file,
+    # so this warning is deprecated.
+    # if not exists(join(bcl2fastq_output_dir, 'DemultiplexConfig.xml')):
+    #     logging.warning("'DemultiplexConfig.xml' not found.")
 
     demultiplexer_info = get_demultiplexer_info(bcl2fastq_output_dir)
     demultiplexer_version = demultiplexer_info.get('version', '')
@@ -1167,7 +1308,6 @@ def pre_ingest_checks_fastq_only(options):
             run_id,
             run_path)
 
-
     if not exists(bcl2fastq_output_dir):
         if options.fastq_only:
             logging.error("Directory containing FASTQs not found: %s",
@@ -1188,6 +1328,7 @@ def ingest_run(options, run_path=None):
 
     options.path = options.path or run_path
     run_path = run_path or options.path
+    base_dir = os.path.dirname(run_path)
 
     # Before creating any records on the server we first check that certain
     # prerequisite files exist, that the run is complete and is generally in a
@@ -1197,8 +1338,9 @@ def ingest_run(options, run_path=None):
         raise ValueError("Pre ingestion checks failed.")
         # sys.exit(1)
 
-    # exclude_patterns = \
-    #     get_exclude_patterns_as_regex_list(options.exclude)
+    if options.exclude:
+        logging.info("Ignoring files that match: %s\n",
+                     ' | '.join(options.exclude))
 
     uploader = MyTardisUploader(
         options.url,
@@ -1210,6 +1352,7 @@ def ingest_run(options, run_path=None):
         storage_box_name=options.storage_box_name,
         verify_certificate=getattr(options, 'verify_certificate', True),
         fast_mode=options.fast,
+        exclude_patterns=options.exclude,
     )
 
     # This uploader instance is associated with a MyTardis storage box
@@ -1228,6 +1371,7 @@ def ingest_run(options, run_path=None):
         storage_box_name=options.live_storage_box_name,
         verify_certificate=getattr(options, 'verify_certificate', True),
         fast_mode=options.fast,
+        exclude_patterns=options.exclude,
     )
 
     # this custom attribute on the uploader is the name of the
@@ -1327,20 +1471,24 @@ def ingest_run(options, run_path=None):
     # Under the Run Experiment we create a Dataset with the IlluminaRunConfig
     # schema containing the SampleSheet.csv, maybe also some logs and
     # config files
-    try:
-        config_dataset_url = create_run_config_dataset_on_server(run_expt,
-                                                                 run_expt_url,
-                                                                 uploader)
-        config_dataset_url = urlparse(config_dataset_url).path
-        uploader.upload_file(samplesheet_path, config_dataset_url)
-        logging.info("Created config & logs dataset for sequencing run: %s",
-                    config_dataset_url)
-    except Exception as e:
-        logging.error("Failed to create config & logs dataset for sequencing "
-                     "run: %s",
-                     run_path)
-        logging.error("Exception: %s: %s", type(e).__name__, e)
-        raise e
+    # DEPRECATED: We now use the "Instrument run files" dataset with
+    #             to contain SampleSheet.csv and all other non-FASTQ/FastQC
+    #             files, via register_instrument_datafiles()
+    # try:
+    #     config_dataset_url = create_run_config_dataset_on_server(run_expt,
+    #                                                              run_expt_url,
+    #                                                              uploader)
+    #     config_dataset_url = urlparse(config_dataset_url).path
+    #     uploader.upload_file(samplesheet_path, config_dataset_url,
+    #                          base_dir=base_dir)
+    #     UPLOADED_FILES.append(samplesheet_path)
+    #     logging.info("Created config & logs dataset for sequencing run: %s",
+    #                 config_dataset_url)
+    # except Exception as e:
+    #     logging.error("Failed to create config & logs dataset for sequencing "
+    #                   "run: %s", run_path)
+    #     logging.error("Exception: %s: %s", type(e).__name__, e)
+    #     raise e
 
     if not demultiplexer_info.get('version', None):
         logging.error("Can't determine demultiplexer version - aborting")
@@ -1472,13 +1620,16 @@ def ingest_run(options, run_path=None):
             # We always upload the html reports to be serverd live (below).
             if fastqc_out_dir and fastqc_out_dir not in tmp_dirs.TMPDIRS:
                 register_project_fastqc_datafiles(run_id,
+                                                  base_dir,
                                                   proj_id,
                                                   fastqc_out_dir,
                                                   fqc_dataset_url,
                                                   uploader,
                                                   fast_mode=options.fast)
 
-            upload_fastqc_reports(fastqc_out_dir, fqc_dataset_url,
+            upload_fastqc_reports(fastqc_out_dir,
+                                  base_dir,
+                                  fqc_dataset_url,
                                   writable_storage_uploader)
 
         #################################################################
@@ -1513,7 +1664,9 @@ def ingest_run(options, run_path=None):
                 f.writelines(lines)
 
             writable_storage_uploader.upload_file(project_samplesheet_path,
-                                                  fq_dataset_url)
+                                                  fq_dataset_url,
+                                                  base_dir=base_dir)
+            UPLOADED_FILES.append(project_samplesheet_path)
             if exists(tmp_dir):
                 shutil.rmtree(tmp_dir)
 
@@ -1522,16 +1675,35 @@ def ingest_run(options, run_path=None):
                          proj_id)
         except Exception as e:
             logging.error("Uploading SampleSheet.csv for Project failed: "
-                         "%s (%s)", fq_dataset_url, proj_id)
+                          "%s (%s)", fq_dataset_url, proj_id)
 
         register_project_fastq_datafiles(
             run_id,
+            base_dir,
             fastq_files,
             samplesheet,
             fq_dataset_url,
             uploader,
             fastqc_data=fqc_summary,
             fast_mode=options.fast)
+
+    try:
+        logging.info("Uploading remaining instrument files (%s)", run_path)
+
+        instrument_files_dataset = \
+            create_run_instrument_files_dataset_on_server(run_expt,
+                                                          run_expt_url,
+                                                          uploader)
+        instrument_files_dataset = urlparse(instrument_files_dataset).path
+
+        register_instrument_datafiles(run_id,
+                                      base_dir,
+                                      run_path,
+                                      instrument_files_dataset,
+                                      uploader,
+                                      ignore_files=UPLOADED_FILES)
+    except Exception as e:
+        logging.error("Uploading of instrument files failed")
 
     logging.info("Ingestion of run %s complete !", run_id)
 
@@ -1609,6 +1781,8 @@ def get_config_options(config_file_attr='config_file',
     """
     Gets config options from commandline args and the config file.
 
+    :param default_config_filename:
+    :type default_config_filename:
     :param config_file_attr:
     :type config_file_attr:
     :param parser:

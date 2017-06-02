@@ -50,22 +50,11 @@ experiment_owner_groups = ["mhtp-facility-managers", "somegreatgroup"]
 # run_fastqc is True.
 fastq_only = false
 
-# illumina_uploader.py currently doesn't use this option
 # A list of Python regular expressions matching files to exclude
-# matches against the absolute path. 'Hidden' files beginning
-# with a period (.) are excluded by default.
-# Don't use quotes, and expressions are comma delimited without
-# regard to escaping so you can't use commas :/
-#exclude = [
-#   '/FastQC\.done$',
-#   '/FastQC\.inprogress$',
-#   '/LIST$',
-#   '/Temp$',
-#   '/Temp/.*',
-#   'SampleSheet.csv',
-#   '/Basecall_Stats_\w+$',
-#   '/Basecall_Stats_\w+/.*'
-# ]
+# Slashes etc must be escaped ("//")
+# Matches against the absolute path. 'Hidden' files beginning
+# with a period (.) are excluded by default
+exclude = [".*Thumbnail_Images.*"]
 
 # The username of the MyTardis user that will ingest the data
 username = "powerfuladmin"
