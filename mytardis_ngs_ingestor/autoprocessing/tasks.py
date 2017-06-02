@@ -223,9 +223,8 @@ def run_bcl2fastq(runfolder_dir,
     :type nice:
     :param extra_args:
     :type extra_args:
-    :return: A tuple of (output_directory, stdout+stderr),
-             either of which may be None
-    :rtype: tuple(str | None, str | None)
+    :return: A tuple of (success, stdout+stderr)
+    :rtype: tuple(bool, str | None)
     """
 
     if not runfolder_dir or \
@@ -276,6 +275,7 @@ def run_bcl2fastq(runfolder_dir,
     logging.info('Command: %s', cmd)
 
     cmd_out = None
+    success = False
     try:
         # bcl2fastq writes everything useful to stderr
         cmd_out = subprocess.check_output(cmd,
@@ -283,21 +283,17 @@ def run_bcl2fastq(runfolder_dir,
                                           stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError:
         logging.error('bcl2fastq failed: stdout/stderr: %s', cmd_out)
-        return None, cmd_out
+        return success, cmd_out
 
-    success = False
+    # We don't trust error codes in this case, we look at the stderr messages.
     # A successful outcome has something like this as the last line in stderr
     # "2017-04-02 15:56:32 [1bbb880] Processing completed with 0 errors and 0 warnings."
-    if cmd_out and \
-                    'Processing completed with 0 errors' in cmd_out.splitlines().pop():
+    if cmd_out and 'Processing completed with 0 errors' in cmd_out:
         success = True
     else:
         logging.error('bcl2fastq failed stdout/stderr: %s', cmd_out)
 
-    if not success:
-        return None, cmd_out
-
-    return output_directory, cmd_out
+    return success, cmd_out
 
 
 def get_legcay_bcl2fastq_extra_args(run_dir,
@@ -324,9 +320,9 @@ def run_create_checksum_manifest(base_dir,
     cmd = 'find {base_dir} ' \
           '-type f ' \
           '-exec {hash_type}sum "{{}}" + >{manifest_filepath}'.format(
-        base_dir=base_dir,
-        hash_type=hash_type,
-        manifest_filepath=manifest_filepath)
+            base_dir=base_dir,
+            hash_type=hash_type,
+            manifest_filepath=manifest_filepath)
 
     logging.info('Command: %s', cmd)
 
@@ -489,7 +485,7 @@ def do_fastqc(taskdb, current, run_dir, options):
                     fastqs,
                     proj_path,
                     fastqc_bin=fastqc_bin,
-                    clobber = True)
+                    clobber=True)
 
                 if 'Failed to process' in output:
                     result = None
