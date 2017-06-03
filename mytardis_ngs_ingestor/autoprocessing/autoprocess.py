@@ -68,6 +68,14 @@ def try_autoprocessing(run_dir, options):
 
     taskdb = TaskDb(run_dir, ProcessingTask, run_id)
 
+    def can_readwrite(p):
+        return os.access(p, os.R_OK) and os.access(p, os.W_OK)
+
+    if options.config.skip_bad_permissions:
+        if not can_readwrite(run_dir) or not can_readwrite(taskdb.dbpath):
+            logging.info("Skipping %s, no read/write permissions.", run_dir)
+            return None
+
     ##
     # Check if the run should be ignored.
     # If so, silently skip it (unless we are being verbose)
