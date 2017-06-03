@@ -12,6 +12,10 @@ tasks = [
 
 run_storage_base = "/data/illumina"
 
+# When false, run directories without read/write permissions throw an ERROR log
+# When true, they are skipped with an INFO log message
+skip_bad_permissions = true
+
 # Failure notification frequency, minutes (1440 min = daily)
 # When in --quiet mode, ERROR messages for failed runs
 # will only be output to the `autoprocess_notify` logger
@@ -24,7 +28,7 @@ nice                          = true
 # runfolder-dir                 = /data/illumina/my_run
 # output-dir                    = "{run_path}/{run_id}.bcl2fastq"
 # docker_image                  = "bcl2fastq:2.19"
-# binary_path                   = "/usr/local/bin/bcl2fastq"
+binary_path                   = "/usr/local/bin/bcl2fastq"
 
   [bcl2fastq.args]
   # These options map directly to bcl2fastq commandline options, eg:
