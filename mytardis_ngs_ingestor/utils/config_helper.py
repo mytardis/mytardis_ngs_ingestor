@@ -1,10 +1,45 @@
 import os
 from argparse import ArgumentParser
+import collections
 
 import pytoml as toml
 
 from attrdict import AttrDict
 from toolz.dicttoolz import merge as merge_dicts
+
+
+# http://stackoverflow.com/a/26853961
+# Deprecated by use of toolz.dicttoolz.merge_dicts
+# def merge_dicts(*dict_args):
+#     """
+#     Given any number of dicts, shallow copy and merge into a new dict,
+#     precedence goes to key value pairs in latter dicts.
+#     """
+#     result = {}
+#     for dictionary in dict_args:
+#         result.update(dictionary)
+#     return result
+
+
+# Based on: https://gist.github.com/angstwad/bf22d1822c38a92ec0a9
+def recursive_dict_merge(dct, merge_dct):
+    """ Recursive dict merge. Inspired by :meth:``dict.update()``, instead of
+    updating only top-level keys, dict_merge recurses down into dicts nested
+    to an arbitrary depth, updating keys. The ``merge_dct`` is merged into
+    ``dct``.
+    :param dct: dict onto which the merge is executed
+    :param merge_dct: dct merged into dct
+    :return: The merged dictionary
+    :rtype: dict
+    """
+    for k, v in merge_dct.items():
+        if (k in dct and isinstance(dct[k], dict)
+                     and isinstance(merge_dct[k], collections.Mapping)):
+            recursive_dict_merge(dct[k], merge_dct[k])
+        else:
+            dct[k] = merge_dct[k]
+
+    return dct
 
 
 def parse_settings_toml(config_filepath, defaults=None):
@@ -26,11 +61,14 @@ def parse_settings_toml(config_filepath, defaults=None):
     """
     if defaults is None:
         defaults = dict()
+    else:
+        # Copy
+        defaults = dict(defaults)
 
     with open(config_filepath, 'r') as f:
         config = toml.load(f)
 
-    config = merge_dicts(defaults, config)
+    config = recursive_dict_merge(defaults, config)
     config = AttrDict(config)
 
     return config
