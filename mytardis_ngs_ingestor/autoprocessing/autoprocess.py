@@ -386,6 +386,7 @@ def _set_default_options(options):
         'uploader_config': 'uploader_config.toml',
         'logging_config': 'logging_config.toml',
         'notify_frequency': 60*24,  # daily
+        'skip_bad_permissions': True,
     }
 
     for k, v in options_defaults.items():
