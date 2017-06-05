@@ -383,7 +383,7 @@ def _set_default_options(options):
         'run_storage_base': None,
         'watch': False,
         'verbose': True,
-        'uploader_config': 'uploader_config.toml',
+        # 'uploader_config': 'uploader_config.toml',
         'logging_config': 'logging_config.toml',
         'notify_frequency': 60*24,  # daily
         'skip_bad_permissions': True,
@@ -520,6 +520,8 @@ def run_in_console():
             options = _attrdict_copy(options)
             options = _set_default_options(options)
             options = _options_commandline_overrides(options)
+            if options.get('uploader_config', None) is None:
+                options['uploader_config'] = 'uploader_config.toml'
         except IOError as e:
             parser.error("Cannot read config file: %s" %
                          options.config_file)
@@ -540,6 +542,9 @@ def run_in_console():
             )
         )
         options['config']['mytardis_uploader'] = uploader_config
+        options['config']['mytardis_uploader']['config_file'] = \
+            options.uploader_config
+        del options['config']['mytardis_uploader']['uploader_config']
 
     # options.global_config is a static copy of the config based
     # on the initial 'global' config file (default or --config)
