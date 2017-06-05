@@ -30,6 +30,8 @@ import backoff
 from time import strftime
 import datetime
 import csv
+import subprocess
+import hashlib
 from argparse import ArgumentParser
 from appsettings import SettingsParser
 from toolz.dicttoolz import merge as merge_dicts
@@ -107,6 +109,36 @@ class MyTardisUploader:
             self.auth = HTTPBasicAuth(self.username, self.password)
         else:
             self.auth = None
+
+    def __call__(self, file_path, dataset_url_path, **kwargs):
+        """
+        Allows an instance of MyTardisUploader to be called as a function
+        that uploads a file. This primarily exists to allow
+        the MyTardisUploader.upload_file method to be passed to
+        `multiprocessing` (and `concurrent.futures.ProcessPoolExecutor`),
+        since bound methods aren't pickleable.
+
+        eg:
+
+        uploader = MyTardisUploader()
+
+        datafile_url = uploader("some_file.txt", "/dataset/99")
+
+        An alternative solution that could be used with `multiprocessing` is
+        to pickle the upload_file method like this: https://goo.gl/4uYVqN
+
+        :param file_path:
+        :type file_path: str
+        :param dataset_url_path:
+        :type dataset_url_path: str
+        :param kwargs:
+        :type kwargs:
+        :return: A tuple of the filepath, dataset URL and datafile URL.
+        :rtype: tuple(str, str, str)
+        """
+        return (file_path,
+                dataset_url_path,
+                self.upload_file(file_path, dataset_url_path, **kwargs))
 
     def _json_request_headers(self):
         return {'Accept': 'application/json',
@@ -443,7 +475,7 @@ class MyTardisUploader:
 
         return response
 
-    def _md5_file_calc(self, file_path, blocksize=None):
+    def _md5_python(self, file_path, blocksize=None):
         """
         Calculates the MD5 checksum of a file, returns the hex digest as a
         string. Streams the file in chunks of 'blocksize' to prevent running
@@ -451,12 +483,12 @@ class MyTardisUploader:
 
         :type file_path: string
         :type blocksize: int
-        :return: string
+        :return: The hex encoded MD5 checksum.
+        :rtype: str
         """
         if not blocksize:
             blocksize = 128
 
-        import hashlib
         md5 = hashlib.md5()
         with open(file_path, 'rb') as f:
             while True:
@@ -465,6 +497,53 @@ class MyTardisUploader:
                     break
                 md5.update(chunk)
         return md5.hexdigest()
+
+    def _md5_subprocess(self, file_path,
+                        md5sum_executable='/usr/bin/md5sum'):
+        """
+        Calculates the MD5 checksum of a file, returns the hex digest as a
+        string. Streams the file in chunks of 'blocksize' to prevent running
+        out of memory when working with large files.
+
+        :type file_path: string
+        :return: The hex encoded MD5 checksum.
+        :rtype: str
+        """
+        out = subprocess.check_output([md5sum_executable, file_path])
+        checksum = out.split()[0]
+        if len(checksum) == 32:
+            return checksum
+        else:
+            raise ValueError('md5sum failed: %s', out)
+
+    def _md5_file_calc(self, file_path, blocksize=None,
+                       subprocess_size_threshold=10*1024*1024,
+                       md5sum_executable='/usr/bin/md5sum'):
+        """
+        Calculates the MD5 checksum of a file, returns the hex digest as a
+        string. Streams the file in chunks of 'blocksize' to prevent running
+        out of memory when working with large files.
+
+        If the file size is greater than subprocess_size_threshold and the
+        md5sum tool exists, spawn a subprocess and use 'md5sum', otherwise
+        use the native Python md5 method (~ 3x slower).
+
+        :type file_path: string
+        :type blocksize: int
+        :param subprocess_size_threshold: Use the md5sum tool via a subprocess
+                                           for files larger than this. Otherwise
+                                           use Python native method.
+        :type subprocess_size_threshold: int
+        :return: The hex encoded MD5 checksum.
+        :rtype: str
+        """
+        if os.path.getsize(file_path) > subprocess_size_threshold and \
+                os.path.exists(md5sum_executable) and \
+                os.access(md5sum_executable, os.X_OK):
+            return self._md5_subprocess(file_path,
+                                        md5sum_executable=md5sum_executable)
+        else:
+            return self._md5_python(file_path, blocksize=blocksize)
 
     def _send_datafile(self, data, filename=None):
         # we need to use requests_toolbelt here to prepare the multipart
