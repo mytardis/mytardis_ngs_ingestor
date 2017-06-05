@@ -520,12 +520,6 @@ def run_in_console():
             options = _attrdict_copy(options)
             options = _set_default_options(options)
             options = _options_commandline_overrides(options)
-            # options.global_config is a static copy of the config based
-            # on the initial 'global' config file (default or --config)
-            # and the commandline options. options.config may be
-            # overridden by values in a run-specific config file, using
-            # options.global_config as initial values.
-            options.global_config = _attrdict_copy(options.config)
         except IOError as e:
             parser.error("Cannot read config file: %s" %
                          options.config_file)
@@ -546,6 +540,13 @@ def run_in_console():
             )
         )
         options['config']['mytardis_uploader'] = uploader_config
+
+    # options.global_config is a static copy of the config based
+    # on the initial 'global' config file (default or --config)
+    # and the commandline options. options.config may be
+    # overridden by values in a run-specific config file, using
+    # options.global_config as initial values.
+    options.global_config = _attrdict_copy(options.config)
 
     if len(sys.argv) <= 1:
         parser.print_help()
