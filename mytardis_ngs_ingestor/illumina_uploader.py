@@ -13,6 +13,14 @@ import re
 import shutil
 from datetime import datetime
 import subprocess
+import itertools
+from concurrent.futures import (ProcessPoolExecutor,
+                                ThreadPoolExecutor,
+                                wait,
+                                as_completed)
+import multiprocessing
+
+from time import time
 
 import os
 from os.path import join, splitext, exists, isdir, isfile
@@ -729,6 +737,23 @@ def register_project_fastqc_datafiles(run_id,
             log_datafile_added(fastqc_zip_path, dataset_url, df_url)
 
 
+# def _batches(n, iterable, fillvalue=None):
+#     """
+#     _batches(3, 'ABCDEFG', 'x') --> ABC DEF Gxx"
+#
+#     :param n: Batch size
+#     :type n: int
+#     :param iterable: An iterable (eg a list, string)
+#     :type iterable: list
+#     :param fillvalue:
+#     :type fillvalue:
+#     :return: A list of tuples
+#     :rtype: list[tuple]
+#     """
+#     args = [iter(iterable)] * n
+#     return itertools.izip_longest(fillvalue=fillvalue, *args)
+
+
 def register_instrument_datafiles(run_id,
                                   base_dir,
                                   run_path,
@@ -749,6 +774,11 @@ def register_instrument_datafiles(run_id,
             if abspath not in ignore_files:
                 files.append(abspath)
 
+        max_workers = multiprocessing.cpu_count() + 1
+        pool = ProcessPoolExecutor(max_workers=max_workers)
+        # pool = ThreadPoolExecutor(max_workers=max_workers)
+        upload_jobs = []
+
         for f in files:
             replica_url = f
             if uploader.storage_mode == 'shared':
@@ -766,27 +796,34 @@ def register_instrument_datafiles(run_id,
             datafile.parameters = parameter_set
             datafile_parameter_sets = datafile.package_parameter_sets()
 
+            upload_jobs.append({'args': [f, dataset_url],
+                                'kwargs': dict(
+                                    parameter_sets_list=datafile_parameter_sets,
+                                    replica_url=replica_url,
+                                    md5_checksum=md5_checksum,
+                                    base_dir=base_dir)})
+
+        # We pass in the _instance_ of MyTardisUploader, which has it's
+        # __call__ method implemented so is can be called like a function
+        # to upload a file. An alternative that would avoid needing the
+        # slightly odd __call__ method on MyTardisUploader would be to
+        # pickle the uploader.upload_file method using this technique:
+        # https://goo.gl/4uYVqN# method
+        futures = [pool.submit(uploader,
+                               *job['args'],
+                               **job['kwargs']) for job in upload_jobs]
+
+        for done in as_completed(futures):
             try:
-                df_url = uploader.upload_file(
-                    f,
-                    dataset_url,
-                    parameter_sets_list=datafile_parameter_sets,
-                    replica_url=replica_url,
-                    md5_checksum=md5_checksum,
-                    base_dir=base_dir)
-
-                UPLOADED_FILES.append(f)
-
+                f_path, ds_url, df_url = done.result()
                 if df_url is not None:
-                    log_datafile_added(f, dataset_url, df_url)
-
+                    UPLOADED_FILES.append(f_path)
+                    log_datafile_added(f_path, ds_url, df_url)
             except Exception as ex:
-                logging.error("Failed to register Datafile: %s", f)
+                f_path, ds_url, df_url = done.result()
+                logging.error("Failed to register Datafile: %s", f_path)
                 logging.debug("Exception: %s", ex)
                 raise ex
-
-    # TODO: Try adding all in single request via:
-    # POST { 'objects': [ {'file':'bla'}, {'file':'foo'}] }
 
 
 def upload_fastqc_reports(fastqc_out_dir, base_dir, dataset_url, uploader):
@@ -1418,9 +1455,9 @@ def ingest_run(options, run_path=None):
             trash_experiments_server(uploader, matching)
         else:
             logging.error("Please manually remove existing run before "
-                         "ingesting, or set the --replace-duplicate-runs=True "
-                         "option: %s (%s)", run_id, ', '.join(matching))
-            raise Exception()
+                          "ingesting, or set the --replace-duplicate-runs=True "
+                          "option: %s (%s)", run_id, ', '.join(matching))
+            raise Exception("Run exists on server.")
 
     # The directory where bcl2fastq puts its output,
     # in Project_* directories
@@ -1676,6 +1713,7 @@ def ingest_run(options, run_path=None):
         except Exception as e:
             logging.error("Uploading SampleSheet.csv for Project failed: "
                           "%s (%s)", fq_dataset_url, proj_id)
+            raise e
 
         register_project_fastq_datafiles(
             run_id,
@@ -1703,7 +1741,8 @@ def ingest_run(options, run_path=None):
                                       uploader,
                                       ignore_files=UPLOADED_FILES)
     except Exception as e:
-        logging.error("Uploading of instrument files failed")
+        logging.error("Uploading of instrument files failed: %s", e)
+        raise e
 
     logging.info("Ingestion of run %s complete !", run_id)
 
