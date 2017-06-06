@@ -81,8 +81,8 @@ and `{run_id}` is `160915_FHT451_0119_AC6AMWACXZ`.
 `illumina_uploader.py` does not run `bcl2fastq` automatically. It is a
 assumed that the run has already been demultiplexed.
 
-Demultiplexing and QC
----------------------
+Autoprocessing - demultiplexing and QC
+--------------------------------------
 
 The `autoprocess.py` script can be used to demultiplex (bcl2fastq) and run
 QC (eg fastqc) on runs, prior to ingestion into MyTardis. It is intended to
@@ -94,6 +94,10 @@ If the package is installed:
 illumina_autoprocess --config autoprocess_config.toml --runs /data/sequencing_runs
 ```
 
+Each task in the autoprocessing pipeline creates a file `<run_dir>/tasks/<task_name>`.
+This file is JSON and contains the status, (eg running, complete, error) and
+sometimes the stdout/stderr from a wrapped tool (eg bcl2fastq stderr messages).
+
 Autoprocessing will ignore any run folders containing the file `tasks/ignore`.
 You can create this for existing processed runs by running something like:
 
@@ -101,6 +105,16 @@ You can create this for existing processed runs by running something like:
 cd /data/illumina/  # base directory for runs
 for d in $(ls -d */); do mkdir -p ${d}tasks/; touch ${d}tasks/ignore; done
 ```
+
+If any task fails for any run, the autoprocessing pipeline will not continue to
+other steps. To retry after fixing the problem remove the corresponding 
+`<run_dir>/tasks/<task_name>` file. For example, if ingestion failed due to
+the server being inaccessible, remove `<run_dir>/tasks/mytardis_upload`. Alternatively,
+the `--retry` flag can be used to retry the last failed task.
+
+Once autoprocessing has completed successfully for a run, the `<run_dir>/tasks/all_complete`
+file is created. If a single step needs to be re-run after successful completion (eg `bcl2fastq`),
+you must remove the `all_complete` file and the required `<task_name>` file. 
 
 How a 'run' is structured in the MyTardis data model
 ----------------------------------------------------
@@ -127,7 +141,6 @@ and log files that the facility may wish to preserve (currently only
 SampleSheet.csv).
 
 'Raw' .bcl files are not ingested.
-
 
 Development
 -----------
