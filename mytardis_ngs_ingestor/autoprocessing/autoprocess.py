@@ -73,7 +73,8 @@ def try_autoprocessing(run_dir, options):
 
     if options.skip_bad_permissions:
         if not can_readwrite(run_dir) or not can_readwrite(taskdb.dbpath):
-            logging.info("Skipping %s, no read/write permissions.", run_dir)
+            if options.verbose:
+                logging.info("Skipping %s, no read/write permissions.", run_dir)
             return None
 
     ##
