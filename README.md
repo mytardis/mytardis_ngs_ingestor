@@ -1,5 +1,4 @@
-mytardis_ngs_ingestor
-=====================
+# mytardis_ngs_ingestor
 
 [![Build Status](https://semaphoreci.com/api/v1/pansapiens/mytardis_ngs_ingestor/branches/develop/shields_badge.svg)](https://semaphoreci.com/pansapiens/mytardis_ngs_ingestor)
 
@@ -9,8 +8,7 @@ sequencing data (NGS) to a MyTardis data management server.
 It runs on Linux and currently supports runs from Illumina HiSeq, 
 NextSeq and MiSeq instruments.
 
-Dependencies
-------------
+## Dependencies
 
   * A [MyTardis](https://github.com/mytardis/mytardis) server with 
     the [mytardis-seqfac](https://github.com/pansapiens/mytardis-seqfac) 
@@ -20,8 +18,7 @@ Dependencies
 Python dependencies are installed from requirements.txt
 
 
-Installation
-------------
+## Installation
 
 Create a Python virtualenv:
 ```sh
@@ -44,8 +41,7 @@ sudo python setup.py install
 
 and the script invoked using `illumina_uploader`.
 
-Configuration
--------------
+## Ingestor configuration
 
 The program will look for a configuration file named `uploader_config.yaml` 
 in the current working directory.
@@ -61,8 +57,7 @@ commandline option (eg, `fastqc_bin: /usr/local/bin/fastqc` in the
 config file becomes `--fastqc-bin=/usr/local/bin/fastqc`)
 
 
-Running
--------
+## Running the ingestor
 
 To ingest a run:
 
@@ -81,11 +76,10 @@ and `{run_id}` is `160915_FHT451_0119_AC6AMWACXZ`.
 `illumina_uploader.py` does not run `bcl2fastq` automatically. It is a
 assumed that the run has already been demultiplexed.
 
-Autoprocessing - demultiplexing and QC
---------------------------------------
+## Autoprocessing - demultiplexing and QC
 
 The `autoprocess.py` script can be used to demultiplex (bcl2fastq) and run
-QC (eg fastqc) on runs, prior to ingestion into MyTardis. It is intended to
+QC (eg fastqc) on runs and trigger ingestion into MyTardis. It is intended to
 be executed by a cron job every few minutes to process any completed sequencing
 runs as they appear.
 
@@ -114,10 +108,35 @@ the `--retry` flag can be used to retry the last failed task.
 
 Once autoprocessing has completed successfully for a run, the `<run_dir>/tasks/all_complete`
 file is created. If a single step needs to be re-run after successful completion (eg `bcl2fastq`),
-you must remove the `all_complete` file and the required `<task_name>` file. 
+you must remove the `all_complete` file and the required `<task_name>` file.
 
-How a 'run' is structured in the MyTardis data model
-----------------------------------------------------
+### Configuring the autoprocessing pipeline
+
+See `autoprocessing_config_example.toml` - copy this to `autoprocessing_config.toml` to get started.
+
+The autoprocessing pipeline inherits and overrides settings with the following 
+precendence:
+
+Commandline options **>>** 
+`autoprocessing_config.toml` in run directory **>>** 
+`--config autoprocessing_config.toml`
+
+This means a 'baseline' `autoprocessing_config.toml` can be specified with
+`--config autoprocessing_config.toml`. If there is an `autoprocessing_config.toml` 
+file in the run directory, these values with override values in the base config.
+Commandline options (eg `--run-storage-base`) override the equivalent setting in 
+top level of any config file.
+
+## Logging
+
+If the file `logging_config.toml` exists in the current working directory it 
+will be used to configure logging.
+A log configuration file can be specified with the `--logging-config` commandline options.
+
+See `logging_config_example.toml` as an example. The settings here are serialized 
+from TOML format and used as a Python logging [dictConfig](http://python-guide-pt-br.readthedocs.io/en/latest/writing/logging/#example-configuration-via-a-dictionary).
+
+## How a 'run' is structured in the MyTardis data model
 
 When a run is ingested, two types of Experiment are produced - 
 a single *Run Experiment* and one or more *Project Experiments*.
@@ -142,8 +161,7 @@ SampleSheet.csv).
 
 'Raw' .bcl files are not ingested.
 
-Development
------------
+## Development
 
 Here is a quick overview of how the project is structured. 
 
