@@ -27,7 +27,8 @@ notify_frequency = 1440
 nice                          = true
 # runfolder-dir                 = /data/illumina/my_run
 # output-dir                    = "{run_path}/{run_id}.bcl2fastq"
-# docker_image                  = "bcl2fastq:2.19"
+# bcl2fastq will run inside a Docker container if docker_image is specified
+# docker_image                  = "genomicpariscentre/bcl2fastq2:2.19.0.316"
 binary_path                   = "/usr/local/bin/bcl2fastq"
 
   [bcl2fastq.args]

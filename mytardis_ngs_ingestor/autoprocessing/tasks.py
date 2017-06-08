@@ -205,20 +205,27 @@ def log_retry(task, verbose=True):
 
 def run_bcl2fastq(runfolder_dir,
                   output_directory=None,
-                  bcl2fastqc_bin=None,
+                  bcl2fastq_bin=None,
                   stderr_file='',
                   nice=False,
-                  docker_image='bcl2fastq:2.19',
+                  docker_image=None,
                   extra_args=None):
     """
     Run bcl2fastq with commandline options.
+    If docker_image is specified, run inside a Docker container.
 
+    :param stderr_file:
+    :type stderr_file:
+    :param docker_image: A Docker image ang tag (eg
+                         "genomicpariscentre/bcl2fastq2:2.19.0.316"). If
+                         specified, bcl2fastq is run in a container.
+    :type docker_image: str
     :param runfolder_dir:
     :type runfolder_dir:
     :param output_directory:
     :type output_directory:
-    :param bcl2fastqc_bin:
-    :type bcl2fastqc_bin:
+    :param bcl2fastq_bin:
+    :type bcl2fastq_bin:
     :param nice:
     :type nice:
     :param extra_args:
@@ -232,19 +239,16 @@ def run_bcl2fastq(runfolder_dir,
             not path.exists(runfolder_dir):
         raise ValueError("runfolder_dir must be a valid path string")
 
-    if not bcl2fastqc_bin:
+    if not bcl2fastq_bin:
         # We will assume it's on path with the default name
-        bcl2fastqc_bin = 'bcl2fastq'
+        bcl2fastq_bin = 'bcl2fastq'
 
     if nice:
         nice = 'nice '
     else:
         nice = ''
 
-    options = ['--runfolder-dir %s' % runfolder_dir]
-
-    if output_directory:
-        options.append('--output-dir %s' % output_directory)
+    options = []
 
     if extra_args:
         options.extend(extra_args)
@@ -252,24 +256,41 @@ def run_bcl2fastq(runfolder_dir,
     if stderr_file:
         stderr_file = ' 2>&1 | tee -a %s' % stderr_file
 
-    cmd = '{nice}{bcl2fastq} {options} {stderr_file}' \
-        .format(nice=nice,
-                bcl2fastq=bcl2fastqc_bin,
-                stderr_file=stderr_file,
-                options=' '.join(options))
+    if docker_image is not None:
+        if not output_directory:
+            output_directory = path.join(
+                runfolder_dir,
+                "%s.bcl2fastq" % path.basename(runfolder_dir))
 
-    # eg, using a Docker container prepared like:
-    # https://gist.github.com/pansapiens/0e9b36cc1b11ce3c6e49dc81d09e30bf
-    # cmd = '{nice} docker run -it ' \
-    #       '--user `id -n -u`:`id -n -g`' \
-    #       '-v {output_directory}:/output ' \
-    #       '-v {runfolder_dir}:/run bcl2fastq:{version} ' \
-    #       '/usr/local/bin/bcl2fastq -o /output -R /run'.format(
-    #     nice=nice,
-    #     version=version,
-    #     output_directory=output_directory,
-    #     runfolder_dir=runfolder_dir,
-    # )
+        # eg, using a Docker container prepared like:
+        # https://gist.github.com/pansapiens/0e9b36cc1b11ce3c6e49dc81d09e30bf
+        cmd = 'newgrp docker; ' \
+              'docker run -it ' \
+              '--user `id -n -u`:`id -n -g` ' \
+              '-v {output_directory}:/output ' \
+              '-v {runfolder_dir}:/run {docker_image} ' \
+              '{nice} {bcl2fastq} ' \
+              '--output-dir /output ' \
+              '--runfolder-dir /run ' \
+              '{options} {stderr_file}'.format(
+                nice=nice,
+                docker_image=docker_image,
+                bcl2fastq=bcl2fastq_bin,
+                output_directory=output_directory,
+                runfolder_dir=runfolder_dir,
+                options=' '.join(options),
+                stderr_file=stderr_file)
+    else:
+        options.append('--runfolder-dir %s' % runfolder_dir)
+
+        if output_directory:
+            options.append('--output-dir %s' % output_directory)
+
+        cmd = '{nice}{bcl2fastq} {options} {stderr_file}'.format(
+            nice=nice,
+            bcl2fastq=bcl2fastq_bin,
+            stderr_file=stderr_file,
+            options=' '.join(options))
 
     logging.info('Running bcl2fastq on: %s', runfolder_dir)
     logging.info('Command: %s', cmd)
@@ -427,7 +448,8 @@ def do_bcl2fastq(taskdb, current, run_dir, options):
 
         success, output = run_bcl2fastq(
             run_dir,
-            bcl2fastqc_bin=opts.get('binary_path', None),
+            bcl2fastq_bin=opts.get('binary_path', None),
+            docker_image=opts.get('docker_image', None),
             output_directory=output_dir,
             stderr_file=path.join(run_dir, '%s.err' % options.run_id),
             extra_args=extra_args)
