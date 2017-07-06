@@ -266,7 +266,6 @@ def run_bcl2fastq(runfolder_dir,
         # https://gist.github.com/pansapiens/0e9b36cc1b11ce3c6e49dc81d09e30bf
         cmd = 'newgrp docker; ' \
               'docker run -it ' \
-              '--user `id -n -u`:`id -n -g` ' \
               '-v {output_directory}:/output ' \
               '-v {runfolder_dir}:/run {docker_image} ' \
               '{nice} {bcl2fastq} ' \
@@ -280,6 +279,11 @@ def run_bcl2fastq(runfolder_dir,
                 runfolder_dir=runfolder_dir,
                 options=' '.join(options),
                 stderr_file=stderr_file)
+
+        # If the current user/group (by UID/GID) exists inside the container
+        # you can use this
+        # '--user `id -n -u`:`id -n -g` '
+
     else:
         options.append('--runfolder-dir %s' % runfolder_dir)
 
