@@ -264,8 +264,7 @@ def run_bcl2fastq(runfolder_dir,
 
         # eg, using a Docker container prepared like:
         # https://gist.github.com/pansapiens/0e9b36cc1b11ce3c6e49dc81d09e30bf
-        cmd = 'newgrp docker; ' \
-              'docker run -it ' \
+        cmd = 'docker run -it ' \
               '-v {output_directory}:/output ' \
               '-v {runfolder_dir}:/run {docker_image} ' \
               '{nice} {bcl2fastq} ' \
@@ -401,7 +400,12 @@ def do_rta_complete(taskdb, current, run_dir, options):
         current.task.status = CREATED
         log_retry(current.task, options.verbose)
 
-    if current.task.is_failed() or current.task.is_running():
+    # status == RUNNING for this task means a run directory exists but
+    # RTAComplete.txt doesn't.
+    # So unlike most tasks we still need to allow the is_pending
+    # check below to proceed even when the status == RUNNING, otherwise
+    # status can never become COMPLETE;
+    if current.task.is_failed():  # or current.task.is_running():
         log_status(current.task, options.verbose)
         return current.task
 
