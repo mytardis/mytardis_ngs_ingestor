@@ -49,7 +49,9 @@ def run_is_complete(runfolder_dir, complete_file='RTAComplete.txt'):
     return exists(join(runfolder_dir, complete_file))
 
 
-def parse_samplesheet(file_path, standardize_keys=True):
+def parse_samplesheet(file_path,
+                      standardize_keys=True,
+                      allow_missing=True):
 
     # Old plain CSV format, IEM v3:
     # FCID,Lane,SampleID,SampleRef,Index,Description,Control,Recipe,
@@ -83,6 +85,9 @@ def parse_samplesheet(file_path, standardize_keys=True):
             formatted = [row for row in reader]
 
         return formatted
+
+    if allow_missing and not exists(file_path):
+        return [], ''
 
     with open(file_path, "rU") as f:
         lines = f.readlines()

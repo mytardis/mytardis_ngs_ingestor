@@ -29,6 +29,14 @@ class IlluminaParserTestCase(unittest.TestCase):
             path.dirname(__file__),
             'test_data/runs/150907_M04242_0003_000000000-ANV1L')
 
+        self.run5_dir = path.join(
+            path.dirname(__file__),
+            'test_data/runs/170907_M04242_0005_000000000-ANV1L')
+
+        self.samplesheet_missing_path = path.join(os.path.dirname(__file__),
+                                                  self.run5_dir,
+                                                  'SampleSheet.csv')
+
         self.samplesheet_csv_path = path.join(os.path.dirname(__file__),
                                               self.run1_dir,
                                               'SampleSheet.csv')
@@ -42,6 +50,20 @@ class IlluminaParserTestCase(unittest.TestCase):
 
     def tearDown(self):
         pass
+
+    def test_parse_samplesheet_missing(self):
+        samples, chemistry = parse_samplesheet(self.samplesheet_missing_path,
+                                               standardize_keys=True,
+                                               allow_missing=True)
+
+        self.assertListEqual(samples, [])
+        self.assertEqual(chemistry, '')
+
+        with self.assertRaises(IOError) as context:
+            samples, chemistry = parse_samplesheet(
+                self.samplesheet_missing_path,
+                standardize_keys=True,
+                allow_missing=False)
 
     def test_parse_samplesheet_v4(self):
         samples, chemistry = parse_samplesheet(self.samplesheet_v4_path,

@@ -70,7 +70,6 @@ from mytardis_ngs_ingestor.illumina.run_info import (
     get_read_length_fastq,
     rta_complete_parser,
     runinfo_parser,
-    illumina_config_parser,
     get_run_id_from_path,
     get_instrument_model_from_id,
     get_demultiplexer_info,
@@ -165,7 +164,8 @@ def create_run_experiment_object(run_path):
     run.run_id = get_run_id_from_path(run_path)
     run.rta_version = rta_version
     run.chemistry = chemistry
-    run.operator_name = samplesheet[0].get('Operator', '')
+    if samplesheet:
+        run.operator_name = samplesheet[0].get('Operator', '')
     run._samplesheet = samplesheet
 
     # the MyTardis Experiment
@@ -1238,31 +1238,23 @@ def pre_ingest_checks_instrument_run(options):
 
     if not exists(join(run_path, 'RTAComplete.txt')):
         logging.error("Aborting - 'RTAComplete.txt' not found. "
-                     "Is the run still in progress ?")
+                      "Is the run still in progress ?")
         return False
 
     if not exists(join(run_path, 'RunInfo.xml')):
         logging.error("Aborting - 'RunInfo.xml' not found.")
         return False
 
-    config_filename = None
-    for filename in os.listdir(join(run_path, 'Config')):
-        if "Effective.cfg" in filename:
-            config_filename = filename
-    if not config_filename:
-        logging.error("Aborting - cannot find Config/*Effective.cfg file.")
-        return False
-
     if not exists(join(run_path, 'SampleSheet.csv')):
-        logging.error("Aborting - 'SampleSheet.csv' not found.")
-        return False
-
-    try:
-        samplesheet, chemistry = parse_samplesheet(join(run_path,
-                                                        'SampleSheet.csv'))
-    except IOError:
-        logging.error("Aborting - unable to parse SampleSheet.csv file.")
-        return False
+        logging.warning("There is no SampleSheet.csv file - "
+                        "some run metadata will be blank")
+    else:
+        try:
+            samplesheet, chemistry = \
+                parse_samplesheet(join(run_path, 'SampleSheet.csv'))
+        except IOError:
+            logging.error("Aborting - unable to parse SampleSheet.csv file.")
+            return False
 
     # Newer versions of bcl2fastq don't seem to generate this file,
     # so this warning is deprecated.
@@ -1591,13 +1583,13 @@ def ingest_run(options, run_path=None):
 
             except Exception as e:
                 logging.error("Failed to create Experiment for project: %s",
-                             proj_id)
+                              proj_id)
                 logging.debug("Exception: %s", e)
                 raise e
 
             logging.info("Created Project Experiment: %s (%s)",
-                        project_url,
-                        proj_id)
+                         project_url,
+                         proj_id)
 
         # We associate Undetermined_indices Datasets with the overall 'run'
         # Experiment only (unlike proper Project Datasets which also have
@@ -1643,13 +1635,13 @@ def ingest_run(options, run_path=None):
 
             except Exception as e:
                 logging.error("Failed to create FastQC Dataset for Project: %s",
-                             proj_id)
+                              proj_id)
                 logging.debug("Exception: %s", e)
                 raise e
 
             logging.info("Created FastQC Dataset: %s (%s)",
-                        fqc_dataset_url,
-                        proj_id)
+                         fqc_dataset_url,
+                         proj_id)
 
             # We don't add the FastQC zips for those in temporary directories
             # eg, for 'Undetermined_indices' (since these won't be present on
@@ -1681,7 +1673,7 @@ def ingest_run(options, run_path=None):
                 fastqc_summary=fqc_summary)
         except Exception as e:
             logging.error("Failed to create Dataset for Project: %s",
-                         proj_id)
+                          proj_id)
             logging.debug("Exception: %s", e)
             raise e
 
@@ -1690,30 +1682,31 @@ def ingest_run(options, run_path=None):
 
         logging.info("Created FASTQ Dataset: %s (%s)", fq_dataset_url, proj_id)
 
-        try:
-            # Create a temporary SampleSheet.csv containing only lines for the
-            # current Project, to be uploaded to the FASTQ Dataset
-            tmp_dir = tmp_dirs.create_tmp_dir()
-            project_samplesheet_path = join(tmp_dir, 'SampleSheet.csv')
-            with open(project_samplesheet_path, 'w') as f:
-                lines = filter_samplesheet_by_project(samplesheet_path,
-                                                      proj_id)
-                f.writelines(lines)
+        if exists(samplesheet_path):
+            try:
+                # Create a temporary SampleSheet.csv containing only lines for
+                # the current Project, to be uploaded to the FASTQ Dataset
+                tmp_dir = tmp_dirs.create_tmp_dir()
+                project_samplesheet_path = join(tmp_dir, 'SampleSheet.csv')
+                with open(project_samplesheet_path, 'w') as f:
+                    lines = filter_samplesheet_by_project(samplesheet_path,
+                                                          proj_id)
+                    f.writelines(lines)
 
-            writable_storage_uploader.upload_file(project_samplesheet_path,
-                                                  fq_dataset_url,
-                                                  base_dir=base_dir)
-            UPLOADED_FILES.append(project_samplesheet_path)
-            if exists(tmp_dir):
-                shutil.rmtree(tmp_dir)
+                writable_storage_uploader.upload_file(project_samplesheet_path,
+                                                      fq_dataset_url,
+                                                      base_dir=base_dir)
+                UPLOADED_FILES.append(project_samplesheet_path)
+                if exists(tmp_dir):
+                    shutil.rmtree(tmp_dir)
 
-            logging.info("Uploaded SampleSheet.csv for Project: %s (%s)",
-                         fq_dataset_url,
-                         proj_id)
-        except Exception as e:
-            logging.error("Uploading SampleSheet.csv for Project failed: "
-                          "%s (%s)", fq_dataset_url, proj_id)
-            raise e
+                logging.info("Uploaded SampleSheet.csv for Project: %s (%s)",
+                             fq_dataset_url,
+                             proj_id)
+            except Exception as e:
+                logging.error("Uploading SampleSheet.csv for Project failed: "
+                              "%s (%s)", fq_dataset_url, proj_id)
+                raise e
 
         register_project_fastq_datafiles(
             run_id,
