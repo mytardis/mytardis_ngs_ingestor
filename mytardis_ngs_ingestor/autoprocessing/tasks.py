@@ -264,7 +264,7 @@ def run_bcl2fastq(runfolder_dir,
 
         # eg, using a Docker container prepared like:
         # https://gist.github.com/pansapiens/0e9b36cc1b11ce3c6e49dc81d09e30bf
-        cmd = 'docker run -it ' \
+        cmd = 'docker run ' \
               '-v {output_directory}:/output ' \
               '-v {runfolder_dir}:/run {docker_image} ' \
               '{nice} {bcl2fastq} ' \
