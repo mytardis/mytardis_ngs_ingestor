@@ -264,19 +264,28 @@ def run_bcl2fastq(runfolder_dir,
 
         # eg, using a Docker container prepared like:
         # https://gist.github.com/pansapiens/0e9b36cc1b11ce3c6e49dc81d09e30bf
+        uid = os.getuid()
+        gid = os.getgid()
         cmd = 'docker run ' \
               '-v {output_directory}:/output ' \
               '-v {runfolder_dir}:/run {docker_image} ' \
+              '/bin/bash -c ' \
+              '"' \
               '{nice} {bcl2fastq} ' \
               '--output-dir /output ' \
               '--runfolder-dir /run ' \
-              '{options} {stderr_file}'.format(
+              '{options}; ' \
+              'chown -R {uid}:{gid} /output' \
+              '"' \
+              '{stderr_file}'.format(
                 nice=nice,
                 docker_image=docker_image,
                 bcl2fastq=bcl2fastq_bin,
                 output_directory=output_directory,
                 runfolder_dir=runfolder_dir,
                 options=' '.join(options),
+                uid=uid,
+                gid=gid,
                 stderr_file=stderr_file)
 
         # If the current user/group (by UID/GID) exists inside the container
