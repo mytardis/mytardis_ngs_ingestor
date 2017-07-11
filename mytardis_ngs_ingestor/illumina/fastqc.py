@@ -110,25 +110,25 @@ def run_fastqc_on_project(fastq_files,
         if exists(output_directory):
             if clobber:
                 logging.warning("Removing old FastQC output directory: %s",
-                             output_directory)
+                                output_directory)
                 shutil.rmtree(output_directory)
             else:
-                logging.error("FastQC - output directory already exists: %s",
-                             output_directory)
+                logging.warning("FastQC - output directory already exists: %s",
+                              output_directory)
+        else:
+            try:
+                # os.mkdir(output_directory)
+                Path(str(output_directory)).mkdir(parents=True, exist_ok=True)
+            except OSError:
+                logging.error("FastQC - couldn't create output directory: %s",
+                              output_directory)
                 return None, cmd_out
-        try:
-            # os.mkdir(output_directory)
-            Path(str(output_directory)).mkdir(parents=True, exist_ok=True)
-        except OSError:
-            logging.error("FastQC - couldn't create output directory: %s",
-                         output_directory)
-            return None, cmd_out
 
     if not exists(output_directory) or \
             not isdir(output_directory):
         logging.error("FastQC - output path %s isn't a directory "
-                     "or doesn't exist.",
-                     output_directory)
+                      "or doesn't exist.",
+                      output_directory)
         return None, cmd_out
 
     fqc_output_directory, cmd_out = run_fastqc(

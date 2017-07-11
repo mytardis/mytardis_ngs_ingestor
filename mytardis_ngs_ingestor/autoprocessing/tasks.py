@@ -1,6 +1,7 @@
 import os
 from os import path
 import subprocess
+import shutil
 from datetime import datetime
 import jsondate as json
 
@@ -15,6 +16,7 @@ from mytardis_ngs_ingestor.illumina.run_info import get_run_id_from_path, \
 from mytardis_ngs_ingestor.illumina import fastqc
 from mytardis_ngs_ingestor import illumina_uploader
 from mytardis_ngs_ingestor.utils import batch
+from mytardis_ngs_ingestor.illumina.fastqc import get_fastqc_output_directory
 
 # status enum
 CREATED = 'created'  # record created, no action taken on task yet
@@ -521,13 +523,19 @@ def do_fastqc(taskdb, current, run_dir, options):
                 abs_fastqs = [path.join(outdir, fq)
                               for fq in proj_fastqs]
                 proj_path = path.join(outdir, project)
+                output_directory = get_fastqc_output_directory(proj_path)
+                if os.path.exists(output_directory):
+                    logging.warning(
+                            "Removing old FastQC output directory: %s",
+                            output_directory)
+                    shutil.rmtree(output_directory)
 
                 for fastqs in batch(abs_fastqs, batch_size):
                     result, output = fastqc.run_fastqc_on_project(
                         fastqs,
                         proj_path,
                         fastqc_bin=fastqc_bin,
-                        clobber=True)
+                        clobber=False)
 
                     if 'Failed to process' in output:
                         result = None
