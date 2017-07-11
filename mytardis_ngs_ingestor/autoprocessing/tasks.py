@@ -520,8 +520,9 @@ def do_fastqc(taskdb, current, run_dir, options):
             for project, proj_fastqs in fastqs_per_project.items():
                 abs_fastqs = [path.join(outdir, fq)
                               for fq in proj_fastqs]
+                proj_path = path.join(outdir, project)
+
                 for fastqs in batch(abs_fastqs, batch_size):
-                    proj_path = path.join(outdir, project)
                     result, output = fastqc.run_fastqc_on_project(
                         fastqs,
                         proj_path,
@@ -535,6 +536,9 @@ def do_fastqc(taskdb, current, run_dir, options):
                     if result is None:
                         failing_project = project
                         break
+
+                if failing_project:
+                    break
 
             if all(ok):
                 current.task.status = COMPLETE
