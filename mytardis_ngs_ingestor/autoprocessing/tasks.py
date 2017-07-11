@@ -254,7 +254,7 @@ def run_bcl2fastq(runfolder_dir,
         options.extend(extra_args)
 
     if stderr_file:
-        stderr_file = ' 2>&1 | tee -a %s' % stderr_file
+        stderr_file = ' 2>&1 | tee %s' % stderr_file
 
     if docker_image is not None:
         if not output_directory:
