@@ -488,8 +488,9 @@ def parse_run_specific_config(run_dir, options):
             config_file=run_config_path,
             defaults=options.global_config)
         options.config = _attrdict_copy(options.config)
-        logging.info("Applied run specific configuration from: %s",
-                     run_config_path)
+        if options.verbose:
+            logging.info("Applied run specific configuration from: %s",
+                         run_config_path)
     else:
         options.config = _attrdict_copy(options.global_config)
 
