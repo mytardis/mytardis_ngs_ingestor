@@ -14,6 +14,7 @@ from mytardis_ngs_ingestor.illumina.run_info import get_run_id_from_path, \
     get_sample_project_mapping
 from mytardis_ngs_ingestor.illumina import fastqc
 from mytardis_ngs_ingestor import illumina_uploader
+from mytardis_ngs_ingestor.utils import batch
 
 # status enum
 CREATED = 'created'  # record created, no action taken on task yet
@@ -503,6 +504,7 @@ def do_fastqc(taskdb, current, run_dir, options):
         try:
             outdir = '%s/Data/Intensities/BaseCalls/' % run_dir
             bcl2fastq_opts = options.config.get('bcl2fastq', {})
+            batch_size = 12
             outdir_fmt_str = bcl2fastq_opts.get('output-dir', None)
             if outdir_fmt_str:
                 outdir = illumina_uploader.get_bcl2fastq_output_dir(
@@ -515,23 +517,24 @@ def do_fastqc(taskdb, current, run_dir, options):
             fastqs_per_project = get_sample_project_mapping(outdir)
             ok = []
             failing_project = None
-            for project, fastqs in fastqs_per_project.items():
-                fastqs = [path.join(outdir, fq)
-                          for fq in fastqs]
-                proj_path = path.join(outdir, project)
-                result, output = fastqc.run_fastqc_on_project(
-                    fastqs,
-                    proj_path,
-                    fastqc_bin=fastqc_bin,
-                    clobber=True)
+            for project, proj_fastqs in fastqs_per_project.items():
+                abs_fastqs = [path.join(outdir, fq)
+                              for fq in proj_fastqs]
+                for fastqs in batch(abs_fastqs, batch_size):
+                    proj_path = path.join(outdir, project)
+                    result, output = fastqc.run_fastqc_on_project(
+                        fastqs,
+                        proj_path,
+                        fastqc_bin=fastqc_bin,
+                        clobber=True)
 
-                if 'Failed to process' in output:
-                    result = None
-                ok.append(result)
-                # fail early
-                if result is None:
-                    failing_project = project
-                    break
+                    if 'Failed to process' in output:
+                        result = None
+                    ok.append(result)
+                    # fail early
+                    if result is None:
+                        failing_project = project
+                        break
 
             if all(ok):
                 current.task.status = COMPLETE
