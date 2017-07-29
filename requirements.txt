@@ -23,7 +23,7 @@ jsondate==0.1.2
 loggly-python-handler==1.0.0
 ndg-httpsclient==0.4.2
 pathlib2==2.3.0
-pkg-resources==0.0.0
+# pkg-resources
 psutil==5.2.2
 py==1.4.34
 pyasn1==0.2.3
