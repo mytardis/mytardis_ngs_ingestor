@@ -18,6 +18,9 @@ from mytardis_ngs_ingestor import illumina_uploader
 from mytardis_ngs_ingestor.utils import batch
 from mytardis_ngs_ingestor.illumina.fastqc import get_fastqc_output_directory
 
+import ctypes
+libc = ctypes.CDLL("libc.so.6")
+
 # status enum
 CREATED = 'created'  # record created, no action taken on task yet
 RUNNING = 'running'
@@ -98,7 +101,17 @@ class TaskDb(FilesystemStore):
                 if k.startswith('_'):
                     del data[k]
 
-        return super(TaskDb, self)._put(key, '%s\n' % json.dumps(data))
+        put_result = super(TaskDb, self)._put(key, '%s\n' % json.dumps(data))
+        # https://blog.gocept.com/2013/07/15/reliable-file-updates-with-python/
+        # System-wide sync is a bad way to do this - better if a version of FilesystemStore
+        # does it (eg with os.fsync on the filehandle, or even support fcntl.flock when reading / writing
+        # os.system('sync')
+        libc.sync()
+        return put_result
+
+    def _put_file(self, key, file):
+        put_result = super(TaskDb, self)._put(key, file)
+
 
     def _get(self, key):
         value = super(TaskDb, self)._get(key)
