@@ -156,14 +156,14 @@ def process_all_runs(run_storage_base, options):
             try:
                 emitted_task = try_autoprocessing(run_dir, options)
                 if emitted_task and emitted_task.status == tasks.ERROR:
-                    errored_tasks.append(emitted_task)
+                    errored_tasks.append((emitted_task, None))
                 if emitted_task and emitted_task.status == tasks.RUNNING:
                     running_tasks.append(emitted_task)
             except Exception as e:
                 # Dummy catchall task to signal exceptional failure
-                errored_tasks.append(ProcessingTask(run_id,
-                                                    'try_autoprocessing',
-                                                    tasks.ERROR))
+                errored_tasks.append((ProcessingTask(run_id,
+                                                     'try_autoprocessing',
+                                                     tasks.ERROR), e))
                 if options.verbose:
                     logging.exception(e)
 
@@ -174,7 +174,7 @@ def process_all_runs(run_storage_base, options):
             #     break
 
     errorlist = ', '.join(['%s:%s' % (t.task_name, t.run_id)
-                           for t in errored_tasks])
+                           for t, e in errored_tasks])
     runninglist = ', '.join(['%s:%s' % (t.task_name, t.run_id)
                              for t in running_tasks])
     if options.verbose:
@@ -193,10 +193,13 @@ def process_all_runs(run_storage_base, options):
                 "Processing runs in %s completed with failures: %s",
                 run_storage_base,
                 errorlist)
+            for t, ex in errored_tasks:
+                if ex:
+                    logging.exception(ex)
         else:
             # Throttle notification log if in --quiet mode
             notify_every = timedelta(minutes=options.notify_frequency)
-            for t in errored_tasks:
+            for t, ex in errored_tasks:
                 if t.last_failure_notify_time is None or \
                         (t.last_failure_notify_time +
                             notify_every < datetime.now()):

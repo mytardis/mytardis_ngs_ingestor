@@ -43,6 +43,10 @@ binary_path                   = "/usr/local/bin/bcl2fastq"
   mask-short-adapter-reads      = 0
   fastq-compression-level       = 9
   # tiles                         = "s_1_1101"
+  # A list is equivalent to applying the --use-bases-mask option twice 
+  # on the commandline, like: 
+  # --use-bases-mask 1:Y*,I8Y8,Y* --use-bases-mask 2:Y*,I8Y8,Y*
+  # use-bases-mask                = ["1:Y*,I8Y8,Y*", "2:Y*,I8Y8,Y*"]
 
 # [fastqc]
 # binary_path = "/software/apps/FastQC/fastqc"

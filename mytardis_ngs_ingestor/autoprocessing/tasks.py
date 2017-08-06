@@ -464,7 +464,14 @@ def do_bcl2fastq(taskdb, current, run_dir, options):
         for arg, value in config_args.items():
             if isinstance(value, bool):
                 value = ''
-            extra_args.append("--%s %s" % (arg, value))
+            # If an option in the config file is a list, put that on the bcl2fastq commandline twice
+            # as two or more args (eg use-bases-mask = ["1:*", "2:*"] becomes 
+            #  --use-bases-mask 1:* --use-bases-mask 2:*)
+            if isinstance(value, list):
+                for v in value:
+                   extra_args.append("--%s %s" % (arg, v))
+            else:
+                extra_args.append("--%s %s" % (arg, value))
 
         success, output = run_bcl2fastq(
             run_dir,
