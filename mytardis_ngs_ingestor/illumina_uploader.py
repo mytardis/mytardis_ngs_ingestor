@@ -135,7 +135,7 @@ def log_datafile_added(filepath, dataset_url, df_url):
                  urlparse(df_url).path)
 
 
-def create_run_experiment_object(run_path):
+def create_run_experiment_object(run_path, options):
     """
 
     :type run_path: str
@@ -146,7 +146,8 @@ def create_run_experiment_object(run_path):
     #       (eg maybe from Logs/CycleTimes.txt)
     end_time, rta_version = rta_complete_parser(run_path)
 
-    runinfo_parameters = runinfo_parser(run_path)
+    if not options.fastq_only:
+        runinfo_parameters = runinfo_parser(run_path)
     instrument_id = runinfo_parameters.get('instrument_id', '')
     instrument_model = get_instrument_model_from_id(instrument_id)
     if not instrument_model:
@@ -1427,7 +1428,7 @@ def ingest_run(options, run_path=None):
     #       these files. Some of this metadata (eg instrument_id, flowcell_id,
     #       index) may be inferred from fastq headers
     #       (see utils/generate_test_run.py)
-    run_expt = create_run_experiment_object(run_path)
+    run_expt = create_run_experiment_object(run_path, options)
     # run_id = get_run_id_from_path(run_path)
     run_id = run_expt.parameters.run_id
 
@@ -1757,7 +1758,7 @@ def setup_commandline_args(parser):
                         help="Ingest just the FASTQ files and "
                                 "ignore any instrument / run specific "
                                 "files or metadata extraction. FastQC "
-                                "reports are generated if the --run-fastqc"
+                                "reports are generated if the --run-fastqc "
                                 "flag is also given.")
     parser.add_argument('--threads',
                         dest='threads',
