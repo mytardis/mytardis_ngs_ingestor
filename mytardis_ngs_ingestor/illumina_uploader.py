@@ -146,6 +146,7 @@ def create_run_experiment_object(run_path, options):
     #       (eg maybe from Logs/CycleTimes.txt)
     end_time, rta_version = rta_complete_parser(run_path)
 
+    runinfo_parameters = dict()
     if not options.fastq_only:
         runinfo_parameters = runinfo_parser(run_path)
     instrument_id = runinfo_parameters.get('instrument_id', '')
