@@ -623,7 +623,7 @@ def get_sample_project_mapping(basepath,
         if len(parts) == 1:
             fqfile = str(parts[0])
 
-        if catch_undetermined and fqfile.startswith('Undetermined_'):
+        if catch_undetermined and 'Undetermined_' in fqfile:
             project = u'Undetermined_indices'
 
         # TODO: we currently don't deal with Project_ prefixes, really
@@ -673,9 +673,10 @@ def find_undetermined_indices_path(basepath):
     # is a directory containing them
     dirs = [d for d in ls if isdir(d)]
     for undet_dir in dirs:
-        for ff in os.listdir(undet_dir):
-            if isfile(join(undet_dir, ff)) and ff.endswith('.fastq.gz'):
-                return undet_dir
+        for root, dirnames, filenames in os.walk(undet_dir):
+            for ff in filenames:
+                if ff.endswith('.fastq.gz'):
+                    return undet_dir
 
     return None
 

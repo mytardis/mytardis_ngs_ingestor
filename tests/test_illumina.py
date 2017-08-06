@@ -7,12 +7,13 @@ from semantic_version import Version as SemanticVersion
 from mytardis_ngs_ingestor.illumina_uploader import \
     get_fastqc_summary_for_project
 import mytardis_ngs_ingestor
-from mytardis_ngs_ingestor.illumina.run_info import \
-    parse_samplesheet, \
-    filter_samplesheet_by_project, \
-    filter_samplesheet_by_project, \
-    rta_complete_parser, get_sample_project_mapping, \
-    parse_sample_info_from_filename
+from mytardis_ngs_ingestor.illumina.run_info import (
+    parse_samplesheet,
+    filter_samplesheet_by_project,
+    filter_samplesheet_by_project,
+    rta_complete_parser, get_sample_project_mapping,
+    parse_sample_info_from_filename,
+    find_undetermined_indices_path)
 
 
 class IlluminaParserTestCase(unittest.TestCase):
@@ -50,6 +51,18 @@ class IlluminaParserTestCase(unittest.TestCase):
 
     def tearDown(self):
         pass
+
+    def test_find_undetermined_path(self):
+        undet_path = find_undetermined_indices_path(path.join(
+            self.run5_dir,
+            'Data/Intensities/BaseCalls'))
+        self.assertIsNotNone(undet_path)
+        self.assertTrue(undet_path.endswith('BaseCalls'))
+        undet_path = find_undetermined_indices_path(path.join(
+            self.run1_dir,
+            '130907_DMO177_0001_AH9PJLADXZ.bcl2fastq'))
+        self.assertIsNotNone(undet_path)
+        self.assertTrue(undet_path.endswith('Undetermined_indices'))
 
     def test_parse_samplesheet_missing(self):
         samples, chemistry = parse_samplesheet(self.samplesheet_missing_path,
