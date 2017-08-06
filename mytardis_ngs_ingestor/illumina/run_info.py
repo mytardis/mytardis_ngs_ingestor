@@ -623,7 +623,7 @@ def get_sample_project_mapping(basepath,
         if len(parts) == 1:
             fqfile = str(parts[0])
 
-        if catch_undetermined and 'Undetermined' in fqfile:
+        if catch_undetermined and fqfile.startswith('Undetermined_'):
             project = u'Undetermined_indices'
 
         # TODO: we currently don't deal with Project_ prefixes, really
@@ -648,29 +648,36 @@ def get_sample_project_mapping(basepath,
     return project_mapping
 
 
-def undetermined_reads_in_root(basepath):
+def find_undetermined_indices_path(basepath):
     """
-    Returns False if the Undetermined_indicies fastq.gz files are in their own
-    project directory (ie, old bcl2fastq 1.8.4 style), or True if they are
-    bare in the root of the bcl2fastq output diretory (eg bcl2fastq 2.x)
+    Returns the path to the Undetermined_indices fastq.gz files.
+    They may be in their own project directory (ie, old bcl2fastq 1.8.4 style),
+    or bare in the root of the bcl2fastq output directory (eg bcl2fastq 2.x).
+
+    Returns None if no path to Undetermined_*.fastq.gz files is found.
 
     :param basepath:
     :type basepath:
-    :return:
-    :rtype:
+    :return: The path to the directory holding Undetermined_* fastq.gz files
+    :rtype: basestring
     """
-    for f in os.listdir(basepath):
-        if 'Undetermined_' not in f:
-            continue
+    ls = [join(basepath, f) for f in os.listdir(basepath) if 'Undetermined_' in f]
 
-        f_path = join(basepath, f)
+    # First just look for .fastq.gz files bare in the root of the
+    # bcl2fastq output directory
+    for f in ls:
+        if isfile(f) and f.endswith('.fastq.gz'):
+            return basepath
 
-        if isfile(f_path):
-            return True
-        if isdir(f_path):
-            return False
+    # Only if there were no Undetermined_ fastq.gz files, then see if there
+    # is a directory containing them
+    dirs = [d for d in ls if isdir(d)]
+    for undet_dir in dirs:
+        for ff in os.listdir(undet_dir):
+            if isfile(join(undet_dir, ff)) and ff.endswith('.fastq.gz'):
+                return undet_dir
 
-    raise Exception("No Undetermined_indices files or directories found.")
+    return None
 
 
 def get_sample_id_from_fastq_filename(filepath):

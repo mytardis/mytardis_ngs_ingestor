@@ -78,7 +78,7 @@ from mytardis_ngs_ingestor.illumina.run_info import (
     parse_sample_info_from_filename,
     filter_samplesheet_by_project,
     get_sample_project_mapping,
-    undetermined_reads_in_root,
+    find_undetermined_indices_path,
     get_index_from_fastq_content)
 
 
@@ -1275,12 +1275,18 @@ def pre_ingest_checks_instrument_run(options):
     project_fastq_mapping = get_sample_project_mapping(bcl2fastq_output_dir,
                                                        absolute_paths=True)
 
+    undet_path = find_undetermined_indices_path(bcl2fastq_output_dir)
+    if undet_path is None:
+        logging.warn("No Undetermined_* files or directories found.")
+
     for proj_dir, fq_files in project_fastq_mapping.items():
         p_path = join(bcl2fastq_output_dir, proj_dir)
 
-        if proj_dir == 'Undetermined_indices' and \
-                undetermined_reads_in_root(bcl2fastq_output_dir):
-            p_path = bcl2fastq_output_dir
+        if proj_dir == 'Undetermined_indices':
+            if undet_path is None:
+                raise Exception("Undetermined_*.fastq files found, but "
+                                "unable to determine project path.")
+            p_path = undet_path
 
         if not exists(p_path):
             logging.error("Aborting - project directory '%s' is missing.",
@@ -1530,6 +1536,8 @@ def ingest_run(options, run_path=None):
     project_fastq_mapping = get_sample_project_mapping(bcl2fastq_output_dir,
                                                        absolute_paths=True)
 
+    undet_path = find_undetermined_indices_path(bcl2fastq_output_dir)
+
     for proj_id, fastq_files in project_fastq_mapping.items():
         proj_path = join(bcl2fastq_output_dir, proj_id)
 
@@ -1544,9 +1552,11 @@ def ingest_run(options, run_path=None):
         proj_expt.parameters.demultiplexing_commandline_options = \
             run_expt.parameters.demultiplexing_commandline_options
 
-        if proj_id == 'Undetermined_indices' and \
-                undetermined_reads_in_root(bcl2fastq_output_dir):
-            proj_path = bcl2fastq_output_dir
+        if proj_id == 'Undetermined_indices':
+            if undet_path is None:
+                raise Exception("Undetermined_*.fastq files found, but "
+                                "unable to determine project path.")
+            proj_path = undet_path
 
         fastqc_out_dir = fastqc.get_fastqc_output_directory(proj_path)
 
