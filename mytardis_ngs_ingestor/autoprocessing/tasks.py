@@ -523,6 +523,7 @@ def do_fastqc(taskdb, current, run_dir, options):
 
             fastqc_opts = options.config.get('fastqc', {})
             fastqc_bin = fastqc_opts.get('binary_path', None)
+            fastqc_threads = fastqc_opts.get('threads', 2)
             fastqs_per_project = get_sample_project_mapping(outdir)
             ok = []
             failing_project = None
@@ -542,6 +543,7 @@ def do_fastqc(taskdb, current, run_dir, options):
                         fastqs,
                         proj_path,
                         fastqc_bin=fastqc_bin,
+                        threads=fastqc_threads,
                         clobber=False)
 
                     if 'Failed to process' in output:

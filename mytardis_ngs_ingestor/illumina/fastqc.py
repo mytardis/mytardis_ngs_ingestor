@@ -114,7 +114,7 @@ def run_fastqc_on_project(fastq_files,
                 shutil.rmtree(output_directory)
             else:
                 logging.warning("FastQC - output directory already exists: %s",
-                              output_directory)
+                                output_directory)
         else:
             try:
                 # os.mkdir(output_directory)

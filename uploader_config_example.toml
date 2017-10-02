@@ -56,6 +56,10 @@ fastq_only = false
 # with a period (.) are excluded by default
 exclude = [".*Thumbnail_Images.*"]
 
+# This exclude rule will exclude most common 'bcl' and associate raw data files,
+# (but not .fastq.gz !)
+#exclude = [".*/Data/.*", ".*/Thumbnail_Images/.*", "\.filter$", "\.locs$", "\.clocs$", "\.bcl$", "\.bcl\.gz$", "\.bcl\.bgzf\.bci$", "\.bcl\.bzgf$", "_phasing\.txt$", "_matrix\.txt$", "\.stats$"]
+
 # The username of the MyTardis user that will ingest the data
 username = "powerfuladmin"
 
