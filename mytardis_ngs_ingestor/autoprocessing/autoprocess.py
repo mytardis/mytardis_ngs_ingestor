@@ -66,10 +66,6 @@ def try_autoprocessing(run_dir, options):
     # ensure config is initially from the global config file
     options.config = options.global_config
 
-    # replace options.config for this run with any run-specific
-    # autoprocess_config.toml file, if present
-    options = create_and_parse_run_specific_config(run_dir, options)
-
     run_id = get_run_id_from_path(run_dir)
     options.run_id = run_id
 
@@ -83,6 +79,10 @@ def try_autoprocessing(run_dir, options):
             if options.verbose:
                 logging.info("Skipping %s, no read/write permissions.", run_dir)
             return None
+
+    # replace options.config for this run with any run-specific
+    # autoprocess_config.toml file, if present
+    options = create_and_parse_run_specific_config(run_dir, options)
 
     ##
     # Check if the run should be ignored.
