@@ -80,10 +80,6 @@ def try_autoprocessing(run_dir, options):
                 logging.info("Skipping %s, no read/write permissions.", run_dir)
             return None
 
-    # replace options.config for this run with any run-specific
-    # autoprocess_config.toml file, if present
-    options = create_and_parse_run_specific_config(run_dir, options)
-
     ##
     # Check if the run should be ignored.
     # If so, silently skip it (unless we are being verbose)
@@ -103,6 +99,10 @@ def try_autoprocessing(run_dir, options):
         if options.verbose:
             tasks.log_status(current.task, options.verbose)
         return current.task
+
+    # replace options.config for this run with any run-specific
+    # autoprocess_config.toml file, if present
+    options = create_and_parse_run_specific_config(run_dir, options)
 
     if options.verbose:
         logging.info('Starting autoprocessing on: %s', run_dir)
