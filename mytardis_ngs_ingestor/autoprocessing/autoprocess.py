@@ -2,6 +2,7 @@ import sys, os
 import logging
 import types
 from os import path
+import shutil
 from datetime import datetime, timedelta
 import atexit
 from attrdict import AttrDict
@@ -9,6 +10,7 @@ import collections
 
 from argparse import ArgumentParser
 
+from mytardis_ngs_ingestor import __version__
 from mytardis_ngs_ingestor.mytardis_uploader import setup_logging
 from mytardis_ngs_ingestor import illumina_uploader
 from mytardis_ngs_ingestor.illumina import run_info
@@ -61,7 +63,12 @@ def try_autoprocessing(run_dir, options):
     global current
     global taskdb
 
-    options = parse_run_specific_config(run_dir, options)
+    # ensure config is initially from the global config file
+    options.config = options.global_config
+
+    # replace options.config for this run with any run-specific
+    # autoprocess_config.toml file, if present
+    options = create_and_parse_run_specific_config(run_dir, options)
 
     run_id = get_run_id_from_path(run_dir)
     options.run_id = run_id
@@ -470,32 +477,37 @@ def _set_current_task_status_on_exit():
         taskdb.put(current.task.task_name, current.task)
 
 
-def parse_run_specific_config(run_dir, options):
+def create_and_parse_run_specific_config(run_dir, options):
     """
-    Override any options in options.config with values found in
-    an autoprocess_config.toml file in the run directory.
+    If an autoprocess_config.toml file is found in the in the run directory,
+    replace options.config with the values defined in it.
 
-    options.global_config is used as the set of initial default values.
+    If there is no autoprocess_config.toml file in the run directory,
+    copy the global autoprocess_config.toml (specified on the commandline or
+    from the default location) into the run directory.
+
+    Always returns options (modified with run-specific settings, or not).
 
     :param run_dir: The sequencing run directory.
     :type run_dir: str
-    :param options: The options, containing a global_options attribute.
+    :param options: The original options object.
     :type options: AttrDict
-    :return: A options object where options.config has value overridden by
-             those found in the run directory config, if present.
+    :return: A options object updated with values from the config in the
+             run directory config, if present.
     :rtype: AttrDict
     """
     run_config_path = path.join(run_dir, 'autoprocess_config.toml')
+    if not os.path.isfile(run_config_path):
+        if options.config_file and os.path.isfile(options.config_file):
+            shutil.copyfile(options.config_file, run_config_path)
+
     if os.path.isfile(run_config_path):
         options.config = config_helper.get_config_toml(
-            config_file=run_config_path,
-            defaults=options.global_config)
+            config_file=run_config_path)
         options.config = _attrdict_copy(options.config)
         if options.verbose:
             logging.info("Applied run specific configuration from: %s",
                          run_config_path)
-    else:
-        options.config = _attrdict_copy(options.global_config)
 
     return options
 
@@ -504,6 +516,12 @@ def run_in_console():
     parser = setup_commandline_args()
     options = parser.parse_args()
     # options, argv = parser.parse_known_args()
+
+    # We need to do this check before parsing config (in case run_storage_base
+    # is defined in config), but fail later once logging is setup.
+    error_runs_and_single_run_on_commandline = False
+    if options.run_storage_base and options.run_path:
+        error_runs_and_single_run_on_commandline = True
 
     # TODO: Implement a support for global config (found in expected places, eg
     #       ~/.config/mytardis_ngs_ingestor/autoprocess_config.toml)
@@ -533,6 +551,12 @@ def run_in_console():
             sys.exit(1)
 
     setup_logging(logging_config_file=options.logging_config)
+
+    logging.info("mytardis_ngs_ingestor autprocessing version: %s", __version__)
+
+    if error_runs_and_single_run_on_commandline:
+        logging.error("Please use only --runs or --single-run, not both.")
+        sys.exit(1)
 
     # If a config for illumina_uploader was provided, read it and assign it to
     # options.mytardis_uploader for use in the mytardis_upload task
@@ -564,7 +588,6 @@ def run_in_console():
     try:
         if options.run_storage_base and options.run_path:
             options.run_storage_base = None
-            logging.warning("Please use only --runs or --single-run, not both.")
 
         if options.watch and not options.run_storage_base:
             logging.error("You must specify the --runs option if using --watch.")
