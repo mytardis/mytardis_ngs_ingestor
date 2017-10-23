@@ -78,8 +78,8 @@ assumed that the run has already been demultiplexed.
 
 ## Autoprocessing - demultiplexing and QC
 
-The `autoprocess.py` script can be used to demultiplex (bcl2fastq) and run
-QC (eg fastqc) on runs and trigger ingestion into MyTardis. It is intended to
+The `autoprocess.py` script can be used to demultiplex (bcl2fastq) and do run
+QC (eg fastqc), as well as trigger ingestion into MyTardis. It is intended to
 be executed by a cron job every few minutes to process any completed sequencing
 runs as they appear.
 
@@ -114,16 +114,17 @@ you must remove the `all_complete` file and the required `<task_name>` file.
 
 See `autoprocessing_config_example.toml` - copy this to `autoprocessing_config.toml` to get started.
 
-The autoprocessing pipeline inherits and overrides settings with the following 
-precendence:
+The autoprocessing pipeline uses a default config file which can be overriden 
+ with a run-specific config in the run directory.
 
-Commandline options **>>** 
-`autoprocessing_config.toml` in run directory **>>** 
-`--config autoprocessing_config.toml`
-
-This means a 'baseline' `autoprocessing_config.toml` can be specified with
+The default `autoprocessing_config.toml` can be specified with
 `--config autoprocessing_config.toml`. If there is an `autoprocessing_config.toml` 
-file in the run directory, these values with override values in the base config.
+file in the run directory, this config is used instead. If there is no 
+`autoprocessing_config.toml` file in the run directory, one is created from a copy
+of the default file (this aids reproducability - in the case the default config file
+is modified, the run will still have record of the config used at the time of 
+processing).
+
 Commandline options (eg `--run-storage-base`) override the equivalent setting in 
 top level of any config file.
 
