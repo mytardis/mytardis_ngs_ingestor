@@ -560,7 +560,7 @@ def run_in_console():
 
     # If a config for illumina_uploader was provided, read it and assign it to
     # options.mytardis_uploader for use in the mytardis_upload task
-    # options['config']['mytardis_uploader'] = None
+    # options['mytardis_uploader'] = None
     if options.uploader_config and os.path.isfile(options.uploader_config):
         uploader_only_parser = _add_uploader_config_argparser()
         uploader_config = _attrdict_copy(
@@ -570,10 +570,10 @@ def run_in_console():
                 parser=uploader_only_parser,
             )
         )
-        options['config']['mytardis_uploader'] = uploader_config
-        options['config']['mytardis_uploader']['config_file'] = \
+        options['mytardis_uploader'] = uploader_config
+        options['mytardis_uploader']['config_file'] = \
             options.uploader_config
-        del options['config']['mytardis_uploader']['uploader_config']
+        del options['mytardis_uploader']['uploader_config']
 
     # options.global_config is a static copy of the config based
     # on the initial 'global' config file (default or --config)

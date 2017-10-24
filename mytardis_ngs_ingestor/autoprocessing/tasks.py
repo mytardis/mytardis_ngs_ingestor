@@ -676,7 +676,7 @@ def do_mytardis_upload(taskdb, current, run_dir, options):
         log_status(current.task, options.verbose)
         return current.task
 
-    if not options.config.get('mytardis_uploader', None):
+    if not options.get('mytardis_uploader', None):
         logging.exception("mytardis_upload task failed - config file %s not "
                           "found",
                           options.uploader_config)
@@ -687,8 +687,8 @@ def do_mytardis_upload(taskdb, current, run_dir, options):
     try:
         current.task.status = RUNNING
         taskdb.update(current.task)
-        options.config['mytardis_uploader']['path'] = run_dir
-        illumina_uploader.ingest_run(options.config.mytardis_uploader,
+        options['mytardis_uploader']['path'] = run_dir
+        illumina_uploader.ingest_run(options.mytardis_uploader,
                                      run_path=run_dir)
         current.task.status = COMPLETE
         taskdb.update(current.task)
