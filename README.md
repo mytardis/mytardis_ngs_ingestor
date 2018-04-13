@@ -11,7 +11,7 @@ NextSeq and MiSeq instruments.
 ## Dependencies
 
   * A [MyTardis](https://github.com/mytardis/mytardis) server with 
-    the [mytardis-seqfac](https://github.com/pansapiens/mytardis-seqfac) 
+    the [mytardis-seqfac](https://github.com/mytardis/mytardis-seqfac) 
     app installed and configured
   * (Optional) [FastQC](http://www.bioinformatics.babraham.ac.uk/projects/fastqc/)
 
