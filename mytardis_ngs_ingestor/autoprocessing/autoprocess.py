@@ -171,8 +171,9 @@ def process_all_runs(run_storage_base, options):
                 errored_tasks.append((ProcessingTask(run_id,
                                                      'try_autoprocessing',
                                                      tasks.ERROR), e))
+                logging.exception(e)
                 if options.verbose:
-                    logging.exception(e)
+                    logging.error("try_autoprocessing failed:\n %s", e)
 
             current.task = None
 
