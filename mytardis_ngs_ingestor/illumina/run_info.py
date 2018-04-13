@@ -52,7 +52,6 @@ def run_is_complete(runfolder_dir, complete_file='RTAComplete.txt'):
 def parse_samplesheet(file_path,
                       standardize_keys=True,
                       allow_missing=True):
-
     # Old plain CSV format, IEM v3:
     # FCID,Lane,SampleID,SampleRef,Index,Description,Control,Recipe,
     # Operator,SampleProject
@@ -106,7 +105,7 @@ def parse_samplesheet(file_path,
                 data_index = i
                 break
 
-        reader = csv.DictReader(lines[data_index+1:])
+        reader = csv.DictReader(lines[data_index + 1:])
 
         samples = _format_keys(reader)
 
@@ -125,7 +124,6 @@ def parse_samplesheet(file_path,
 def filter_samplesheet_by_project(file_path, proj_id,
                                   project_column_label='SampleProject',
                                   output_ini_headers=False):
-
     """
     Windows \r\n
 
@@ -322,7 +320,8 @@ def runinfo_parser(run_path):
 def get_instrument_model_from_id(instrument_id):
     instrument_models = OrderedDict({
         'NS':  'NextSeq500',
-        'M':   'MiSeq',
+        'MN':  'MiniSeq',
+        'M':   'MiSeq',      # must be after MN !
         'D':   'HiSeq2500',
         'SNL': 'HiSeq1500',
         'SN':  'HiSeq2000',  # must be after SNL !
@@ -462,7 +461,7 @@ def get_demultiplexer_info(demultiplexed_output_path):
     # bcl2fastq 1.x or 2.x was used based on 'Project_' prefixes
     if not version_info.get('version'):
         if any([proj_dir.startswith('Project_')
-               for proj_dir in os.listdir(demultiplexed_output_path)]):
+                for proj_dir in os.listdir(demultiplexed_output_path)]):
             version_info['version'] = 'bcl2fastq 1.0unknown'
             version_info['version_number'] = '1.0unknown'
         else:
