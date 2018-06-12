@@ -289,18 +289,20 @@ def runinfo_parser(run_path):
             u'run_number': runinfo['@Number'],
             u'flowcell_id': runinfo['Flowcell'],
             u'instrument_id': runinfo['Instrument']}
-
+    
     reads = runinfo['Reads']['Read']
+    if isinstance(reads, OrderedDict):
+        reads = [reads]
 
     cycle_list = []
     # index_reads = []
-    for read in reads:
-        if read['@IsIndexedRead'] == 'Y':
+    for r in reads:
+        if r['@IsIndexedRead'] == 'Y':
             # index_reads.append(read['@Number'])
             # we wrap the index reads in brackets
-            cycle_list.append("(%s)" % read['@NumCycles'])
+            cycle_list.append("(%s)" % r['@NumCycles'])
         else:
-            cycle_list.append(read['@NumCycles'])
+            cycle_list.append(r['@NumCycles'])
 
     info['read_cycles'] = ', '.join(cycle_list)
     # info['index_reads'] = ', '.join(index_reads)
