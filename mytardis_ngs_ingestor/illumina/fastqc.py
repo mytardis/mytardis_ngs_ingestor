@@ -77,6 +77,10 @@ def run_fastqc(fastq_paths,
             logging.error('FastQC - failed to create temp directory.')
             return None, cmd_out
 
+    if not fastq_paths:
+        logging.info('No valid FASTQ files to process. Not running FastQC.')
+        return output_directory, ''
+
     cmd = 'nice %s %s --noextract --threads %d --outdir %s %s' % \
           (fastqc_bin,
            extra_options,
