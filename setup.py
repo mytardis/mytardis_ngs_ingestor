@@ -11,19 +11,15 @@ import mytardis_ngs_ingestor
 
 here = path.abspath(path.dirname(__file__))
 
-
 def get_requirements():
-    from pip.req import parse_requirements
-    from pip.download import PipSession
+    with open(path.join(here, 'requirements.txt'), 'r') as f:
+	install_reqs = [
+	    s for s in [
+		line.strip(' \n') for line in f
+	    ] if not s.startswith('#') and s != ''
+	]
+    return install_reqs
 
-    # parse_requirements() returns generator of pip.req.InstallRequirement
-    # objects
-    pip_reqs = parse_requirements(path.join(here, 'requirements.txt'),
-                                  session=PipSession())
-    # reqs is a list of requirements
-    requirements = [str(ir.req) for ir in pip_reqs]
-
-    return requirements
 
 with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
