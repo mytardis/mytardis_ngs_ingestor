@@ -28,19 +28,10 @@ def _fastq_is_empty(fqfile):
     :return: True if the file contain no reads
     :rtype: bool
     """
-    cmd = 'gunzip -c %s | head | wc -c' % fqfile
-    logging.debug('Command: %s', cmd)
-    try:
-        cmd_out = subprocess.check_output(cmd,
-                                          shell=True,
-                                          stderr=subprocess.STDOUT)
-        if cmd_out.strip() == '0':
-            logging.info('File %s contains no reads - skipping FastQC on this file.', fqfile)
+    import gzip
+    with gzip.open(fqfile, 'rb') as f:
+        if len(f.read()) == 0:
             return True
-
-    except subprocess.CalledProcessError:
-        logging.warn('Failed attempting to check for empty FASTQ file: %s', cmd)
-
     return False
 
 
