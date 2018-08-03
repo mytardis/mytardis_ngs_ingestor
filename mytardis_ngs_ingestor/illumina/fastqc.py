@@ -19,6 +19,31 @@ from mytardis_ngs_ingestor.utils import tmp_dirs
 _fastqc_jvm_Xmx_memory = 250  # MB
 
 
+def _fastq_is_empty(fqfile):
+    """
+    Return True if a FASTQ files contains no reads.
+
+    :param fqfile: The path to the FASTQ file (filename).
+    :type fqfile: str
+    :return: True if the file contain no reads
+    :rtype: bool
+    """
+    cmd = 'gunzip -c %s | head | wc -c' % fqfile
+    logging.debug('Command: %s', cmd)
+    try:
+        cmd_out = subprocess.check_output(cmd,
+                                          shell=True,
+                                          stderr=subprocess.STDOUT)
+        if cmd_out.strip() == '0':
+            logging.info('File %s contains no reads - skipping FastQC on this file.', fqfile)
+            return True
+
+    except subprocess.CalledProcessError:
+        logging.warn('Failed attempting to check for empty FASTQ file: %s', cmd)
+
+    return False
+
+
 def run_fastqc(fastq_paths,
                output_directory=None,
                fastqc_bin=None,
@@ -50,18 +75,9 @@ def run_fastqc(fastq_paths,
                         'skipping.')
         return None, cmd_out
 
-    # Check for FASTQ files with no reads - skip these as FastQC fails otherwise
     for f in fastq_paths:
-        try:
-            cmd_out = subprocess.check_output('zcat %s | head | wc -c',
-                                              shell=True,
-                                              stderr=subprocess.STDOUT)
-            if cmd_out.strip() == '0':
-                logging.info('File %s contains no reads - skipping FastQC on this file.', f)
-                fastq_paths.remove(f)
-
-        except subprocess.CalledProcessError:
-            logging.warn('Failed attempting to check for empty FASTQ file: %s', cmd_out)
+        if _fastq_is_empty(f):
+            fastq_paths.remove(f)
 
     tmp_dir = None
     if not output_directory:
