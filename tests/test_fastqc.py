@@ -6,9 +6,18 @@ from mytardis_ngs_ingestor.illumina import fastqc
 
 class FastqcParserTestCase(unittest.TestCase):
     def setUp(self):
-        self.fastqc_zip = path.join(
-            path.dirname(__file__),
-            'test_data/fastqc/Q1N_S7_L004_R1_001_fastqc.zip')
+        data_dir = path.join(path.dirname(__file__), 'test_data')
+        self.empty_fastq_file = path.join(data_dir, 'empty.fastq.gz')
+        self.non_empty_fastq_file = path.join(
+            data_dir,
+            'runs/'
+            '130907_DMO177_0001_AH9PJLADXZ/'
+            '130907_DMO177_0001_AH9PJLADXZ.bcl2fastq/'
+            'Undetermined_indices/'
+            'Sample_lane1/'
+            'lane1_Undetermined_L001_R1_001.fastq.gz')
+        self.fastqc_zip = path.join(data_dir,
+                                    'fastqc/Q1N_S7_L004_R1_001_fastqc.zip')
 
         self.qc_summary = [
             (u'PASS', u'Basic Statistics', u'Q1N_S7_L004_R1_001.fastq.gz'), (
@@ -911,6 +920,10 @@ class FastqcParserTestCase(unittest.TestCase):
 
     def tearDown(self):
         pass
+
+    def test_empty_fastq_detection(self):
+        self.assertTrue(fastqc._fastq_is_empty(self.empty_fastq_file))
+        self.assertFalse(fastqc._fastq_is_empty(self.non_empty_fastq_file))
 
     def test_fastqc_parse_summary_txt(self):
         expected = self.qc_summary
