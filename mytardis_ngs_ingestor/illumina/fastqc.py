@@ -47,8 +47,21 @@ def run_fastqc(fastq_paths,
 
     if not fastq_paths:
         logging.warning('FastQC - called with no FASTQ file paths provided, '
-                       'skipping.')
+                        'skipping.')
         return None, cmd_out
+
+    # Check for FASTQ files with no reads - skip these as FastQC fails otherwise
+    for f in fastq_paths:
+        try:
+            cmd_out = subprocess.check_output('zcat %s | head | wc -c',
+                                              shell=True,
+                                              stderr=subprocess.STDOUT)
+            if cmd_out.strip() == '0':
+                logging.info('File %s contains no reads - skipping FastQC on this file.', f)
+                fastq_paths.remove(f)
+
+        except subprocess.CalledProcessError:
+            logging.warn('Failed attempting to check for empty FASTQ file: %s', cmd_out)
 
     tmp_dir = None
     if not output_directory:
