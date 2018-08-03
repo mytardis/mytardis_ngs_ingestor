@@ -30,7 +30,7 @@ def _fastq_is_empty(fqfile):
     """
     import gzip
     with gzip.open(fqfile, 'rb') as f:
-        if len(f.read()) == 0:
+        if len(f.read(512)) == 0:
             return True
     return False
 
@@ -66,9 +66,7 @@ def run_fastqc(fastq_paths,
                         'skipping.')
         return None, cmd_out
 
-    for f in fastq_paths:
-        if _fastq_is_empty(f):
-            fastq_paths.remove(f)
+    fastq_paths = [f for f in fastq_paths if not _fastq_is_empty(f)]
 
     tmp_dir = None
     if not output_directory:
