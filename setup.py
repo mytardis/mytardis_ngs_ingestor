@@ -11,13 +11,14 @@ import mytardis_ngs_ingestor
 
 here = path.abspath(path.dirname(__file__))
 
+
 def get_requirements():
     with open(path.join(here, 'requirements.txt'), 'r') as f:
-	install_reqs = [
-	    s for s in [
-		line.strip(' \n') for line in f
-	    ] if not s.startswith('#') and s != ''
-	]
+        install_reqs = [
+            s for s in [
+                line.strip(' \n') for line in f
+            ] if not s.startswith('#') and s != ''
+        ]
     return install_reqs
 
 
