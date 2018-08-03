@@ -9,7 +9,7 @@ certifi==2017.4.17
 cffi==1.10.0
 chardet==3.0.4
 colorlog==2.10.0
-cryptography==1.9
+cryptography==2.3
 # -e git+https://github.com/ahawker/crython.git#egg=crython
 crython==0.0.7
 enum34==1.1.6
