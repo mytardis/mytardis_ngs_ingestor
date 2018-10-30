@@ -81,7 +81,7 @@ class TaskDb(FilesystemStore):
         self.dbpath = path.join(basedir, db_name)
 
         if not path.exists(self.dbpath):
-            os.mkdir(path.join(basedir, db_name))
+            os.mkdir(self.dbpath)
 
         super(TaskDb, self).__init__(self.dbpath)
 
