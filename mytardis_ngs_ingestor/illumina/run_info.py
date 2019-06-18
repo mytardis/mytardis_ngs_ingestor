@@ -162,22 +162,27 @@ def filter_samplesheet_by_project(file_path, proj_id,
         # newer (IEMv4) ones do. by removing underscores here, we can find
         # 'SampleProject' and 'Sample_Project', whichever exists
         s_no_underscores = [c.lower().replace('_', '') for c in s]
-        project_column_index = s_no_underscores.index(project_column_label.lower())
+        try:
+            project_column_index = s_no_underscores.index(project_column_label.lower())
+        except ValueError:
+            project_column_index = None
         outlines.append(header + '\r\n')
 
-        # find the set of unique project ids in the sample sheet
-        proj_ids_in_sheet = set()
-        for l in f:
-            s = l.strip().split(',')
-            proj_ids_in_sheet.add(s[project_column_index].strip())
+        one_project_only = True
+        if project_column_index is not None:
+            # find the set of unique project ids in the sample sheet
+            proj_ids_in_sheet = set()
+            for l in f:
+                s = l.strip().split(',')
+                proj_ids_in_sheet.add(s[project_column_index].strip())
 
-        # We want to output all lines if there is only a single project.
-        # The on-instrument FASTQ generation for MiSeq seems to not produce
-        # Project directories, even if there is a Sample_Project specified in
-        # the samplesheet. So the 'proj_id' here might be empty, but we still
-        # want all the SampleSheet.csv lines of the one and only project in the
-        # SampleSheet in this case.
-        one_project_only = (len(proj_ids_in_sheet) == 1)
+            # We want to output all lines if there is only a single project.
+            # The on-instrument FASTQ generation for MiSeq seems to not produce
+            # Project directories, even if there is a Sample_Project specified in
+            # the samplesheet. So the 'proj_id' here might be empty, but we still
+            # want all the SampleSheet.csv lines of the one and only project in the
+            # SampleSheet in this case.
+            one_project_only = (len(proj_ids_in_sheet) == 1)
 
         for l in f:
             s = l.strip().split(',')
