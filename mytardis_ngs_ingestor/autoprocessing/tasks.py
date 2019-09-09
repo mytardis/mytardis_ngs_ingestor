@@ -648,6 +648,7 @@ def do_rsync_to_archive(taskdb, current, run_dir, options):
             success, cmd_out = run_rsync(run_dir, target_basepath,
                                          sudo=sudo,
                                          chown=chown,
+                                         checksum=False,
                                          extra_args=extra_args)
             if success:
                 current.task.status = COMPLETE
