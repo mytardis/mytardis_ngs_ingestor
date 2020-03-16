@@ -93,8 +93,9 @@ def parse_samplesheet(file_path,
 
     chemistry = None
 
-    # IEM v4 INI-style CSV
-    if '[Header]' in lines[0]:
+    # IEM v4/v5 INI-style CSV
+    if (any(['[Data]' in l for l in lines]) or 
+        any(['[Header]' in l for l in lines])):
         section = None
         for i, l in enumerate(lines):
             if l[0] == '[':

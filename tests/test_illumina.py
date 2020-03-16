@@ -81,7 +81,6 @@ class IlluminaParserTestCase(unittest.TestCase):
     def test_parse_samplesheet_v4(self):
         samples, chemistry = parse_samplesheet(self.samplesheet_v4_path,
                                                standardize_keys=True)
-        self.assertEqual(chemistry, 'TruSeq LT')
 
         expected = [
             {'index': 'CGATGT', 'lane': '1', 'description': '',
