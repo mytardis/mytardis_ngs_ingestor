@@ -174,6 +174,8 @@ def filter_samplesheet_by_project(file_path, proj_id,
             # find the set of unique project ids in the sample sheet
             proj_ids_in_sheet = set()
             for l in f:
+                if l.strip() == '':
+                    continue
                 s = l.strip().split(',')
                 proj_ids_in_sheet.add(s[project_column_index].strip())
 
