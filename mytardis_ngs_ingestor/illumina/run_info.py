@@ -11,6 +11,7 @@ import re
 import csv
 import gzip
 from collections import OrderedDict
+from datetime import datetime
 from dateutil import parser as dateparser
 import xmltodict
 
@@ -174,8 +175,8 @@ def filter_samplesheet_by_project(file_path, proj_id,
             # find the set of unique project ids in the sample sheet
             proj_ids_in_sheet = set()
             for l in f:
-                if l.strip() == '':
-                    continue
+	        if l.strip() == '':
+		    continue
                 s = l.strip().split(',')
                 proj_ids_in_sheet.add(s[project_column_index].strip())
 
@@ -266,18 +267,33 @@ def rta_complete_parser(run_path):
     :type run_path: str
     :rtype: (datetime.DateTime, str)
     """
-    with open(join(run_path, "RTAComplete.txt"), 'r') as f:
+    day, time, version = (None, None, None)
+
+    rta_complete_path = join(run_path, "RTAComplete.txt")
+    copy_complete_path = join(run_path, "CopyComplete.txt")
+    with open(rta_complete_path, 'r') as f:
         line = f.readline()
         if line.startswith('RTA'):
             # RTA 2.7.3 completed on 3/25/2016 3:31:22 AM
             s = line.split(' completed on ')
             version = s[0]
             day, time = s[1].split(' ', 1)
-        else:
+        elif line.strip() != '':
             # 6/11/2014,20:00:49.935,Illumina RTA 1.17.20
             day, time, version = line.split(',')
 
-    end_time = dateparser.parse("%s %s" % (day, time))
+    if day and time:
+        end_time = dateparser.parse("%s %s" % (day, time))
+
+    # RTA 3.x makes an empty RTAComplete.txt and CopyComplete.txt
+    # Grab the mtime as the completion time, give rough version
+    if os.path.exists(copy_complete_path):
+	end_time = datetime.fromtimestamp(os.path.getctime(copy_complete_path))
+        version = '3'
+
+    if not end_time:
+        end_time = datetime.fromtimestamp(os.path.getctime(rta_complete_path))
+        
     return end_time, version
 
 
