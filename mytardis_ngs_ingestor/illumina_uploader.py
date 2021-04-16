@@ -1113,7 +1113,8 @@ def get_shared_storage_replica_url(storage_box_location, file_path):
     """
 
     if storage_box_location:
-        replica_url = file_path.lstrip(storage_box_location)
+        if file_path.startswith(storage_box_location):
+            replica_url = file_path.replace(storage_box_location, '', 1)
         replica_url = replica_url.lstrip(os.sep)
 
         # if is_in_tree(file_path, storage_box_location):

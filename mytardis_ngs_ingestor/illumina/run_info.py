@@ -347,6 +347,7 @@ def get_instrument_model_from_id(instrument_id):
     instrument_models = OrderedDict({
         'NB':  'NextSeq550',
         'NS':  'NextSeq500',
+        'VH':  'NextSeq2000',
         'MN':  'MiniSeq',
         'M':   'MiSeq',      # must be after MN !
         'D':   'HiSeq2500',
